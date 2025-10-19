@@ -1,0 +1,707 @@
+{
+  "generated": "2025-10-19T13:25:59.611513",
+  "total_addresses": 18,
+  "classifications": {
+    "mega_whale": 0,
+    "whale": 1,
+    "dolphin": 3,
+    "fish": 0,
+    "shrimp": 7,
+    "unknown": 7
+  },
+  "top_by_rank": [
+    {
+      "address": "0x7a4b676af7002e45322437d140517b8dc6303dc2",
+      "hype_rank": 323,
+      "classification": "whale",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xe7cebed7210ff24c6d4e7029400d7247c2a8cb69",
+      "hype_rank": 799,
+      "classification": "dolphin",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x92ae4209e3a5760903aff0c423312392eb3f86a8",
+      "hype_rank": 913,
+      "classification": "dolphin",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x5109816e33ddd83322cd41ce16f9e03b9a0f6d13",
+      "hype_rank": 1006,
+      "classification": "dolphin",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x47930c76790c865217472f2ddb4d14c640ee450a",
+      "hype_rank": 10143,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x3278c8261c7a3867b848cf0b4d9692a9662673b3",
+      "hype_rank": 18013,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x591b0e054b6a136818519587ad16b464fe7e2483",
+      "hype_rank": 60491,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x89ffcc843c2f217898afb6bc0dad9ec3d085e399",
+      "hype_rank": 74639,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x97c18d92e54bd9b4a755acb604cd51a6f11245fc",
+      "hype_rank": 132610,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x32487cee7fabecb0a7cdd1fb39c0a4ec5e96176f",
+      "hype_rank": 135675,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xb0fbfefc6c325964d0ffc3f909bdda80b8421326",
+      "hype_rank": 155294,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x8facdd7ac767e942bfef2807d5c6bfba6c668360",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xca36897cd0783a558f46407cd663d0f46d2f3386",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xe5a470ab89b97e2fee7f93291c60e7f3fd2ff1bc",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x02458e17a59386d7a9f71d4135aebc976f81ba3d",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x18263ea9aada7d91c26babcba7f33cdfb8abe050",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x4793...450a",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x4b7a21c9bc9643f869d75747eff31a243fa7ad04",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    }
+  ],
+  "top_by_volume": [
+    {
+      "address": "0x591b0e054b6a136818519587ad16b464fe7e2483",
+      "hype_rank": 60491,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xb0fbfefc6c325964d0ffc3f909bdda80b8421326",
+      "hype_rank": 155294,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xe7cebed7210ff24c6d4e7029400d7247c2a8cb69",
+      "hype_rank": 799,
+      "classification": "dolphin",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x8facdd7ac767e942bfef2807d5c6bfba6c668360",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x3278c8261c7a3867b848cf0b4d9692a9662673b3",
+      "hype_rank": 18013,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x89ffcc843c2f217898afb6bc0dad9ec3d085e399",
+      "hype_rank": 74639,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xca36897cd0783a558f46407cd663d0f46d2f3386",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0xe5a470ab89b97e2fee7f93291c60e7f3fd2ff1bc",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x92ae4209e3a5760903aff0c423312392eb3f86a8",
+      "hype_rank": 913,
+      "classification": "dolphin",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x7a4b676af7002e45322437d140517b8dc6303dc2",
+      "hype_rank": 323,
+      "classification": "whale",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x02458e17a59386d7a9f71d4135aebc976f81ba3d",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x32487cee7fabecb0a7cdd1fb39c0a4ec5e96176f",
+      "hype_rank": 135675,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x97c18d92e54bd9b4a755acb604cd51a6f11245fc",
+      "hype_rank": 132610,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x18263ea9aada7d91c26babcba7f33cdfb8abe050",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x47930c76790c865217472f2ddb4d14c640ee450a",
+      "hype_rank": 10143,
+      "classification": "shrimp",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x4793...450a",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x5109816e33ddd83322cd41ce16f9e03b9a0f6d13",
+      "hype_rank": 1006,
+      "classification": "dolphin",
+      "twap_volume": 0,
+      "twap_count": 0
+    },
+    {
+      "address": "0x4b7a21c9bc9643f869d75747eff31a243fa7ad04",
+      "hype_rank": null,
+      "classification": "unknown",
+      "twap_volume": 0,
+      "twap_count": 0
+    }
+  ],
+  "all_addresses": [
+    {
+      "address": "0x7a4b676af7002e45322437d140517b8dc6303dc2",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:58.549535",
+      "hype_rank": 323,
+      "usdc_rank": 1426,
+      "all_ranks": {
+        "USDC": 1426,
+        "VAULT": 6817,
+        "HYPE": 323,
+        "STAR": 2751,
+        "LATINA": 6630,
+        "stakedHYPE": 44694
+      },
+      "token_count": 6,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "whale",
+      "is_whale": true
+    },
+    {
+      "address": "0xe7cebed7210ff24c6d4e7029400d7247c2a8cb69",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:59.608575",
+      "hype_rank": 799,
+      "usdc_rank": 36618,
+      "all_ranks": {
+        "USDC": 36618,
+        "HYPE": 799
+      },
+      "token_count": 2,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "dolphin",
+      "is_whale": false
+    },
+    {
+      "address": "0x92ae4209e3a5760903aff0c423312392eb3f86a8",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:58.944875",
+      "hype_rank": 913,
+      "usdc_rank": 402,
+      "all_ranks": {
+        "USDC": 402,
+        "PURR": 19039,
+        "HFUN": 160,
+        "JEFF": 11315,
+        "MEOW": 2041,
+        "PEAR": 8022,
+        "NEIRO": 4520,
+        "TIME": 1428,
+        "BERA": 3303,
+        "VAULT": 1025,
+        "MUNCH": 1978,
+        "HYPE": 913,
+        "STAR": 1144,
+        "BEATS": 98,
+        "SENT": 1440,
+        "JPEG": 403,
+        "LATINA": 898,
+        "LICKO": 315,
+        "stakedHYPE": 240
+      },
+      "token_count": 19,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "dolphin",
+      "is_whale": false
+    },
+    {
+      "address": "0x5109816e33ddd83322cd41ce16f9e03b9a0f6d13",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:58.270662",
+      "hype_rank": 1006,
+      "usdc_rank": 174339,
+      "all_ranks": {
+        "USDC": 174339,
+        "WOW": 7810,
+        "HYPE": 1006,
+        "STAR": 1784
+      },
+      "token_count": 4,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "dolphin",
+      "is_whale": false
+    },
+    {
+      "address": "0x47930c76790c865217472f2ddb4d14c640ee450a",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:58.008904",
+      "hype_rank": 10143,
+      "usdc_rank": 3214,
+      "all_ranks": {
+        "USDC": 3214,
+        "PURR": 3658,
+        "HFUN": 1441,
+        "JEFF": 15297,
+        "POINTS": 3347,
+        "FUN": 986,
+        "VAPOR": 7290,
+        "CAT": 223,
+        "MBAPPE": 1661,
+        "CATBAL": 793,
+        "TJIF": 368,
+        "NEIRO": 1951,
+        "TIME": 5138,
+        "BERA": 2662,
+        "LAUNCH": 1850,
+        "PIP": 3139,
+        "MUNCH": 1960,
+        "HYPE": 10143,
+        "STAR": 2562,
+        "FARM": 4064,
+        "HYENA": 2818,
+        "SENT": 303,
+        "NEKO": 3206,
+        "BUDDY": 448,
+        "RAT": 1024,
+        "TRADE": 113,
+        "UPUMP": 1639,
+        "LICKO": 1961,
+        "UETH": 1830,
+        "UBTC": 4606,
+        "UBONK": 149,
+        "UUUSPX": 417,
+        "stakedHYPE": 3030
+      },
+      "token_count": 33,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "shrimp",
+      "is_whale": false
+    },
+    {
+      "address": "0x3278c8261c7a3867b848cf0b4d9692a9662673b3",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:57.748039",
+      "hype_rank": 18013,
+      "usdc_rank": 3570,
+      "all_ranks": {
+        "USDC": 3570,
+        "HYPE": 18013,
+        "UETH": 985
+      },
+      "token_count": 3,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "shrimp",
+      "is_whale": false
+    },
+    {
+      "address": "0x591b0e054b6a136818519587ad16b464fe7e2483",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:58.400305",
+      "hype_rank": 60491,
+      "usdc_rank": 237173,
+      "all_ranks": {
+        "USDC": 237173,
+        "LICK": 22,
+        "HYPE": 60491,
+        "LIQD": 3355
+      },
+      "token_count": 4,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "shrimp",
+      "is_whale": false
+    },
+    {
+      "address": "0x89ffcc843c2f217898afb6bc0dad9ec3d085e399",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:58.689672",
+      "hype_rank": 74639,
+      "usdc_rank": 288148,
+      "all_ranks": {
+        "USDC": 288148,
+        "HYPE": 74639,
+        "LATINA": 1948,
+        "UPUMP": 82,
+        "USDE": 727
+      },
+      "token_count": 5,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "shrimp",
+      "is_whale": false
+    },
+    {
+      "address": "0x97c18d92e54bd9b4a755acb604cd51a6f11245fc",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:59.081040",
+      "hype_rank": 132610,
+      "usdc_rank": 314699,
+      "all_ranks": {
+        "USDC": 314699,
+        "PURR": 18305,
+        "FUCKY": 799,
+        "SUCKY": 730,
+        "HODL": 621,
+        "MEOW": 4636,
+        "PEAR": 6208,
+        "NEIRO": 6749,
+        "WOW": 3875,
+        "CHINA": 638,
+        "H": 410,
+        "EARTH": 899,
+        "MUNCH": 4082,
+        "COPE": 4099,
+        "HYPE": 132610,
+        "STAR": 6182,
+        "BUDDY": 1959,
+        "LATINA": 3211,
+        "LICKO": 2466,
+        "UBTC": 9708,
+        "HPENGU": 624,
+        "stakedHYPE": 42051
+      },
+      "token_count": 22,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "shrimp",
+      "is_whale": false
+    },
+    {
+      "address": "0x32487cee7fabecb0a7cdd1fb39c0a4ec5e96176f",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:57.621141",
+      "hype_rank": 135675,
+      "usdc_rank": 110288,
+      "all_ranks": {
+        "USDC": 110288,
+        "JEFF": 13264,
+        "ATEHUN": 2422,
+        "TIME": 5034,
+        "VAULT": 4217,
+        "MUNCH": 4063,
+        "HYPE": 135675,
+        "LIQD": 3329,
+        "SENT": 2914,
+        "LATINA": 6789,
+        "UFART": 386,
+        "USDE": 1425,
+        "FEUSD": 958,
+        "USDT0": 1416,
+        "USDHL": 521,
+        "stakedHYPE": 10380
+      },
+      "token_count": 16,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "shrimp",
+      "is_whale": false
+    },
+    {
+      "address": "0xb0fbfefc6c325964d0ffc3f909bdda80b8421326",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": "2025-10-19T13:25:59.222241",
+      "hype_rank": 155294,
+      "usdc_rank": 387694,
+      "all_ranks": {
+        "USDC": 387694,
+        "HYPE": 155294,
+        "STAR": 3237,
+        "NEKO": 3608,
+        "LICKO": 1315,
+        "stakedHYPE": 719
+      },
+      "token_count": 6,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "shrimp",
+      "is_whale": false
+    },
+    {
+      "address": "0x8facdd7ac767e942bfef2807d5c6bfba6c668360",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": null,
+      "hype_rank": null,
+      "usdc_rank": null,
+      "all_ranks": {},
+      "token_count": 0,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "unknown",
+      "is_whale": false
+    },
+    {
+      "address": "0xca36897cd0783a558f46407cd663d0f46d2f3386",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": null,
+      "hype_rank": null,
+      "usdc_rank": null,
+      "all_ranks": {},
+      "token_count": 0,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "unknown",
+      "is_whale": false
+    },
+    {
+      "address": "0xe5a470ab89b97e2fee7f93291c60e7f3fd2ff1bc",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": null,
+      "hype_rank": null,
+      "usdc_rank": null,
+      "all_ranks": {},
+      "token_count": 0,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "unknown",
+      "is_whale": false
+    },
+    {
+      "address": "0x02458e17a59386d7a9f71d4135aebc976f81ba3d",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": null,
+      "hype_rank": null,
+      "usdc_rank": null,
+      "all_ranks": {},
+      "token_count": 0,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "unknown",
+      "is_whale": false
+    },
+    {
+      "address": "0x18263ea9aada7d91c26babcba7f33cdfb8abe050",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": null,
+      "hype_rank": null,
+      "usdc_rank": null,
+      "all_ranks": {},
+      "token_count": 0,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "unknown",
+      "is_whale": false
+    },
+    {
+      "address": "0x4793...450a",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": null,
+      "hype_rank": null,
+      "usdc_rank": null,
+      "all_ranks": {},
+      "token_count": 0,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "unknown",
+      "is_whale": false
+    },
+    {
+      "address": "0x4b7a21c9bc9643f869d75747eff31a243fa7ad04",
+      "first_seen": "2025-10-19T13:25:56.730923",
+      "last_seen": "2025-10-19T13:25:56.730923",
+      "last_rank_check": null,
+      "hype_rank": null,
+      "usdc_rank": null,
+      "all_ranks": {},
+      "token_count": 0,
+      "twap_count": 0,
+      "total_twap_volume": 0,
+      "buy_volume": 0,
+      "sell_volume": 0,
+      "net_volume": 0,
+      "classification": "unknown",
+      "is_whale": false
+    }
+  ]
+}

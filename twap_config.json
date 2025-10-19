@@ -1,0 +1,29 @@
+{
+  "symbols": ["HYPE"],
+
+  "hypurr_data": {
+    "base_url": "https://api.hypurrscan.io",
+    "timeout_seconds": 30,
+    "rate_limit_delay": 0.1
+  },
+
+  "logging": {
+    "root_level": "INFO",
+    "file": "twap_tracker.log",
+    "console": true,
+    "modules": {
+      "api_client.hypurrscan_client": "INFO",
+      "twap_state_tracker": "INFO",
+      "__main__": "INFO"
+    }
+  },
+  "json_logging": {
+    "enabled": true,
+    "log_dir": "json_logs"
+  },
+  "address_tracking": {
+    "enabled": true,
+    "data_file": "address_portfolios.json",
+    "update_interval_minutes": 60
+  }
+}
