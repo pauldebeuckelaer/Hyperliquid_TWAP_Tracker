@@ -77,9 +77,9 @@ def setup_logging(config: Dict = None):
         level = level_map.get(level_str.upper(), logging.INFO)
         module_logger.setLevel(level)
 
-        print(f"📝 Logger [{module_name}] set to {level_str}")
+        print(f"Logger [{module_name}] set to {level_str}")
 
-    print(f"✅ Logging configured (root level: {root_level})")
+    print(f"Logging configured (root level: {root_level})")
     print(f"   File: {log_file}")
     print(f"   Console: {console_enabled}")
     print()

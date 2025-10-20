@@ -34,7 +34,7 @@ class TWAPStateTracker:
         # Create output directory
         Path('twap_snapshots').mkdir(exist_ok=True)
 
-        logger.info(f"✅ TWAP State Tracker initialized for {symbol}")
+        logger.info(f"TWAP State Tracker initialized for {symbol}")
 
     def update(self, raw_twap_orders: List[Dict]):
         """Update with new TWAP data using the model"""
@@ -80,16 +80,10 @@ class TWAPStateTracker:
         snapshot = self.current_snapshot
         stats = snapshot.get_stats()
 
-        logger.info("")
-        logger.info("=" * 80)
-        logger.info(f"📊 [{self.symbol}] UPDATE #{self.update_count}")
-        logger.info(f"⏰ {snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info("=" * 80)
+        logger.info(f"[{self.symbol}] UPDATE #{self.update_count}")
 
         # Log individual orders with detail
-        logger.info("")
-        logger.info("📍 ACTIVE ORDERS DETAIL:")
-        logger.info("-" * 70)
+        logger.info(f"Orders ({stats['active_orders']} active):")
 
         # Sort orders: whales first, then by size
         sorted_orders = sorted(
@@ -102,46 +96,33 @@ class TWAPStateTracker:
             # Determine flags
             flags = []
             if order.is_whale:
-                flags.append('🐋')
-            if order.is_active:
-                flags.append('🟢')
-            elif order.is_canceled:
-                flags.append('🔴')
-            else:
-                flags.append('⚪')
+                flags.append('W')
+            if not order.is_active:
+                flags.append('X')
 
             # Check if new address
             if order.full_address not in self.previous_snapshot.unique_addresses if self.previous_snapshot else True:
-                flags.append('🆕')
+                flags.append('N')
 
-            flag_str = ' '.join(flags)
+            flag_str = ' '.join(flags) if flags else ''
+            if flag_str:
+                flag_str += ' '
+
+            # Shorten address
+            addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
 
             logger.info(
-                f"{flag_str} {order.full_address} | "
-                f"{order.side:5} {order.size:10,.0f} | "
-                f"{order.product_type:4} | "
-                f"{order.duration_hours:4.1f}h | "
-                f"Status: {order.status:8}"
+                f"{flag_str}{addr} {order.side} {order.size:.0f} "
+                f"{order.product_type} {order.duration_hours:.1f}h {order.status}"
             )
 
-        logger.info("-" * 70)
+        # Log pressure per minute
+        logger.info(
+            f"Pressure/min: Buy {stats['buy_pressure_per_min']:.1f}, "
+            f"Sell {stats['sell_pressure_per_min']:.1f}, "
+            f"Net {stats['net_pressure_per_min']:+.1f}"
+        )
 
-        # Log summary statistics
-        logger.info("")
-        logger.info("📈 MARKET SUMMARY:")
-        logger.info(f"   Orders: {stats['total_orders']} total ({stats['active_orders']} active)")
-        logger.info(f"   Volume: {stats['total_volume']:,.0f} {self.symbol}")
-        logger.info(f"   Buy:    {stats['buy_volume']:,.0f} {self.symbol}")
-        logger.info(f"   Sell:   {stats['sell_volume']:,.0f} {self.symbol}")
-        logger.info(f"   Net:    {stats['net_flow']:+,.0f} {self.symbol} {'📈' if stats['net_flow'] > 0 else '📉'}")
-        logger.info(f"")
-        logger.info(f"💹 ACTIVE PRESSURE (per minute):")
-        logger.info(f"   Buy:    {stats['buy_pressure_per_min']:>8,.1f} {self.symbol}/min")
-        logger.info(f"   Sell:   {stats['sell_pressure_per_min']:>8,.1f} {self.symbol}/min")
-        logger.info(f"   Net:    {stats['net_pressure_per_min']:>+8,.1f} {self.symbol}/min {'📈' if stats['net_pressure_per_min'] > 0 else '📉'}")
-        logger.info(f"")
-        logger.info(f"   Whales: {stats['whale_orders']} orders >50k")
-        logger.info(f"   Unique Addresses: {stats['unique_addresses']} (all-time: {len(self.all_addresses_seen)})")
 
     def _detect_and_log_changes(self):
         """Detect and log changes between snapshots"""
@@ -149,14 +130,12 @@ class TWAPStateTracker:
 
         # Log new orders
         if changes['new_orders']:
-            logger.info("")
-            logger.info(f"🆕 NEW ORDERS: {len(changes['new_orders'])}")
             for order in changes['new_orders']:
-                whale_flag = '🐋' if order.is_whale else '  '
+                whale_flag = 'W ' if order.is_whale else ''
+                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
                 logger.info(
-                    f"   {whale_flag} NEW: {order.full_address} | "
-                    f"{order.side} {order.size:,.0f} | {order.product_type} | "
-                    f"{order.duration_hours:.1f}h"
+                    f"{whale_flag}New: {addr} {order.side} {order.size:.0f} "
+                    f"{order.product_type} {order.duration_hours:.1f}h"
                 )
 
                 # Track whale entries
@@ -169,17 +148,14 @@ class TWAPStateTracker:
                         'event': 'NEW_WHALE'
                     })
 
-        # ENHANCED: Log completed orders (orders that disappeared from API)
+        # Log completed orders (orders that disappeared from API)
         if changes['completed_orders']:
-            logger.info("")
-            logger.info(f"✅ COMPLETED TWAP ORDERS: {len(changes['completed_orders'])}")
             for order in changes['completed_orders']:
-                whale_flag = '🐋' if order.is_whale else '  '
+                whale_flag = 'W ' if order.is_whale else ''
+                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
                 logger.info(
-                    f"   {whale_flag} ✅ DONE: {order.full_address} | "
-                    f"{order.side} {order.size:,.0f} HYPE | "
-                    f"Duration: {order.duration_hours:.1f}h | "
-                    f"Status was: {order.status}"
+                    f"{whale_flag}Completed: {addr} {order.side} {order.size:.0f} "
+                    f"{order.duration_hours:.1f}h (was {order.status})"
                 )
 
                 # Track whale completions
@@ -194,22 +170,20 @@ class TWAPStateTracker:
 
         # Log status changes (e.g. active -> canceled)
         if changes['status_changes']:
-            logger.info("")
-            logger.info(f"🔄 STATUS CHANGES: {len(changes['status_changes'])}")
             for change in changes['status_changes']:
+                addr = f"{change['address'][:6]}...{change['address'][-4:]}"
                 logger.warning(
-                    f"   STATUS: {change['address']} | "
-                    f"{change['side']} {change['size']:,.0f} HYPE | "
-                    f"{change['old_status']} → {change['new_status']}"
+                    f"Status change: {addr} {change['side']} {change['size']:.0f} "
+                    f"{change['old_status']} -> {change['new_status']}"
                 )
 
         # Log significant flow changes
         if abs(changes['volume_change']) > 1000:
-            logger.info("")
-            logger.info(f"📊 FLOW CHANGES:")
-            logger.info(f"   Volume Change: {changes['volume_change']:+,.0f} {self.symbol}")
-            logger.info(f"   Net Flow Change: {changes['net_flow_change']:+,.0f} {self.symbol}")
-            logger.info(f"   Active Orders: {changes['active_orders_change']:+d}")
+            logger.info(
+                f"Flow changes: Vol {changes['volume_change']:+.0f}, "
+                f"Net {changes['net_flow_change']:+.0f}, "
+                f"Active {changes['active_orders_change']:+d}"
+            )
 
         return changes
 
@@ -270,10 +244,10 @@ class TWAPStateTracker:
             with open(filename, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(snapshot_data) + '\n')
 
-            logger.debug(f"💾 Snapshot saved to {filename}")
+            logger.debug(f"Snapshot saved to {filename}")
 
         except Exception as e:
-            logger.error(f"❌ Error saving snapshot: {e}")
+            logger.error(f"Error saving snapshot: {e}")
 
     def get_current_stats(self) -> Dict:
         """Get current statistics"""

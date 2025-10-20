@@ -22,12 +22,12 @@ class SimpleJsonLogger:
         self.enabled = config.get('enabled', True)
 
         if not self.enabled:
-            logger.info("📝 JSON logging disabled")
+            logger.info("JSON logging disabled")
             return
 
         # Create log directory
         self.log_dir.mkdir(exist_ok=True)
-        logger.info(f"✅ JSON logger initialized: {self.log_dir}")
+        logger.info(f"JSON logger initialized: {self.log_dir}")
 
     def log_snapshot(self, snapshot, changes: Dict):
         """
@@ -93,10 +93,10 @@ class SimpleJsonLogger:
                 json.dump(data, f, separators=(',', ':'))
                 f.write('\n')
 
-            logger.debug(f"💾 Snapshot saved to {filename}")
+            logger.debug(f"Snapshot saved to {filename}")
 
         except Exception as e:
-            logger.error(f"❌ JSON logging failed: {e}")
+            logger.error(f"JSON logging failed: {e}")
 
     def _format_orders(self, orders: List, new_addresses: List[str] = None) -> List[Dict]:
         """Format orders for JSON output"""

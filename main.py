@@ -25,7 +25,7 @@ class SimpleTWAPBot:
     """TWAP tracker with integrated address ranking"""
 
     def __init__(self, config: dict):
-        logger.info("🚀 Initializing TWAP Tracker with Address Ranking")
+        logger.info("Initializing TWAP Tracker with Address Ranking")
 
         self.config = config
         self.running = False
@@ -55,11 +55,11 @@ class SimpleTWAPBot:
         signal.signal(signal.SIGINT, self._shutdown_handler)
         signal.signal(signal.SIGTERM, self._shutdown_handler)
 
-        logger.info(f"✅ TWAP Tracker initialized for: {', '.join(self.symbols)}")
+        logger.info(f"TWAP Tracker initialized for: {', '.join(self.symbols)}")
 
     def start(self):
         """Start tracking"""
-        logger.info(f"🚀 Starting TWAP tracking for {len(self.symbols)} symbols")
+        logger.info(f"Starting TWAP tracking for {len(self.symbols)} symbols")
         self.running = True
 
         loop_count = 0
@@ -69,7 +69,7 @@ class SimpleTWAPBot:
                 loop_count += 1
 
                 # Fetch TWAP data for all symbols
-                logger.info(f"📡 Fetching TWAP data (loop {loop_count})")
+                logger.info(f"Fetching TWAP data (loop {loop_count})")
                 data = self.hypurr_client.fetch_all_data(self.symbols)
 
                 # Process each symbol
@@ -91,13 +91,13 @@ class SimpleTWAPBot:
                             # Log any whale/dolphin activity
                             self.address_tracker.log_whale_activity(snapshot)
                     else:
-                        logger.warning(f"⚠️ No TWAP orders found for {symbol}")
+                        logger.warning(f"No TWAP orders found for {symbol}")
 
                 # Periodically fetch ranks for new/unknown addresses
                 if loop_count % self.rank_update_interval == 0:
                     logger.info("")
                     logger.info("=" * 80)
-                    logger.info(f"📊 Periodic Address Rank Update (every {self.rank_update_interval} loops)")
+                    logger.info(f"Periodic Address Rank Update (every {self.rank_update_interval} loops)")
                     logger.info("=" * 80)
 
                     self.address_tracker.batch_update_ranks(
@@ -109,29 +109,29 @@ class SimpleTWAPBot:
                     self.address_tracker.log_top_traders(limit=5, by='rank')
 
                 # Wait 60 seconds
-                logger.info("⏳ Waiting 60 seconds...")
+                logger.info("Waiting 60 seconds...")
                 time.sleep(60)
 
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                logger.error(f"❌ Error in loop: {e}")
+                logger.error(f"Error in loop: {e}")
                 logger.exception(e)  # Log full traceback
                 time.sleep(60)
 
         # Final report on shutdown
         logger.info("")
         logger.info("=" * 80)
-        logger.info("📊 Final Address Classification Report")
+        logger.info("Final Address Classification Report")
         logger.info("=" * 80)
         self.address_tracker.log_summary()
         self.address_tracker.export_report()
 
-        logger.info("✅ Tracking stopped")
+        logger.info("Tracking stopped")
 
     def _shutdown_handler(self, signum, frame):
         """Handle shutdown"""
-        logger.info("🔒 Shutdown signal received")
+        logger.info("Shutdown signal received")
         self.running = False
 
 
@@ -140,10 +140,10 @@ def load_config(config_file: str = "twap_config.json") -> dict:
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
-        logger.info(f"✅ Config loaded from {config_file}")
+        logger.info(f"Config loaded from {config_file}")
         return config
     except FileNotFoundError:
-        logger.warning(f"⚠️ Config file not found, using defaults")
+        logger.warning(f"Config file not found, using defaults")
         return {
             'symbols': ['HYPE'],
             'hypurr_data': {},
@@ -155,15 +155,15 @@ def load_config(config_file: str = "twap_config.json") -> dict:
             }
         }
     except Exception as e:
-        logger.error(f"❌ Config error: {e}")
+        logger.error(f"Config error: {e}")
         return {'hypurr_data': {}}
 
 
 def main():
     """Main entry point"""
-    print("🎯 TWAP State Tracker with Address Ranking")
+    print("TWAP State Tracker with Address Ranking")
     print("=" * 50)
-    print("📊 Tracks TWAP orders and classifies traders")
+    print("Tracks TWAP orders and classifies traders")
     print("=" * 50)
     print()
 
@@ -179,10 +179,10 @@ def main():
         bot.start()
         return 0
     except KeyboardInterrupt:
-        logger.info("🔒 Keyboard interrupt")
+        logger.info("Keyboard interrupt")
         return 0
     except Exception as e:
-        logger.error(f"❌ Fatal error: {e}")
+        logger.error(f"Fatal error: {e}")
         return 1
 
 

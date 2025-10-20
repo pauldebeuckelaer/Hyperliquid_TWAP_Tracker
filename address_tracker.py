@@ -34,7 +34,7 @@ class AddressRankTracker:
         # Load existing data
         self._load_data()
 
-        logger.info(f"✅ Address Rank Tracker initialized ({len(self.addresses)} addresses loaded)")
+        logger.info(f"Address Rank Tracker initialized ({len(self.addresses)} addresses loaded)")
 
     def _load_data(self):
         """Load existing address data"""
@@ -42,9 +42,9 @@ class AddressRankTracker:
             try:
                 with open(self.data_file, 'r') as f:
                     self.addresses = json.load(f)
-                logger.info(f"📂 Loaded {len(self.addresses)} addresses")
+                logger.info(f"Loaded {len(self.addresses)} addresses")
             except Exception as e:
-                logger.error(f"❌ Error loading data: {e}")
+                logger.error(f"Error loading data: {e}")
                 self.addresses = {}
 
     def _save_data(self):
@@ -52,9 +52,9 @@ class AddressRankTracker:
         try:
             with open(self.data_file, 'w') as f:
                 json.dump(self.addresses, f, indent=2)
-            logger.debug(f"💾 Saved {len(self.addresses)} addresses")
+            logger.debug(f"Saved {len(self.addresses)} addresses")
         except Exception as e:
-            logger.error(f"❌ Error saving data: {e}")
+            logger.error(f"Error saving data: {e}")
 
     def add_address(self, address: str, twap_order=None):
         """Add or update address"""
@@ -82,7 +82,7 @@ class AddressRankTracker:
                 'classification': 'unknown',
                 'is_whale': False
             }
-            logger.debug(f"🆕 New address: {address[:10]}...")
+            logger.debug(f"New address: {address[:10]}...")
         else:
             self.addresses[address]['last_seen'] = datetime.now().isoformat()
 
@@ -198,10 +198,10 @@ class AddressRankTracker:
         addresses = addresses[:max_addresses]
 
         if not addresses:
-            logger.info("✅ All addresses have up-to-date ranks")
+            logger.info("All addresses have up-to-date ranks")
             return
 
-        logger.info(f"📊 Updating ranks for {len(addresses)} addresses...")
+        logger.info(f"Updating ranks for {len(addresses)} addresses...")
 
         success_count = 0
         for address in addresses:
@@ -209,7 +209,7 @@ class AddressRankTracker:
                 success_count += 1
 
         self._save_data()
-        logger.info(f"✅ Updated {success_count}/{len(addresses)} address ranks")
+        logger.info(f"Updated {success_count}/{len(addresses)} address ranks")
 
     def get_classification_summary(self) -> Dict[str, int]:
         """Get count of addresses in each tier"""
