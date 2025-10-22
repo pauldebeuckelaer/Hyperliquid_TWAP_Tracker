@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TWAP State Tracker with Address Ranking
+TWAP State Tracker with Address Ranking - FIXED VERSION
 Tracks TWAP orders and classifies traders by holder rank
 """
 import time
@@ -47,15 +47,21 @@ class SimpleTWAPBot:
         self.max_rank_updates_per_batch = address_config.get('max_updates_per_batch', 5)  # Rate limiting
 
         # One TWAP tracker per symbol
+        # ⭐ FIXED: Pass rank tracker to TWAPStateTracker for whale detection
         self.trackers = {}
         for symbol in self.symbols:
-            self.trackers[symbol] = TWAPStateTracker(symbol, json_logger=self.json_logger)
+            self.trackers[symbol] = TWAPStateTracker(
+                symbol,
+                json_logger=self.json_logger,
+                rank_tracker=self.address_tracker  # <-- THIS IS THE KEY CHANGE!
+            )
 
         # Setup shutdown handler
         signal.signal(signal.SIGINT, self._shutdown_handler)
         signal.signal(signal.SIGTERM, self._shutdown_handler)
 
         logger.info(f"TWAP Tracker initialized for: {', '.join(self.symbols)}")
+        logger.info("✅ Rank tracker integration enabled")
 
     def start(self):
         """Start tracking"""
@@ -80,6 +86,7 @@ class SimpleTWAPBot:
 
                     if twap_orders:
                         # Update TWAP tracker
+                        # This will now automatically use rank data for whale detection
                         self.trackers[symbol].update(twap_orders)
 
                         # Update address tracker (add/update addresses from TWAPs)
