@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-TWAP State Tracker with Address Ranking - FIXED VERSION
-Tracks TWAP orders and classifies traders by holder rank
+TWAP State Tracker with Order-Size Classification
+Tracks TWAP orders and classifies by individual order size
 """
 import time
 import signal
@@ -15,17 +15,17 @@ from logging_config import setup_logging, get_module_logger
 from api_client.hypurrscan_client import HypurrScanClient
 from twap_state_tracker import TWAPStateTracker
 from json_logger import SimpleJsonLogger
-from address_tracker import AddressRankTracker
+# from address_tracker import AddressVolumeTracker  # DISABLED
 
 # Get logger for this module
 logger = get_module_logger(__name__)
 
 
 class SimpleTWAPBot:
-    """TWAP tracker with integrated address ranking"""
+    """TWAP tracker with order-size based classification"""
 
     def __init__(self, config: dict):
-        logger.info("Initializing TWAP Tracker with Address Ranking")
+        logger.info("Initializing TWAP Tracker with Order-Size Classification")
 
         self.config = config
         self.running = False
@@ -35,25 +35,16 @@ class SimpleTWAPBot:
         self.hypurr_client = HypurrScanClient(config.get('hypurr_data', {}))
         self.json_logger = SimpleJsonLogger(config.get('json_logging', {}))
 
-        # Address tracker
-        address_config = config.get('address_tracking', {})
-        self.address_tracker = AddressRankTracker(
-            self.hypurr_client,
-            address_config
-        )
-
-        # Configuration for rank updates
-        self.rank_update_interval = address_config.get('rank_update_interval', 10)  # Every N loops
-        self.max_rank_updates_per_batch = address_config.get('max_updates_per_batch', 5)  # Rate limiting
+        # Address tracker - DISABLED
+        # address_config = config.get('address_tracking', {})
+        # self.address_tracker = AddressVolumeTracker(address_config)
 
         # One TWAP tracker per symbol
-        # ⭐ FIXED: Pass rank tracker to TWAPStateTracker for whale detection
         self.trackers = {}
         for symbol in self.symbols:
             self.trackers[symbol] = TWAPStateTracker(
                 symbol,
                 json_logger=self.json_logger,
-                rank_tracker=self.address_tracker  # <-- THIS IS THE KEY CHANGE!
             )
 
         # Setup shutdown handler
@@ -61,7 +52,7 @@ class SimpleTWAPBot:
         signal.signal(signal.SIGTERM, self._shutdown_handler)
 
         logger.info(f"TWAP Tracker initialized for: {', '.join(self.symbols)}")
-        logger.info("✅ Rank tracker integration enabled")
+        logger.info("Order-size based classification enabled")
 
     def start(self):
         """Start tracking"""
@@ -86,34 +77,23 @@ class SimpleTWAPBot:
 
                     if twap_orders:
                         # Update TWAP tracker
-                        # This will now automatically use rank data for whale detection
                         self.trackers[symbol].update(twap_orders)
 
-                        # Update address tracker (add/update addresses from TWAPs)
-                        snapshot = self.trackers[symbol].current_snapshot
-                        if snapshot:
-                            # Add addresses without fetching ranks (fast)
-                            self.address_tracker.update_from_snapshot(snapshot, fetch_ranks=False)
-
-                            # Log any whale/dolphin activity
-                            self.address_tracker.log_whale_activity(snapshot)
+                        # Address tracker logging - DISABLED
+                        # snapshot = self.trackers[symbol].current_snapshot
+                        # if snapshot:
+                        #     self.address_tracker.log_whale_activity(snapshot)
                     else:
                         logger.warning(f"No TWAP orders found for {symbol}")
 
-                # Periodically fetch ranks for new/unknown addresses
-                if loop_count % self.rank_update_interval == 0:
-                    logger.info("")
-                    logger.info("=" * 80)
-                    logger.info(f"Periodic Address Rank Update (every {self.rank_update_interval} loops)")
-                    logger.info("=" * 80)
-
-                    self.address_tracker.batch_update_ranks(
-                        max_addresses=self.max_rank_updates_per_batch
-                    )
-                    self.address_tracker.log_summary()
-
-                    # Log top traders
-                    self.address_tracker.log_top_traders(limit=5, by='rank')
+                # Periodic summary - DISABLED
+                # if loop_count % 10 == 0:
+                #     logger.info("")
+                #     logger.info("=" * 80)
+                #     logger.info(f"Periodic Summary (loop {loop_count})")
+                #     logger.info("=" * 80)
+                #     self.address_tracker.log_summary()
+                #     self.address_tracker.log_top_traders(limit=10)
 
                 # Wait 60 seconds
                 logger.info("Waiting 60 seconds...")
@@ -123,16 +103,16 @@ class SimpleTWAPBot:
                 break
             except Exception as e:
                 logger.error(f"Error in loop: {e}")
-                logger.exception(e)  # Log full traceback
+                logger.exception(e)
                 time.sleep(60)
 
-        # Final report on shutdown
-        logger.info("")
-        logger.info("=" * 80)
-        logger.info("Final Address Classification Report")
-        logger.info("=" * 80)
-        self.address_tracker.log_summary()
-        self.address_tracker.export_report()
+        # Final report - DISABLED
+        # logger.info("")
+        # logger.info("=" * 80)
+        # logger.info("Final Address Classification Report")
+        # logger.info("=" * 80)
+        # self.address_tracker.log_summary()
+        # self.address_tracker.export_report()
 
         logger.info("Tracking stopped")
 
@@ -154,11 +134,9 @@ def load_config(config_file: str = "twap_config.json") -> dict:
         return {
             'symbols': ['HYPE'],
             'hypurr_data': {},
-            'address_tracking': {
+            'json_logging': {
                 'enabled': True,
-                'data_file': 'address_ranks.json',
-                'rank_update_interval': 10,
-                'max_updates_per_batch': 5
+                'log_dir': 'json_logs'
             }
         }
     except Exception as e:
@@ -168,9 +146,9 @@ def load_config(config_file: str = "twap_config.json") -> dict:
 
 def main():
     """Main entry point"""
-    print("TWAP State Tracker with Address Ranking")
+    print("TWAP State Tracker with Order-Size Classification")
     print("=" * 50)
-    print("Tracks TWAP orders and classifies traders")
+    print("Tracks TWAP orders and classifies by order size")
     print("=" * 50)
     print()
 
