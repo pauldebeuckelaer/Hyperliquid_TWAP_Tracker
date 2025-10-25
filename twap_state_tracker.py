@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-TWAP State Tracker with Order-Size Classification
-Tracks TWAP order states with simple size-based whale detection
+TWAP State Tracker
+Tracks TWAP order states and changes
 """
 import logging
 import json
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 from pathlib import Path
 
 from api_client.models import TWAPOrder, TWAPSnapshot
@@ -15,13 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class TWAPStateTracker:
-    """Tracks TWAP order states with order-size classification"""
-
-    # Classification thresholds based on order size
-    MEGA_WHALE_THRESHOLD = 50_000
-    WHALE_THRESHOLD = 10_000
-    DOLPHIN_THRESHOLD = 5_000
-    FISH_THRESHOLD = 1_000
+    """Tracks TWAP order states and detects changes"""
 
     def __init__(self, symbol: str, json_logger=None):
         self.symbol = symbol
@@ -33,73 +27,63 @@ class TWAPStateTracker:
         self.previous_snapshot: Optional[TWAPSnapshot] = None
 
         # History tracking
-        self.all_addresses_seen = set()
-        self.whale_history = []
-
-        # Address classifications
-        self.address_classifications = {}  # address -> classification
-        self.classifications_file = Path(f'address_classifications_{symbol}.json')
-        self._load_classifications()
+        self.all_addresses_seen: Set[str] = set()
+        self.address_history_file = Path(f'address_history_{symbol}.json')
+        self._load_address_history()
 
         # Create output directory
         Path('twap_snapshots').mkdir(exist_ok=True)
 
         logger.info(f"TWAP State Tracker initialized for {symbol}")
-        logger.info("Order-size based classification enabled")
 
-    def _load_classifications(self):
-        """Load existing classifications"""
-        if self.classifications_file.exists():
+    def _load_address_history(self):
+        """Load existing address history"""
+        if self.address_history_file.exists():
             try:
-                with open(self.classifications_file, 'r') as f:
-                    self.address_classifications = json.load(f)
-                logger.info(f"Loaded {len(self.address_classifications)} address classifications")
+                with open(self.address_history_file, 'r') as f:
+                    data = json.load(f)
+                    # If it's a dict, get the keys as addresses
+                    if isinstance(data, dict):
+                        self.all_addresses_seen = set(data.keys())
+                    # If it's a list (old format), convert it
+                    elif isinstance(data, list):
+                        self.all_addresses_seen = set(data)
+                    # If it's the old format with 'addresses' key
+                    else:
+                        self.all_addresses_seen = set(data.get('addresses', []))
+
+                logger.info(f"Loaded {len(self.all_addresses_seen)} addresses from history")
             except Exception as e:
-                logger.error(f"Error loading classifications: {e}")
-
-    def _save_classifications(self):
-        """Save classifications to file"""
-        try:
-            with open(self.classifications_file, 'w') as f:
-                json.dump(self.address_classifications, f, indent=2, sort_keys=True)
-        except Exception as e:
-            logger.error(f"Error saving classifications: {e}")
-
-    def _classify_order(self, order: TWAPOrder) -> str:
-        """Classify order based on its size"""
-        size = order.size
-
-        if size >= self.MEGA_WHALE_THRESHOLD:
-            return 'mega_whale'
-        elif size >= self.WHALE_THRESHOLD:
-            return 'whale'
-        elif size >= self.DOLPHIN_THRESHOLD:
-            return 'dolphin'
-        elif size >= self.FISH_THRESHOLD:
-            return 'fish'
+                logger.error(f"Error loading address history: {e}")
+                logger.exception(e)
         else:
-            return 'shrimp'
+            logger.info("No existing address history file found, will create new one")
 
-    def _update_classifications(self, snapshot: TWAPSnapshot):
-        """Update address classifications based on orders"""
-        tier_priority = {'shrimp': 0, 'fish': 1, 'dolphin': 2, 'whale': 3, 'mega_whale': 4}
-        updated = False
+    def _save_address_history(self):
+        """Save address history to file as dictionary"""
+        try:
+            logger.debug(f"Attempting to save {len(self.all_addresses_seen)} addresses")
 
-        for order in snapshot.orders:
-            address = order.full_address
-            classification = self._classify_order(order)
+            # Create dictionary with addresses as keys and empty dicts as values
+            addresses_dict = {address: {} for address in sorted(self.all_addresses_seen)}
 
-            # Only update if new or higher tier
-            existing = self.address_classifications.get(address)
-            if not existing or tier_priority[classification] > tier_priority[existing]:
-                self.address_classifications[address] = classification
-                updated = True
+            # Write to file
+            with open(self.address_history_file, 'w') as f:
+                json.dump(addresses_dict, f, indent=2)
 
-        if updated:
-            self._save_classifications()
+            # Verify file was written
+            if self.address_history_file.exists():
+                file_size = self.address_history_file.stat().st_size
+                logger.debug(f"Address history saved successfully: {file_size} bytes")
+            else:
+                logger.error("File was not created after write attempt!")
+
+        except Exception as e:
+            logger.error(f"Error saving address history: {e}")
+            logger.exception(e)
 
     def update(self, raw_twap_orders: List[Dict]):
-        """Update with new TWAP data using the model"""
+        """Update with new TWAP data"""
         self.update_count += 1
 
         # Create new snapshot
@@ -114,12 +98,18 @@ class TWAPStateTracker:
         self.current_snapshot = new_snapshot
 
         # Track all addresses
+        addresses_before = len(self.all_addresses_seen)
         self.all_addresses_seen.update(new_snapshot.unique_addresses)
 
-        # Update address classifications
-        self._update_classifications(new_snapshot)
+        # Log if new addresses discovered
+        if len(self.all_addresses_seen) > addresses_before:
+            new_count = len(self.all_addresses_seen) - addresses_before
+            logger.info(f"Discovered {new_count} new address(es). Total: {len(self.all_addresses_seen)}")
 
-        # Log summary only
+        # Always save address history
+        self._save_address_history()
+
+        # Log summary
         self._log_snapshot_summary()
 
         # Detect changes
@@ -129,10 +119,11 @@ class TWAPStateTracker:
             changes = {
                 'new_orders': new_snapshot.orders,
                 'completed_orders': [],
+                'canceled_orders': [],
                 'status_changes': []
             }
 
-        # Save detailed data to JSON with classifications
+        # Save detailed data to JSON
         if self.json_logger:
             self._save_to_json(new_snapshot, changes)
 
@@ -152,17 +143,23 @@ class TWAPStateTracker:
         # Sort orders by size (largest first)
         sorted_orders = sorted(snapshot.orders, key=lambda o: o.size, reverse=True)
 
-        logger.info("Active orders:")
-        for order in sorted_orders:
-            if not order.is_active:
-                continue
+        # Count active orders for logging
+        active_count = sum(1 for o in sorted_orders if o.is_active)
 
-            addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
+        if active_count > 0:
+            logger.info(f"Active orders ({active_count}):")
+            for order in sorted_orders:
+                if not order.is_active:
+                    continue
 
-            logger.info(
-                f"  {addr} {order.side} {order.size:.0f} "
-                f"{order.product_type} {order.duration_hours:.1f}h {order.status}"
-            )
+                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
+
+                logger.info(
+                    f"  {addr} {order.side:4s} {order.size:>10,.0f} "
+                    f"{order.product_type} {order.duration_hours:>5.1f}h {order.status}"
+                )
+        else:
+            logger.info("No active orders")
 
     def _detect_changes(self):
         """Detect and log changes between snapshots"""
@@ -174,34 +171,60 @@ class TWAPStateTracker:
             for order in changes['new_orders']:
                 addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
                 logger.info(
-                    f"  NEW: {addr} {order.side} {order.size:.0f} {order.product_type} {order.duration_hours:.1f}h")
+                    f"  NEW: {addr} {order.side:4s} {order.size:>10,.0f} "
+                    f"{order.product_type} {order.duration_hours:.1f}h"
+                )
 
-        # Log completed orders with details
-        if changes['completed_orders']:
-            logger.info(f"Completed orders: {len(changes['completed_orders'])}")
-            for order in changes['completed_orders']:
+        # Separate completed and canceled orders
+        completed_orders = []
+        canceled_orders = []
+
+        for order in changes.get('completed_orders', []):
+            if order.status == 'canceled':
+                canceled_orders.append(order)
+            else:
+                completed_orders.append(order)
+
+        # Log completed orders (finished successfully)
+        if completed_orders:
+            logger.info(f"Completed orders: {len(completed_orders)}")
+            for order in completed_orders:
                 addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
                 logger.info(
-                    f"  ENDED: {addr} {order.side} {order.size:.0f} {order.duration_hours:.1f}h (status: {order.status})")
+                    f"  COMPLETED: {addr} {order.side:4s} {order.size:>10,.0f} "
+                    f"{order.duration_hours:.1f}h (status: {order.status})"
+                )
+
+        # Log canceled orders
+        if canceled_orders:
+            logger.warning(f"Canceled orders: {len(canceled_orders)}")
+            for order in canceled_orders:
+                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
+                logger.warning(
+                    f"  CANCELED: {addr} {order.side:4s} {order.size:>10,.0f} "
+                    f"{order.duration_hours:.1f}h"
+                )
 
         # Log status changes with details
         if changes['status_changes']:
-            logger.info(f"Status changes: {len(changes['status_changes'])}")
+            logger.warning(f"Status changes: {len(changes['status_changes'])}")
             for change in changes['status_changes']:
                 addr = f"{change['address'][:6]}...{change['address'][-4:]}"
                 logger.warning(
-                    f"  STATUS: {addr} {change['side']} {change['size']:.0f} "
+                    f"  STATUS: {addr} {change['side']:4s} {change['size']:>10,.0f} "
                     f"{change['old_status']} → {change['new_status']}"
                 )
+
+        # Store canceled orders for return
+        changes['canceled_orders'] = canceled_orders
 
         return changes
 
     def _save_to_json(self, snapshot: TWAPSnapshot, changes: Dict):
-        """Save detailed snapshot with classifications to JSON"""
+        """Save detailed snapshot to JSON"""
 
-        # Convert orders to dicts with classification
+        # Convert orders to dicts
         def order_to_dict(order):
-            classification = self._classify_order(order)
             return {
                 'full_address': order.full_address,
                 'side': order.side,
@@ -209,14 +232,14 @@ class TWAPStateTracker:
                 'duration_hours': order.duration_hours,
                 'status': order.status,
                 'product_type': order.product_type,
-                'is_whale': (classification in ['mega_whale', 'whale']),  # Use OUR classification
-                'classification': classification
+                'is_active': order.is_active
             }
 
-        # Create dict versions with classification
-        orders_with_classification = [order_to_dict(o) for o in snapshot.orders]
-        new_orders_with_classification = [order_to_dict(o) for o in changes.get('new_orders', [])]
-        completed_orders_with_classification = [order_to_dict(o) for o in changes.get('completed_orders', [])]
+        # Create dict versions
+        orders_dict = [order_to_dict(o) for o in snapshot.orders]
+        new_orders_dict = [order_to_dict(o) for o in changes.get('new_orders', [])]
+        completed_orders_dict = [order_to_dict(o) for o in changes.get('completed_orders', [])]
+        canceled_orders_dict = [order_to_dict(o) for o in changes.get('canceled_orders', [])]
 
         # Build data structure for JSON logger
         json_data = {
@@ -224,30 +247,15 @@ class TWAPStateTracker:
             'symbol': snapshot.symbol,
             'update_number': snapshot.update_number,
             'stats': snapshot.get_stats(),
-            'orders': orders_with_classification,
-            'new_orders': new_orders_with_classification,
-            'completed_orders': completed_orders_with_classification,
+            'orders': orders_dict,
+            'new_orders': new_orders_dict,
+            'completed_orders': completed_orders_dict,
+            'canceled_orders': canceled_orders_dict,
             'status_changes': changes.get('status_changes', [])
         }
 
         # Pass simple dicts to json logger
         self.json_logger.log_data(json_data)
-
-    def _get_classification_summary(self, snapshot: TWAPSnapshot) -> Dict:
-        """Get count of orders in each classification"""
-        summary = {
-            'mega_whale': 0,
-            'whale': 0,
-            'dolphin': 0,
-            'fish': 0,
-            'shrimp': 0
-        }
-
-        for order in snapshot.orders:
-            classification = self._classify_order(order)
-            summary[classification] += 1
-
-        return summary
 
     def get_current_stats(self) -> Dict:
         """Get current statistics"""
@@ -256,26 +264,12 @@ class TWAPStateTracker:
 
         stats = self.current_snapshot.get_stats()
         stats['all_time_addresses'] = len(self.all_addresses_seen)
-        stats['classification_summary'] = self._get_classification_summary(self.current_snapshot)
 
         return stats
 
-    def get_whale_activity(self) -> List[Dict]:
-        """Get recent whale activity (mega_whale and whale orders only)"""
-        if not self.current_snapshot:
-            return []
-
-        whale_orders = []
-        for order in self.current_snapshot.orders:
-            classification = self._classify_order(order)
-            if classification in ['mega_whale', 'whale']:
-                whale_orders.append({
-                    'address': order.full_address,
-                    'side': order.side,
-                    'size': order.size,
-                    'classification': classification,
-                    'status': order.status,
-                    'duration_hours': order.duration_hours
-                })
-
-        return sorted(whale_orders, key=lambda x: x['size'], reverse=True)
+    def get_address_history(self) -> Dict:
+        """Get address history summary"""
+        return {
+            'total_addresses': len(self.all_addresses_seen),
+            'addresses': sorted(list(self.all_addresses_seen))
+        }

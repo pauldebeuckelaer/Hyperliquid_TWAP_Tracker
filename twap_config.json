@@ -20,10 +20,5 @@
   "json_logging": {
     "enabled": true,
     "log_dir": "json_logs"
-  },
-  "address_tracking": {
-    "enabled": true,
-    "data_file": "address_portfolios.json",
-    "update_interval_minutes": 60
   }
 }

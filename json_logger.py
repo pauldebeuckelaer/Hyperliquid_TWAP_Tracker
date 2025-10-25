@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
 JSON Logger - TWAP State Snapshots
-Logs complete TWAP state every minute
+Logs complete TWAP state snapshots
 """
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
 
 class SimpleJsonLogger:
-    """Logs TWAP snapshots to JSON files every minute"""
+    """Logs TWAP snapshots to JSON files"""
 
     def __init__(self, config: dict = None):
         if config is None:
@@ -34,7 +34,7 @@ class SimpleJsonLogger:
         Log data dict to JSON file
 
         Args:
-            data: Dict with all snapshot data including classifications
+            data: Dict with all snapshot data
         """
         if not self.enabled:
             return
@@ -64,10 +64,11 @@ class SimpleJsonLogger:
                 "events": {
                     "new_orders": len(data['new_orders']),
                     "completed_orders": len(data['completed_orders']),
+                    "canceled_orders": len(data.get('canceled_orders', [])),
                     "status_changes": len(data['status_changes'])
                 },
 
-                # Orders with classification
+                # Active orders
                 "active_orders": [
                     {
                         "address": o['full_address'],
@@ -76,34 +77,51 @@ class SimpleJsonLogger:
                         "duration_hours": round(o['duration_hours'], 1),
                         "status": o['status'],
                         "product_type": o['product_type'],
-                        "classification": o['classification'],
-                        "is_whale": o['is_whale']
+                        "is_active": o['is_active']
                     }
                     for o in data['orders']
                 ],
 
+                # New orders
                 "new_orders": [
                     {
                         "address": o['full_address'],
                         "side": o['side'],
                         "size": round(o['size'], 2),
-                        "classification": o['classification']
+                        "duration_hours": round(o['duration_hours'], 1),
+                        "product_type": o['product_type']
                     }
                     for o in data['new_orders']
                 ],
 
+                # Completed orders
                 "completed_orders": [
                     {
                         "address": o['full_address'],
                         "side": o['side'],
                         "size": round(o['size'], 2),
-                        "classification": o['classification']
+                        "duration_hours": round(o['duration_hours'], 1),
+                        "status": o['status']
                     }
                     for o in data['completed_orders']
-                ]
+                ],
+
+                # Canceled orders
+                "canceled_orders": [
+                    {
+                        "address": o['full_address'],
+                        "side": o['side'],
+                        "size": round(o['size'], 2),
+                        "duration_hours": round(o['duration_hours'], 1)
+                    }
+                    for o in data.get('canceled_orders', [])
+                ],
+
+                # Status changes
+                "status_changes": data['status_changes']
             }
 
-            # Save to JSONL file
+            # Save to JSONL file (one JSON object per line)
             filename = self.log_dir / f"{data['symbol']}_{data['timestamp'].strftime('%Y%m%d')}.jsonl"
 
             with open(filename, 'a', encoding='utf-8') as f:
@@ -114,3 +132,4 @@ class SimpleJsonLogger:
 
         except Exception as e:
             logger.error(f"JSON logging failed: {e}")
+            logger.exception(e)

@@ -52,7 +52,7 @@ class HypurrScanClient:
         logger.info(f"HypurrScan client initialized")
 
     def _get(self, endpoint: str) -> Optional[Dict]:
-        """Simple GET request with error handling + DEBUG logging"""
+        """Simple GET request with error handling"""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
         try:
@@ -69,13 +69,8 @@ class HypurrScanClient:
                 # DEBUG: Log data structure
                 if isinstance(data, list):
                     logger.debug(f"{endpoint}: Returned list with {len(data)} items")
-                    if len(data) > 0:
-                        logger.debug(
-                            f"   First item keys: {list(data[0].keys()) if isinstance(data[0], dict) else 'not a dict'}")
                 elif isinstance(data, dict):
                     logger.debug(f"{endpoint}: Returned dict with keys: {list(data.keys())}")
-                else:
-                    logger.debug(f"{endpoint}: Returned {type(data).__name__}")
 
                 return data
             else:
@@ -108,14 +103,8 @@ class HypurrScanClient:
         }
 
         for symbol in symbols:
-            logger.debug(f"")
-            logger.debug(f"{'=' * 60}")
-            logger.debug(f"Processing symbol: {symbol}")
-            logger.debug(f"{'=' * 60}")
-
             # 1. Get holders
             endpoint = f'holdersWithLimit/{symbol}/10'
-            logger.debug(f"Trying endpoint: {endpoint}")
             result = self._get(endpoint)
             if result:
                 data['token_holders'][f'{symbol}_top_10'] = result
@@ -124,33 +113,25 @@ class HypurrScanClient:
                 logger.info(f"Got {symbol} holders")
             else:
                 data['endpoints_failed'].append(endpoint)
-                logger.debug(f"Holders endpoint failed for {symbol}")
 
             # 2. Get TWAP data
             endpoint = f'twap/{symbol}'
-            logger.debug(f"Trying endpoint: {endpoint}")
             result = self._get(endpoint)
 
             if result and isinstance(result, list):
                 logger.info(f"Processing {len(result)} {symbol} TWAP orders...")
-                logger.debug(f"  Raw TWAP data type: {type(result)}")
-                logger.debug(f"  Number of orders: {len(result)}")
-                logger.debug(f"Processing {len(result)} {symbol} TWAP orders...")
 
-                if len(result) > 0:
-                    logger.debug(f"  First order keys: {list(result[0].keys())}")
-                    logger.debug(f"  First order sample: {str(result[0])[:300]}")
-                    # DEBUG: Log all orders with addresses
-                    logger.info("=" * 60)
-                    logger.info("DEBUG: ALL ORDERS FROM API:")
-                    for i, order in enumerate(result):
-                        addr = order.get('user', 'unknown')
-                        action = order.get('action', {})
-                        twap = action.get('twap', {})
-                        size = twap.get('s', 0)
-                        ended = order.get('ended', 'N/A')
-                        logger.info(f"  Order {i + 1}: {addr} - Size: {size} - Ended: {ended}")
-                    logger.info("=" * 60)
+                # DEBUG: Log all orders from API
+                logger.debug("=" * 60)
+                logger.debug("DEBUG: ALL ORDERS FROM API:")
+                for i, order in enumerate(result, 1):
+                    addr = order.get('user', 'unknown')
+                    action = order.get('action', {})
+                    twap = action.get('twap', {})
+                    size = twap.get('s', 0)
+                    ended = order.get('ended', 'N/A')
+                    logger.debug(f"  Order {i}: {addr} - Size: {size} - Ended: {ended}")
+                logger.debug("=" * 60)
 
                 # Enrich with proper status and product type detection
                 enriched_orders = self._enrich_orders(result, symbol)
@@ -166,24 +147,14 @@ class HypurrScanClient:
 
                 data['endpoints_working'].append(endpoint)
                 data['data_points'] += len(enriched_orders)
-            elif result is not None:
-                logger.debug(f" TWAP endpoint returned data but not a list:")
-                logger.debug(f"  Type: {type(result)}")
-                logger.debug(f"  Data: {str(result)[:200]}")
-                data['endpoints_failed'].append(endpoint)
             else:
                 data['endpoints_failed'].append(endpoint)
-                logger.debug(f"TWAP endpoint failed for {symbol}")
 
         return data
 
     def _enrich_orders(self, orders: List[Dict], symbol: str) -> List[Dict]:
         """Enrich orders with correct status and product type"""
         enriched = []
-
-        logger.debug("=" * 80)
-        logger.debug(f"SPOT/PERP Detection for {symbol}")
-        logger.debug("=" * 80)
 
         for order in orders:
             try:
@@ -201,141 +172,101 @@ class HypurrScanClient:
 
                 # Simple detection: For now, assume all TWAPs are SPOT
                 # When PERP TWAPs appear, they'll have different asset IDs
-                # We can detect and handle them then
                 product_type = "SPOT"
                 side = 'BUY' if b_field else 'SELL'
 
-                # DEBUG: Log comprehensive order data
-                logger.debug(f"")
-                logger.debug(f"Address: {user_address}")
-                logger.debug(f" Asset ID: {asset_id}")
-                logger.debug(f" 't' field: {t_field} (NOTE: NOT used for SPOT/PERP detection)")
-                logger.debug(f" 'b' field: {b_field}")
-                logger.debug(f" 's' field (size): {twap_info.get('s', 'N/A')}")
-                logger.debug(f" 'm' field (duration): {twap_info.get('m', 'N/A')}")
-                logger.debug(f" 'r' field: {twap_info.get('r', 'N/A')}")
-                logger.debug(f" 'ended' field: {order.get('ended', 'N/A')}")
-                logger.debug(f" 'error' field: {order.get('error', 'N/A')}")
-                logger.debug(f" → Result: {product_type} {side}")
+                # Add enriched fields
+                enriched_order['address'] = user_address
+                enriched_order['side'] = side
+                enriched_order['size'] = twap_info.get('s', 0)
+                enriched_order['duration_ms'] = twap_info.get('m', 0)
+                enriched_order['product_type'] = product_type
 
                 # Status detection
-                ended_status = order.get('ended')
-                error_field = order.get('error')
-
-                if ended_status == 'canceled':
-                    status = 'canceled'
-                elif ended_status == 'error' or error_field:
-                    status = 'error'
-                elif ended_status is None and not error_field:
-                    status = 'active'
+                ended_value = order.get('ended')
+                if ended_value == 'canceled':
+                    enriched_order['status'] = 'canceled'
+                elif ended_value is not None and ended_value != 'N/A':
+                    enriched_order['status'] = 'completed'
                 else:
-                    status = str(ended_status) if ended_status else 'unknown'
-
-                # Add enriched fields
-                enriched_order.update({
-                    'product_type': product_type,
-                    'side': side,
-                    'asset_id': asset_id,
-                    'order_size': float(twap_info.get('s', 0)),
-                    'is_buy': b_field,
-                    'status': status,
-                    'full_address': user_address,
-                    'duration_minutes': twap_info.get('m', 0)
-                })
+                    enriched_order['status'] = 'active'
 
                 enriched.append(enriched_order)
 
             except Exception as e:
-                logger.warning(f"Error enriching order: {e}")
-                enriched.append(order)
+                logger.error(f"Error enriching order: {e}")
+                logger.debug(f"  Problematic order: {order}")
+                continue
 
-        logger.debug("=" * 80)
-
+        logger.debug(f"Enriched {len(enriched)}/{len(orders)} orders")
         return enriched
 
-    def get_network_health(self) -> Dict[str, Any]:
-        """Get basic network health data"""
-        logger.info("Fetching network health...")
+    def get_network_health(self, symbol: str = 'HYPE') -> Dict[str, Any]:
+        """Get network health metrics"""
+        logger.info(f"Fetching network health...")
 
-        data = {
-            'global_aliases': None,
-            'endpoints_working': [],
-            'endpoints_failed': [],
-            'data_points': 0
+        endpoint = f'holders/{symbol}'
+        result = self._get(endpoint)
+
+        health_data = {
+            'total_addresses': 0,
+            'endpoint_status': 'failed'
         }
 
-        # Get global aliases for network health
-        endpoint = 'globalAliases'
-        result = self._get(endpoint)
         if result:
-            data['global_aliases'] = result
-            data['endpoints_working'].append(endpoint)
-            data['data_points'] += len(result) if isinstance(result, dict) else 1
-            logger.info(f"Network health: {len(result) if isinstance(result, dict) else 'unknown'} addresses")
+            addresses = result.get('holders', [])
+            health_data['total_addresses'] = len(addresses)
+            health_data['endpoint_status'] = 'success'
+            logger.info(f"Network health: {len(addresses)} addresses")
         else:
-            data['endpoints_failed'].append(endpoint)
+            logger.warning("Network health check failed")
 
-        return data
+        return health_data
 
     def fetch_all_data(self, symbols: List[str] = None) -> HypurrScanData:
-        """ MAIN METHOD: Fetch data for specified symbols"""
+        """Fetch all data for specified symbols"""
         if symbols is None:
             symbols = ['HYPE']
 
-        logger.info(f"Starting data collection for: {', '.join(symbols)}")
         start_time = time.time()
+        logger.info(f"Starting data collection for: {', '.join(symbols)}")
 
-        # Get whale activity for all symbols
+        # Get whale activity data
         whale_data = self.get_whale_activity(symbols)
 
-        # Get network health
-        network_data = self.get_network_health()
+        # Get network health (use first symbol)
+        network_health = self.get_network_health(symbols[0])
 
+        # Calculate stats
         fetch_time = time.time() - start_time
-        self.stats['last_fetch_time'] = datetime.now()
+        self.stats['last_fetch_time'] = fetch_time
 
-        # Calculate quality
-        total_working = len(whale_data.get('endpoints_working', [])) + len(network_data.get('endpoints_working', []))
-        total_failed = len(whale_data.get('endpoints_failed', [])) + len(network_data.get('endpoints_failed', []))
-        total_data_points = whale_data.get('data_points', 0) + network_data.get('data_points', 0)
-
-        data_quality_info = {
-            'total_endpoints_working': total_working,
-            'total_endpoints_failed': total_failed,
-            'total_data_points': total_data_points,
-            'success_rate': total_working / max(total_working + total_failed, 1)
+        data_quality = {
+            'working_endpoints': len(whale_data['endpoints_working']),
+            'failed_endpoints': len(whale_data['endpoints_failed']),
+            'success_rate': (
+                len(whale_data['endpoints_working']) /
+                (len(whale_data['endpoints_working']) + len(whale_data['endpoints_failed'])) * 100
+                if (len(whale_data['endpoints_working']) + len(whale_data['endpoints_failed'])) > 0
+                else 0
+            ),
+            'data_points_collected': whale_data['data_points']
         }
 
-        logger.info(f"Data Collection Complete:")
-        logger.info(f"Working endpoints: {total_working}")
-        logger.info(f"Failed endpoints: {total_failed}")
-        logger.info(f"Success rate: {data_quality_info['success_rate']:.1%}")
-        logger.info(f"Data points: {total_data_points}")
+        logger.info("Data Collection Complete:")
+        logger.info(f"Working endpoints: {data_quality['working_endpoints']}")
+        logger.info(f"Failed endpoints: {data_quality['failed_endpoints']}")
+        logger.info(f"Success rate: {data_quality['success_rate']:.1f}%")
+        logger.info(f"Data points: {data_quality['data_points_collected']}")
         logger.info(f"Fetch time: {fetch_time:.1f}s")
 
         return HypurrScanData(
             whale_activity_data=whale_data,
-            network_health_data=network_data,
-            data_quality_info=data_quality_info,
+            network_health_data=network_health,
+            data_quality_info=data_quality,
             fetch_time_seconds=fetch_time,
             timestamp=datetime.now()
         )
-
-    def get_client_stats(self) -> Dict[str, Any]:
-        """Get client statistics"""
-        return {
-            'requests_made': self.stats['requests_made'],
-            'successful_requests': self.stats['successful_requests'],
-            'failed_requests': self.stats['failed_requests'],
-            'success_rate': self.stats['successful_requests'] / max(self.stats['requests_made'], 1),
-            'last_fetch_time': self.stats['last_fetch_time']
-        }
-
-    def close(self):
-        """Close the session"""
-        if self.session:
-            self.session.close()
-            logger.info(" Client session closed")
 
     def discover_address_endpoints(self, address: str, symbol: str = 'HYPE') -> Dict[str, Any]:
         """
@@ -393,7 +324,7 @@ class HypurrScanClient:
                 data_type = type(result).__name__
                 data_len = len(result) if isinstance(result, (list, dict)) else 'N/A'
 
-                logger.info(f"  {endpoint} - Type: {data_type}, Length: {data_len}")
+                logger.info(f"  ✓ {endpoint} - Type: {data_type}, Length: {data_len}")
 
                 results['working'].append(endpoint)
                 results['details'][endpoint] = {
@@ -401,18 +332,13 @@ class HypurrScanClient:
                     'type': data_type,
                     'length': data_len,
                     'sample': str(result)[:200] if result else None,
-                    'full_response': result  # Store full response for analysis
+                    'full_response': result
                 }
             else:
                 results['failed'].append(endpoint)
                 results['details'][endpoint] = {'status': 'failed'}
 
-        logger.info("")
-        logger.info("=" * 60)
-        logger.info(f"Working endpoints: {len(results['working'])}")
-        for ep in results['working']:
-            logger.info(f"  - {ep}")
-        logger.info("=" * 60)
+        logger.info(f"Working endpoints: {len(results['working'])}/{len(endpoints_to_test)}")
 
         return results
 
@@ -447,32 +373,25 @@ class HypurrScanClient:
             inspection['top_level_keys'] = list(result.keys())
             logger.info(f"Top-level keys: {inspection['top_level_keys']}")
 
-            # Log all top-level values
-            for key, value in result.items():
-                if key != 'holders':  # Don't log the full holders array
-                    logger.info(f"  {key}: {value}")
-
             # Check if holders list exists and has items
             if 'holders' in result:
                 holders = result['holders']
                 inspection['holders_count'] = len(holders)
-                logger.info(f"Number of holders in response: {len(holders)}")
+                logger.info(f"Number of holders: {len(holders)}")
 
                 if holders and len(holders) > 0:
                     first_holder = holders[0]
                     inspection['holder_keys'] = list(first_holder.keys())
                     inspection['sample_holder'] = first_holder
 
-                    logger.info(f"Holder object keys: {inspection['holder_keys']}")
-                    logger.info(f"Sample holder data:")
-                    for key, value in first_holder.items():
-                        logger.info(f"  {key}: {value} (type: {type(value).__name__})")
+                    logger.debug(f"Holder object keys: {inspection['holder_keys']}")
+                    logger.debug(f"Sample holder: {first_holder}")
                 else:
-                    logger.warning(" Holders list is empty!")
+                    logger.warning("Holders list is empty!")
             else:
-                logger.warning(" No 'holders' key in response!")
+                logger.warning("No 'holders' key in response!")
         else:
-            logger.error(" Failed to fetch holder data")
+            logger.error("Failed to fetch holder data")
 
         return inspection
 
@@ -541,8 +460,7 @@ class HypurrScanClient:
             # Debug: Log structure of first holder
             if result.get('holders'):
                 first_holder = result['holders'][0]
-                logger.debug(f"  Holder structure: {list(first_holder.keys())}")
-                logger.debug(f"  Sample holder: {first_holder}")
+                logger.debug(f"Holder structure: {list(first_holder.keys())}")
 
         return result
 
