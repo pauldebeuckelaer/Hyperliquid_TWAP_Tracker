@@ -7,6 +7,17 @@
     "rate_limit_delay": 0.1
   },
 
+  "hyperliquid": {
+    "enabled": true,
+    "api_url": "https://api.hyperliquid.xyz",
+    "timeout": 10,
+    "rate_limit_delay": 0.5,
+    "metrics_collection": {
+      "light_interval_hours": 6,
+      "deep_interval_hours": 24
+    }
+  },
+
   "logging": {
     "root_level": "INFO",
     "file": "twap_tracker.log",

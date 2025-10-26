@@ -13,7 +13,9 @@ from logging_config import setup_logging, get_module_logger
 
 # Import components
 from api_client.hypurrscan_client import HypurrScanClient
+from api_client.hyperliquid_client import HyperliquidClient
 from twap_state_tracker import TWAPStateTracker
+from trader_metrics_manager import TraderMetricsManager
 from json_logger import SimpleJsonLogger
 
 # Get logger for this module
@@ -46,6 +48,24 @@ class SimpleTWAPBot:
                 json_logger=self.json_logger,
             )
 
+        # NEW: Hyperliquid client
+        hyperliquid_config = config.get('hyperliquid', {})
+        self.hyperliquid_enabled = hyperliquid_config.get('enabled', False)
+
+        if self.hyperliquid_enabled:
+            self.hyperliquid_client = HyperliquidClient(hyperliquid_config)
+
+            metrics_config = hyperliquid_config.get('metrics_collection', {})
+            self.metrics_manager = TraderMetricsManager(
+                self.hyperliquid_client,
+                config=metrics_config
+            )
+            logger.info("Hyperliquid client and metrics manager initialized")
+        else:
+            self.hyperliquid_client = None
+            self.metrics_manager = None
+            logger.info("Hyperliquid client disabled")
+
         # Setup shutdown handler
         signal.signal(signal.SIGINT, self._shutdown_handler)
         signal.signal(signal.SIGTERM, self._shutdown_handler)
@@ -70,6 +90,19 @@ class SimpleTWAPBot:
             logger.error(f"Error fetching TWAP data: {e}")
             logger.exception(e)
 
+    def _register_addresses_with_metrics(self):
+        """Register all tracked addresses with metrics manager"""
+        if not self.hyperliquid_enabled:
+            return
+
+        # Collect all addresses from all trackers
+        all_addresses = set()
+        for symbol, tracker in self.trackers.items():
+            all_addresses.update(tracker.all_addresses_seen)
+
+        # Register with metrics manager
+        self.metrics_manager.register_addresses(all_addresses)
+
     def start(self):
         """
         Start the main tracking loop.
@@ -87,6 +120,7 @@ class SimpleTWAPBot:
 
         # Calculate how many base cycles fit into fetch interval
         fetch_cycles = int(TWAP_FETCH_INTERVAL / LOOP_CYCLE_TIME)  # 60/10 = 6
+        metrics_check_cycles = int(3600 / LOOP_CYCLE_TIME) if self.hyperliquid_enabled else 0
 
         while self.running:
             try:
@@ -98,6 +132,19 @@ class SimpleTWAPBot:
                 # Fetch TWAP data every 60 seconds (every 6 cycles)
                 if loop_count % fetch_cycles == 0:
                     self._fetch_twap_data()
+
+                    if self.hyperliquid_enabled:
+                        self._register_addresses_with_metrics()
+
+                if self.hyperliquid_enabled and loop_count % metrics_check_cycles == 0:
+                    self.metrics_manager.check_for_updates()
+                    pending = len(self.metrics_manager.update_queue)
+                    if pending > 0:
+                        logger.info(f"Scheduled metrics check - {pending} pending updates")
+
+                if self.hyperliquid_enabled and self.metrics_manager.has_pending_updates():
+                    self.metrics_manager.process_single_update()
+                    self.metrics_manager.save_if_needed()
 
                 # Maintain consistent base cycle
                 elapsed = time.time() - loop_start
@@ -124,6 +171,14 @@ class SimpleTWAPBot:
         """Handle shutdown"""
         logger.info("Shutdown signal received")
         self.running = False
+
+        if self.hyperliquid_enabled and self.metrics_manager:
+            logger.info("Saving trader metrics...")
+            self.metrics_manager._save_metrics()
+            self.metrics_manager._archive_to_history()
+
+            summary = self.metrics_manager.get_summary()
+            logger.info(f"Metrics summary: {summary}")
 
 
 def load_config(config_file: str = "twap_config.json") -> dict:

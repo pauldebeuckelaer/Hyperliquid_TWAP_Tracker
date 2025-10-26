@@ -1,0 +1,3727 @@
+{
+  "collection_info": {
+    "created": "2025-10-26T15:54:04.770146",
+    "last_updated": "2025-10-26T16:21:04.230953",
+    "total_addresses": 32,
+    "light_fetches": 32,
+    "deep_fetches": 0
+  },
+  "traders": {
+    "0x1f89ef62a28957052f4640e9b19574a8ebf38818": {
+      "first_seen": "2025-10-26T15:55:01.909114",
+      "last_light_update": "2025-10-26T15:54:58.050653",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "17187.753819",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "17187.753819",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "17187.753819",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "17187.753819",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "17187.753819",
+          "assetPositions": [],
+          "time": 1761490499920
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "19678504.2199999988",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "19678504.2199999988",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xd9ea85765d8faf064c453d060470c604a56b5005": {
+      "first_seen": "2025-10-26T15:55:08.435436",
+      "last_light_update": "2025-10-26T15:55:04.912852",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490507070
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "5170815.4000000004",
+          "unclaimedRewards": "3.26848445",
+          "claimedRewards": "2693.21571317",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "BITCOINEO",
+              "nReferrals": 51,
+              "referralStates": [
+                {
+                  "cumVlm": "122711312.0100000054",
+                  "cumRewardedFeesSinceReferred": "21695.98245835",
+                  "cumFeesRewardedToReferrer": "2167.72506436",
+                  "timeJoined": 1748787760909,
+                  "user": "0xe3d523ac0d2bef7d3ea488de9409dec8b1c490f1",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "122711312.0100000054",
+                        "cumRewardedFeesSinceReferred": "21695.98245835",
+                        "cumFeesRewardedToReferrer": "2167.72506436"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "4414706.5499999998",
+                  "cumRewardedFeesSinceReferred": "2042.41559698",
+                  "cumFeesRewardedToReferrer": "169.85832079",
+                  "timeJoined": 1738238006359,
+                  "user": "0x11129fdbccb857423194fb939e1c72fedcab92b4",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "4414706.5499999998",
+                        "cumRewardedFeesSinceReferred": "2042.41559698",
+                        "cumFeesRewardedToReferrer": "169.85832079"
+                      }
+                    ],
+                    [
+                      360,
+                      {
+                        "cumVlm": "5827.9",
+                        "cumRewardedFeesSinceReferred": "1.95917421",
+                        "cumFeesRewardedToReferrer": "0.19591739"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "5172588.3300000001",
+                  "cumRewardedFeesSinceReferred": "1725.96273702",
+                  "cumFeesRewardedToReferrer": "155.88181901",
+                  "timeJoined": 1734528290949,
+                  "user": "0x302e4335396db7362f5d6a8c8645faf957145e71",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "5172588.3300000001",
+                        "cumRewardedFeesSinceReferred": "1725.96273702",
+                        "cumFeesRewardedToReferrer": "155.88181901"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "5487420.9100000001",
+                  "cumRewardedFeesSinceReferred": "1678.72955529",
+                  "cumFeesRewardedToReferrer": "167.87210132",
+                  "timeJoined": 1733217038331,
+                  "user": "0xc2d14c396822ba325aa8c8d0f6213828cb69d925",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "5487420.9100000001",
+                        "cumRewardedFeesSinceReferred": "1678.72955529",
+                        "cumFeesRewardedToReferrer": "167.87210132"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "297828.68",
+                  "cumRewardedFeesSinceReferred": "105.80359001",
+                  "cumFeesRewardedToReferrer": "10.42616317",
+                  "timeJoined": 1733310834566,
+                  "user": "0x77d4d1d555533652815c2f12171ae7f45b6332b2",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "297828.68",
+                        "cumRewardedFeesSinceReferred": "105.80359001",
+                        "cumFeesRewardedToReferrer": "10.42616317"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "285888.9",
+                  "cumRewardedFeesSinceReferred": "75.92843493",
+                  "cumFeesRewardedToReferrer": "7.59211393",
+                  "timeJoined": 1733488390092,
+                  "user": "0x9cf528cf81896b6712b20233034479a84a12f7cc",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "285888.9",
+                        "cumRewardedFeesSinceReferred": "75.92843493",
+                        "cumFeesRewardedToReferrer": "7.59211393"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "489300.36",
+                  "cumRewardedFeesSinceReferred": "58.26030084",
+                  "cumFeesRewardedToReferrer": "5.82600368",
+                  "timeJoined": 1759768474116,
+                  "user": "0x21bee2bf8cad118055f6bcb840f9e0e660fa3244",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "489300.36",
+                        "cumRewardedFeesSinceReferred": "58.26030084",
+                        "cumFeesRewardedToReferrer": "5.82600368"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "209443.55",
+                  "cumRewardedFeesSinceReferred": "47.85375157",
+                  "cumFeesRewardedToReferrer": "4.78487474",
+                  "timeJoined": 1733489584005,
+                  "user": "0x6af293a143553def39c395b9d8446dedbd113a65",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "209443.55",
+                        "cumRewardedFeesSinceReferred": "47.85375157",
+                        "cumFeesRewardedToReferrer": "4.78487474"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "107427.71",
+                  "cumRewardedFeesSinceReferred": "31.10124287",
+                  "cumFeesRewardedToReferrer": "3.11001904",
+                  "timeJoined": 1733682078107,
+                  "user": "0x5d50ca0a21f434e9f3f8110e1980005111d1b93b",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "107427.71",
+                        "cumRewardedFeesSinceReferred": "31.10124287",
+                        "cumFeesRewardedToReferrer": "3.11001904"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "122481.6",
+                  "cumRewardedFeesSinceReferred": "9.117685",
+                  "cumFeesRewardedToReferrer": "0.911763",
+                  "timeJoined": 1733930045237,
+                  "user": "0xe49fbdee1f62249c71928d635537801abb9ad55f",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "122481.6",
+                        "cumRewardedFeesSinceReferred": "9.117685",
+                        "cumFeesRewardedToReferrer": "0.911763"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "36200.95",
+                  "cumRewardedFeesSinceReferred": "8.92917636",
+                  "cumFeesRewardedToReferrer": "0.89291329",
+                  "timeJoined": 1733216879965,
+                  "user": "0xfaee343f300e025ef7454bcd032a5a3e783cbb35",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "36200.95",
+                        "cumRewardedFeesSinceReferred": "8.92917636",
+                        "cumFeesRewardedToReferrer": "0.89291329"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "27071.48",
+                  "cumRewardedFeesSinceReferred": "6.8181043",
+                  "cumFeesRewardedToReferrer": "0.68181041",
+                  "timeJoined": 1746871583602,
+                  "user": "0x002153708f11f2651215059eea30820ee4d49ff3",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "27071.48",
+                        "cumRewardedFeesSinceReferred": "6.8181043",
+                        "cumFeesRewardedToReferrer": "0.68181041"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "5828.02",
+                  "cumRewardedFeesSinceReferred": "2.33717824",
+                  "cumFeesRewardedToReferrer": "0.23371599",
+                  "timeJoined": 1733682182556,
+                  "user": "0xc94327cbb9eef801a4bbe3459766bb712c5ad979",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "5828.02",
+                        "cumRewardedFeesSinceReferred": "2.33717824",
+                        "cumFeesRewardedToReferrer": "0.23371599"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "8363.69",
+                  "cumRewardedFeesSinceReferred": "2.18169055",
+                  "cumFeesRewardedToReferrer": "0.21813966",
+                  "timeJoined": 1737374610642,
+                  "user": "0x8b0008bc5dd9e1abbdec6179f7955cb7b2e48a7b",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "8363.69",
+                        "cumRewardedFeesSinceReferred": "2.18169055",
+                        "cumFeesRewardedToReferrer": "0.21813966"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "6323.36",
+                  "cumRewardedFeesSinceReferred": "1.51242302",
+                  "cumFeesRewardedToReferrer": "0.15123408",
+                  "timeJoined": 1751379577358,
+                  "user": "0x59a8a6f88a5284a3af4ce074af867b5db60726ac",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "6323.36",
+                        "cumRewardedFeesSinceReferred": "1.51242302",
+                        "cumFeesRewardedToReferrer": "0.15123408"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "5936.73",
+                  "cumRewardedFeesSinceReferred": "1.51205996",
+                  "cumFeesRewardedToReferrer": "0.15117815",
+                  "timeJoined": 1737374446953,
+                  "user": "0xa8f1d6de44f44333a05a4005ab7ede9cd5111c7e",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "5936.73",
+                        "cumRewardedFeesSinceReferred": "1.51205996",
+                        "cumFeesRewardedToReferrer": "0.15117815"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "124863.65",
+                  "cumRewardedFeesSinceReferred": "0.857581",
+                  "cumFeesRewardedToReferrer": "0.085748",
+                  "timeJoined": 1759891436781,
+                  "user": "0xac668bd3e89552eb452192e4ff6b2f77c7e0c2f5",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "124863.65",
+                        "cumRewardedFeesSinceReferred": "0.857581",
+                        "cumFeesRewardedToReferrer": "0.085748"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "12127.85",
+                  "cumRewardedFeesSinceReferred": "0.769195",
+                  "cumFeesRewardedToReferrer": "0.076918",
+                  "timeJoined": 1733314630023,
+                  "user": "0x575d980430cde30675edd370803115a5ef0e9e37",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "12127.85",
+                        "cumRewardedFeesSinceReferred": "0.769195",
+                        "cumFeesRewardedToReferrer": "0.076918"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "142.66",
+                  "cumRewardedFeesSinceReferred": "0.067837",
+                  "cumFeesRewardedToReferrer": "0.004297",
+                  "timeJoined": 1758010897814,
+                  "user": "0x4b8709b3065a013c9f4fab94fe2fd330e388e9f5",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "142.66",
+                        "cumRewardedFeesSinceReferred": "0.067837",
+                        "cumFeesRewardedToReferrer": "0.004297"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653693847,
+                  "user": "0x07981a757302aaf38d7926bde0e32bc17db68d82",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653877740,
+                  "user": "0x179b32c0eac46b4dad09048876db0522a4e4d284",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654576820,
+                  "user": "0x1a0d2de834119fe9b401870595f6839bce2f57a8",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654735120,
+                  "user": "0x1fa2c19c9c7780f24dc2dca0582cc54ba8f83a52",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653992086,
+                  "user": "0x296f2e74573cc65e52e90563933076773ea98a15",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653928485,
+                  "user": "0x2a072da7949282278f52aa09c75fe9be9174e495",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654171515,
+                  "user": "0x300db7782a2c959946745943c07ec6304b7dc518",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "1072.55",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653632380,
+                  "user": "0x36bfc2357a439432d076c1f97a11012132ce44a0",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "1072.55",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654222867,
+                  "user": "0x4652e50d6150b4fc1156ea9540bd101708931870",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654464956,
+                  "user": "0x4b16c1875e79b7b9b74fae7c7e452fbac2bb1503",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654897505,
+                  "user": "0x4f7099474ce0c7583f96e97d720fa407e8d84210",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654783232,
+                  "user": "0x50958fe49300a9164fc96ce723547ea607389d1a",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654074334,
+                  "user": "0x71dae0db726f9d3a3b70a626292ffdfd2919cce5",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654940638,
+                  "user": "0x77a1c0b4d57b4088bd18bef5ce70a83574c8c471",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738582321813,
+                  "user": "0x7a6f79939058cf688a5a69b59786b973ab78c7b6",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738655135053,
+                  "user": "0x807fb2294277a812e54a382f8b42690a0419cdf8",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654328270,
+                  "user": "0x819d90c7d49d4d42765c8de6c9a1c000946219fe",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654275130,
+                  "user": "0x8579e3d94d13858d74c57d592ae66da319224b78",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1757320116056,
+                  "user": "0x86741fcee6003331d3a0d140c6bff9dbb82a22d9",
+                  "tokenToState": []
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654846743,
+                  "user": "0x8c8bc9294c39e5c56dc630c4c7e40929d59f991a",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738655197911,
+                  "user": "0xa65372f6a1b8561a5420cf296aee52498ac67d4c",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653758191,
+                  "user": "0xbaa702e87cddbb63132a557a36a6b84064ea6c86",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653482284,
+                  "user": "0xcb1d5afd66628df269e3323acb092def725b5a31",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654638185,
+                  "user": "0xdf7bc2ad1bea58c91bf902d34a64a0ea25563f29",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653815287,
+                  "user": "0xe71d16e0ee86671af5d84e6a18f486b58ab5ed7e",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654689779,
+                  "user": "0xe8bf2d39ceaecd79437c30b6cafc2986514c3eb6",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654520074,
+                  "user": "0xee585f787eb03a5e607f017af4acca5923139ec8",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738655085072,
+                  "user": "0xee790d78b70325a2c49bac4f7bec14213cb3baf6",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738655028179,
+                  "user": "0xf0f4bc1854752722ad5decf79d85aa66c4afb087",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738653568089,
+                  "user": "0xf4399d7f89264ad1d1254c47e1372e23211919bc",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "52.66",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1735115627282,
+                  "user": "0xf662b550dc6d7bf7e59b547494375f15a60ec0c9",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "52.66",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738654985208,
+                  "user": "0xfde6814be630a5668d09b0cddeabf528b0128f23",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "5170815.4000000004",
+                "unclaimedRewards": "3.26848445",
+                "claimedRewards": "2693.21571317",
+                "builderRewards": "0.0"
+              }
+            ],
+            [
+              360,
+              {
+                "cumVlm": "0.0",
+                "unclaimedRewards": "0.19591739",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x43395c11f8f81db0cee08dedd2d45c377a955387": {
+      "first_seen": "2025-10-26T15:55:18.788454",
+      "last_light_update": "2025-10-26T15:55:14.913460",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "2255.512503",
+            "totalNtlPos": "6374.83305",
+            "totalRawUsd": "-4119.320547",
+            "totalMarginUsed": "2124.94435"
+          },
+          "crossMarginSummary": {
+            "accountValue": "2255.512503",
+            "totalNtlPos": "6374.83305",
+            "totalRawUsd": "-4119.320547",
+            "totalMarginUsed": "2124.94435"
+          },
+          "crossMaintenanceMarginUsed": "1062.472175",
+          "withdrawable": "130.568153",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "ZORA",
+                "szi": "68865.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 3
+                },
+                "entryPx": "0.093684",
+                "positionValue": "6374.83305",
+                "unrealizedPnl": "-76.750885",
+                "returnOnEquity": "-0.0356893218",
+                "liquidationPx": "0.071780798",
+                "marginUsed": "2124.94435",
+                "maxLeverage": 3,
+                "cumFunding": {
+                  "allTime": "-90.166932",
+                  "sinceOpen": "-89.535573",
+                  "sinceChange": "-85.831514"
+                }
+              }
+            }
+          ],
+          "time": 1761490517353
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x3151fdc528e6d88f54ce1aba3e6d8d3244cb2c8b",
+            "code": "LIMINAL"
+          },
+          "cumVlm": "5578755.7300000004",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "YEOGURI",
+              "nReferrals": 0,
+              "referralStates": []
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "5578755.7300000004",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ],
+            [
+              268,
+              {
+                "cumVlm": "3111.7",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 2
+      }
+    },
+    "0x69a31d37f231c1987c6f283ca508b4377a2369ff": {
+      "first_seen": "2025-10-26T15:55:28.117322",
+      "last_light_update": "2025-10-26T15:55:24.914345",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "293811.555428",
+            "totalNtlPos": "105.19244",
+            "totalRawUsd": "293706.362988",
+            "totalMarginUsed": "104.17589"
+          },
+          "crossMarginSummary": {
+            "accountValue": "293811.555428",
+            "totalNtlPos": "105.19244",
+            "totalRawUsd": "293706.362988",
+            "totalMarginUsed": "104.17589"
+          },
+          "crossMaintenanceMarginUsed": "1.382509",
+          "withdrawable": "293707.379538",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "BTC",
+                "szi": "0.00091",
+                "leverage": {
+                  "type": "cross",
+                  "value": 1
+                },
+                "entryPx": "111818.0",
+                "positionValue": "103.38965",
+                "unrealizedPnl": "1.635248",
+                "returnOnEquity": "0.0160705382",
+                "liquidationPx": null,
+                "marginUsed": "103.38965",
+                "maxLeverage": 40,
+                "cumFunding": {
+                  "allTime": "689.448282",
+                  "sinceOpen": "689.448282",
+                  "sinceChange": "0.30488"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "BNB",
+                "szi": "0.001",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "1120.645",
+                "positionValue": "1.1295",
+                "unrealizedPnl": "0.008855",
+                "returnOnEquity": "0.0790169947",
+                "liquidationPx": null,
+                "marginUsed": "0.11295",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "-0.000131",
+                  "sinceOpen": "-0.000131",
+                  "sinceChange": "-0.000131"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "DOGE",
+                "szi": "1.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 1
+                },
+                "entryPx": "0.254403",
+                "positionValue": "0.20236",
+                "unrealizedPnl": "-0.052043",
+                "returnOnEquity": "-0.2045691285",
+                "liquidationPx": null,
+                "marginUsed": "0.20236",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "262.633054",
+                  "sinceOpen": "252.882166",
+                  "sinceChange": "-0.000805"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "HYPE",
+                "szi": "0.01",
+                "leverage": {
+                  "type": "cross",
+                  "value": 1
+                },
+                "entryPx": "50.0676",
+                "positionValue": "0.47093",
+                "unrealizedPnl": "-0.029746",
+                "returnOnEquity": "-0.0594116754",
+                "liquidationPx": null,
+                "marginUsed": "0.47093",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "923.844755",
+                  "sinceOpen": "669.505578",
+                  "sinceChange": "0.001634"
+                }
+              }
+            }
+          ],
+          "time": 1761490526746
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "12883957.4800000004",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "12883957.4800000004",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x7a04ed81f52dbbbcb68e991727ae9da18b304f80": {
+      "first_seen": "2025-10-26T15:55:38.479643",
+      "last_light_update": "2025-10-26T15:55:34.915237",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490537367
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "22499273.5399999991",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "BERA",
+              "nReferrals": 0,
+              "referralStates": []
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "22499273.5399999991",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x0606f126f03ee5f51f168fbe9be39ea5370a9bee": {
+      "first_seen": "2025-10-26T15:55:48.160235",
+      "last_light_update": "2025-10-26T15:55:44.916253",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490546996
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "1050996.9299999999",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "1050996.9299999999",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xfb549265af696c04386339a2020464228da55867": {
+      "first_seen": "2025-10-26T15:56:01.395013",
+      "last_light_update": "2025-10-26T15:55:57.692710",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490559496
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "124548825.9300000072",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "124548825.9300000072",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ],
+            [
+              268,
+              {
+                "cumVlm": "46670.37",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x4ed4760a09e9adf799528ce457ae5c8876594da5": {
+      "first_seen": "2025-10-26T15:56:08.284638",
+      "last_light_update": "2025-10-26T15:56:04.918813",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490566909
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0xad9be64fd7a35d99a138b87cb212baefbcdcf045",
+            "code": "RABBYWALLET"
+          },
+          "cumVlm": "297739.66",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "297739.66",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 1
+      }
+    },
+    "0x09577f21f0a971f3b78f0a33432c8611856c75bb": {
+      "first_seen": "2025-10-26T15:56:18.556053",
+      "last_light_update": "2025-10-26T15:56:14.919845",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "67557.199299",
+            "totalNtlPos": "62286.07255",
+            "totalRawUsd": "129843.271849",
+            "totalMarginUsed": "20762.024183"
+          },
+          "crossMarginSummary": {
+            "accountValue": "67557.199299",
+            "totalNtlPos": "62286.07255",
+            "totalRawUsd": "129843.271849",
+            "totalMarginUsed": "20762.024183"
+          },
+          "crossMaintenanceMarginUsed": "3114.303627",
+          "withdrawable": "46795.175116",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "HYPE",
+                "szi": "-1322.45",
+                "leverage": {
+                  "type": "cross",
+                  "value": 3
+                },
+                "entryPx": "38.9831",
+                "positionValue": "62286.07255",
+                "unrealizedPnl": "-10732.845553",
+                "returnOnEquity": "-0.624568791",
+                "liquidationPx": "93.5084569578",
+                "marginUsed": "20762.024183",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "-5980.06727",
+                  "sinceOpen": "-1573.708476",
+                  "sinceChange": "0.0"
+                }
+              }
+            }
+          ],
+          "time": 1761490577370
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "3215486.6699999999",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "3215486.6699999999",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xa833677915517f70222b9179ec788353255bf4ec": {
+      "first_seen": "2025-10-26T15:56:28.414465",
+      "last_light_update": "2025-10-26T15:56:24.920755",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490587042
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "74311.21",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "74311.21",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 16
+      }
+    },
+    "0x50eb759898dc73cdaaec262cfb9a56233afaf919": {
+      "first_seen": "2025-10-26T15:56:38.216739",
+      "last_light_update": "2025-10-26T15:56:34.921754",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490596944
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "2330241.6000000001",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "2330241.6000000001",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 200
+      }
+    },
+    "0x955f3d3663a652f331218e70645c9b3496920b81": {
+      "first_seen": "2025-10-26T15:56:48.021893",
+      "last_light_update": "2025-10-26T15:56:44.923593",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "402014.049385",
+            "totalNtlPos": "562687.4484",
+            "totalRawUsd": "-160673.399015",
+            "totalMarginUsed": "112537.48968"
+          },
+          "crossMarginSummary": {
+            "accountValue": "402014.049385",
+            "totalNtlPos": "562687.4484",
+            "totalRawUsd": "-160673.399015",
+            "totalMarginUsed": "112537.48968"
+          },
+          "crossMaintenanceMarginUsed": "28134.37242",
+          "withdrawable": "289476.559705",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "HYPE",
+                "szi": "11951.73",
+                "leverage": {
+                  "type": "cross",
+                  "value": 5
+                },
+                "entryPx": "39.0118",
+                "positionValue": "562687.4484",
+                "unrealizedPnl": "96428.710944",
+                "returnOnEquity": "1.0340686747",
+                "liquidationPx": "14.1510805298",
+                "marginUsed": "112537.48968",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "1632.880873",
+                  "sinceOpen": "1433.269883",
+                  "sinceChange": "0.0"
+                }
+              }
+            }
+          ],
+          "time": 1761490606851
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "1801154.23",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "1801154.23",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x12f787d5833b8b65f9637a5d4bbb163b7db531e1": {
+      "first_seen": "2025-10-26T15:57:01.145916",
+      "last_light_update": "2025-10-26T15:56:57.925850",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "5096.71046",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "5096.71046",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "5096.71046",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "5096.71046",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "5096.71046",
+          "assetPositions": [],
+          "time": 1761490619784
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x897efe26eebbac95beb21037a61db847d6726957",
+            "code": "VOLKNER"
+          },
+          "cumVlm": "5669597.2699999996",
+          "unclaimedRewards": "81.54050473",
+          "claimedRewards": "132.969128",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "563",
+              "nReferrals": 9,
+              "referralStates": [
+                {
+                  "cumVlm": "4351196.3300000001",
+                  "cumRewardedFeesSinceReferred": "971.74849462",
+                  "cumFeesRewardedToReferrer": "97.17402506",
+                  "timeJoined": 1684374962592,
+                  "user": "0xfb771bf8eab22f3c30284bca7abfd2a55effcc32",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "4351196.3300000001",
+                        "cumRewardedFeesSinceReferred": "971.74849462",
+                        "cumFeesRewardedToReferrer": "97.17402506"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "2032549.9199999999",
+                  "cumRewardedFeesSinceReferred": "622.91938236",
+                  "cumFeesRewardedToReferrer": "62.28746593",
+                  "timeJoined": 1684457570778,
+                  "user": "0x3e2431d9b45c73c3e692f4ef013a5f81cffef3ef",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "2032549.9199999999",
+                        "cumRewardedFeesSinceReferred": "622.91938236",
+                        "cumFeesRewardedToReferrer": "62.28746593"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "821310.77",
+                  "cumRewardedFeesSinceReferred": "223.856175",
+                  "cumFeesRewardedToReferrer": "22.385344",
+                  "timeJoined": 1684792586467,
+                  "user": "0x6f51855ad7c79abd828eb029676b5e4df91ae53c",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "821310.77",
+                        "cumRewardedFeesSinceReferred": "223.856175",
+                        "cumFeesRewardedToReferrer": "22.385344"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "565648.01",
+                  "cumRewardedFeesSinceReferred": "143.117548",
+                  "cumFeesRewardedToReferrer": "14.311507",
+                  "timeJoined": 1684346857018,
+                  "user": "0xd9b930b96a7390615648d5916e74d37e350ac40d",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "565648.01",
+                        "cumRewardedFeesSinceReferred": "143.117548",
+                        "cumFeesRewardedToReferrer": "14.311507"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "124486.38",
+                  "cumRewardedFeesSinceReferred": "52.72827063",
+                  "cumFeesRewardedToReferrer": "5.27281159",
+                  "timeJoined": 1684350123419,
+                  "user": "0x3391cc5bff13873888656198bc721f5f2c509603",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "124486.38",
+                        "cumRewardedFeesSinceReferred": "52.72827063",
+                        "cumFeesRewardedToReferrer": "5.27281159"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "45114.1",
+                  "cumRewardedFeesSinceReferred": "13.58111958",
+                  "cumFeesRewardedToReferrer": "1.35809215",
+                  "timeJoined": 1704196762913,
+                  "user": "0x0651b87731697a24d304d21624848b1735b4f6a6",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "45114.1",
+                        "cumRewardedFeesSinceReferred": "13.58111958",
+                        "cumFeesRewardedToReferrer": "1.35809215"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "1417.51",
+                  "cumRewardedFeesSinceReferred": "0.343593",
+                  "cumFeesRewardedToReferrer": "0.034356",
+                  "timeJoined": 1705535629286,
+                  "user": "0x4714b0124d466af4a0937aeeca2626e3809fc66a",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "1417.51",
+                        "cumRewardedFeesSinceReferred": "0.343593",
+                        "cumFeesRewardedToReferrer": "0.034356"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "166.37",
+                  "cumRewardedFeesSinceReferred": "0.015967",
+                  "cumFeesRewardedToReferrer": "0.001592",
+                  "timeJoined": 1714329140773,
+                  "user": "0xf5547e4880d78200115442f5783f6a28475d5b4f",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "166.37",
+                        "cumRewardedFeesSinceReferred": "0.015967",
+                        "cumFeesRewardedToReferrer": "0.001592"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1705465069262,
+                  "user": "0xfe49f9193ef934f403455016a191e208dc2374e8",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "rewardHistory": [
+            {
+              "earned": "5.312909",
+              "vlm": "2062.40596",
+              "referralVlm": "74544.370492",
+              "time": 1686181525632
+            },
+            {
+              "earned": "4.299577",
+              "vlm": "0.0",
+              "referralVlm": "61982.601031",
+              "time": 1685577085986
+            },
+            {
+              "earned": "0.533687",
+              "vlm": "0.0",
+              "referralVlm": "7857.331597",
+              "time": 1684975193948
+            },
+            {
+              "earned": "1.538266",
+              "vlm": "10896.81768",
+              "referralVlm": "2049.606475",
+              "time": 1684368297002
+            }
+          ],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "5669597.2699999996",
+                "unclaimedRewards": "81.54050473",
+                "claimedRewards": "132.969128",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xe85b80e66c11c9a98ed192f87625c2dafb96e008": {
+      "first_seen": "2025-10-26T15:57:08.479723",
+      "last_light_update": "2025-10-26T15:57:04.925484",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490627177
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0xad9be64fd7a35d99a138b87cb212baefbcdcf045",
+            "code": "RABBYWALLET"
+          },
+          "cumVlm": "27451298.8000000007",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "27451298.8000000007",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ],
+            [
+              268,
+              {
+                "cumVlm": "172947.97",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x8c294aeb643f8099f3d15fb47e437edd72df4022": {
+      "first_seen": "2025-10-26T15:57:18.009796",
+      "last_light_update": "2025-10-26T15:57:14.926038",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "99317.557481",
+            "totalNtlPos": "453929.963698",
+            "totalRawUsd": "-354612.406217",
+            "totalMarginUsed": "36060.741306"
+          },
+          "crossMarginSummary": {
+            "accountValue": "99317.557481",
+            "totalNtlPos": "453929.963698",
+            "totalRawUsd": "-354612.406217",
+            "totalMarginUsed": "36060.741306"
+          },
+          "crossMaintenanceMarginUsed": "15905.285146",
+          "withdrawable": "51375.961112",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "ETH",
+                "szi": "58.4199",
+                "leverage": {
+                  "type": "cross",
+                  "value": 20
+                },
+                "entryPx": "4053.61",
+                "positionValue": "237617.10126",
+                "unrealizedPnl": "805.58261",
+                "returnOnEquity": "0.0680357623",
+                "liquidationPx": "2610.4553012426",
+                "marginUsed": "11880.855063",
+                "maxLeverage": 25,
+                "cumFunding": {
+                  "allTime": "198.904532",
+                  "sinceOpen": "5.833666",
+                  "sinceChange": "2.98197"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "DOGE",
+                "szi": "49688.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "0.20244",
+                "positionValue": "10057.34808",
+                "unrealizedPnl": "-1.50904",
+                "returnOnEquity": "-0.0015002102",
+                "liquidationPx": null,
+                "marginUsed": "1005.734808",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "29.10783",
+                  "sinceOpen": "0.137041",
+                  "sinceChange": "0.0"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "SUI",
+                "szi": "5000.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "2.58186",
+                "positionValue": "13186.5",
+                "unrealizedPnl": "277.15194",
+                "returnOnEquity": "0.2146908881",
+                "liquidationPx": null,
+                "marginUsed": "1318.65",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "1.625838",
+                  "sinceOpen": "0.49178",
+                  "sinceChange": "0.49178"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "ENA",
+                "szi": "47375.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "0.48715",
+                "positionValue": "23438.3075",
+                "unrealizedPnl": "359.53726",
+                "returnOnEquity": "0.1557870096",
+                "liquidationPx": null,
+                "marginUsed": "2343.83075",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "-19.956292",
+                  "sinceOpen": "0.458664",
+                  "sinceChange": "0.292629"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "HYPE",
+                "szi": "2937.19",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "42.2838",
+                "positionValue": "138291.71677",
+                "unrealizedPnl": "14096.06181",
+                "returnOnEquity": "1.1349883226",
+                "liquidationPx": "17.189669323",
+                "marginUsed": "13829.171677",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "317.278528",
+                  "sinceOpen": "33.413688",
+                  "sinceChange": "32.86076"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "FARTCOIN",
+                "szi": "49170.1",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "0.40786",
+                "positionValue": "19907.990088",
+                "unrealizedPnl": "-146.981486",
+                "returnOnEquity": "-0.0732893016",
+                "liquidationPx": null,
+                "marginUsed": "1990.799008",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "9.983375",
+                  "sinceOpen": "1.998847",
+                  "sinceChange": "0.896328"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "PUMP",
+                "szi": "1000000.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 2
+                },
+                "entryPx": "0.004625",
+                "positionValue": "4685.0",
+                "unrealizedPnl": "60.0",
+                "returnOnEquity": "0.0259459459",
+                "liquidationPx": null,
+                "marginUsed": "2342.5",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "0.251556",
+                  "sinceOpen": "0.175162",
+                  "sinceChange": "0.175162"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "ZEC",
+                "szi": "20.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 5
+                },
+                "entryPx": "316.1989",
+                "positionValue": "6746.0",
+                "unrealizedPnl": "422.0204",
+                "returnOnEquity": "0.3336667942",
+                "liquidationPx": null,
+                "marginUsed": "1349.2",
+                "maxLeverage": 5,
+                "cumFunding": {
+                  "allTime": "-9.901106",
+                  "sinceOpen": "0.216995",
+                  "sinceChange": "0.216995"
+                }
+              }
+            }
+          ],
+          "time": 1761490636759
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0xc688dfafdbdbe7971bda658279f9815b97afdb89",
+            "code": "LOKOLO"
+          },
+          "cumVlm": "117567991.8900000006",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "117567991.8900000006",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xda0ff39a47b355190c15e5c8d3c026088c0aa1d6": {
+      "first_seen": "2025-10-26T15:57:28.632426",
+      "last_light_update": "2025-10-26T15:57:24.926598",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "10020.661011",
+            "totalNtlPos": "2692.15625",
+            "totalRawUsd": "7328.504761",
+            "totalMarginUsed": "1356.112393"
+          },
+          "crossMarginSummary": {
+            "accountValue": "8664.548618",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "8664.548618",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "8664.548618",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "VIRTUAL",
+                "szi": "2187.5",
+                "leverage": {
+                  "type": "isolated",
+                  "value": 2,
+                  "rawUsd": "-1336.043857"
+                },
+                "entryPx": "1.22069",
+                "positionValue": "2692.15625",
+                "unrealizedPnl": "21.87714",
+                "returnOnEquity": "0.0163856579",
+                "liquidationPx": "0.6786254512",
+                "marginUsed": "1356.112393",
+                "maxLeverage": 5,
+                "cumFunding": {
+                  "allTime": "192.681582",
+                  "sinceOpen": "0.016162",
+                  "sinceChange": "0.0"
+                }
+              }
+            }
+          ],
+          "time": 1761490647229
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x5e9ee1089755c3435139848e47e6635505d5a13a",
+            "code": "ALPHA"
+          },
+          "cumVlm": "61165666.9799999967",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "61165666.9799999967",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 1
+      }
+    },
+    "0xed91957b508cd8538812652bab9ff36c71167af3": {
+      "first_seen": "2025-10-26T15:57:38.599631",
+      "last_light_update": "2025-10-26T15:57:34.926788",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "13111.262515",
+            "totalNtlPos": "76356.65449",
+            "totalRawUsd": "-63245.391975",
+            "totalMarginUsed": "11331.458526"
+          },
+          "crossMarginSummary": {
+            "accountValue": "1779.803989",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "1779.803989",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "1779.803989",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "BTC",
+                "szi": "0.12241",
+                "leverage": {
+                  "type": "isolated",
+                  "value": 15,
+                  "rawUsd": "-13005.906264"
+                },
+                "entryPx": "113786.7",
+                "positionValue": "13904.42949",
+                "unrealizedPnl": "-24.20863",
+                "returnOnEquity": "-0.0260707075",
+                "liquidationPx": "107593.6442191059",
+                "marginUsed": "898.523226",
+                "maxLeverage": 40,
+                "cumFunding": {
+                  "allTime": "13271.256095",
+                  "sinceOpen": "0.012692",
+                  "sinceChange": "0.0"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "BNB",
+                "szi": "55.39",
+                "leverage": {
+                  "type": "isolated",
+                  "value": 6,
+                  "rawUsd": "-52019.2897"
+                },
+                "entryPx": "1127.253",
+                "positionValue": "62452.225",
+                "unrealizedPnl": "13.6745",
+                "returnOnEquity": "0.001314044",
+                "liquidationPx": "988.5745992531",
+                "marginUsed": "10432.9353",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "-7.311105",
+                  "sinceOpen": "-7.133475",
+                  "sinceChange": "-7.133475"
+                }
+              }
+            }
+          ],
+          "time": 1761490657259
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "25415461.9299999997",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "25415461.9299999997",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x0aeb716867494fcb430ae9c7f04c3e232d98140b": {
+      "first_seen": "2025-10-26T15:57:48.836930",
+      "last_light_update": "2025-10-26T15:57:44.928301",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490667236
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0xad9be64fd7a35d99a138b87cb212baefbcdcf045",
+            "code": "RABBYWALLET"
+          },
+          "cumVlm": "40183.84",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "40183.84",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x578ee261f68b8396dab9f3603858d755c6bcc3d9": {
+      "first_seen": "2025-10-26T15:58:01.169247",
+      "last_light_update": "2025-10-26T15:57:57.903347",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490679897
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "511508.28",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "511508.28",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x2d0e7bbdbad44a03be91a656cf772e6a33893f57": {
+      "first_seen": "2025-10-26T15:58:07.947566",
+      "last_light_update": "2025-10-26T15:58:04.929984",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490686633
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "526491.98",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "526491.98",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x4b18d4fe9614dd8f1de6850112b3c4d92d5c72e9": {
+      "first_seen": "2025-10-26T15:58:18.686553",
+      "last_light_update": "2025-10-26T15:58:14.931359",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "48999.00763",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "48999.00763",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "48999.00763",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "48999.00763",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "48999.00763",
+          "assetPositions": [],
+          "time": 1761490697282
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x4acd63bdce72e7f269f5b29a6e03ee2d222a9fc6",
+            "code": "XULIAN"
+          },
+          "cumVlm": "283752.06",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "50124839",
+              "nReferrals": 2,
+              "referralStates": [
+                {
+                  "cumVlm": "254385.24",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1752430610955,
+                  "user": "0x5900a330e04ef3fd69112808f9fa68fa8b9f53ff",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "254385.24",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1751076482286,
+                  "user": "0x9ac10c54fc2546839f73a8703897b021e8624ddf",
+                  "tokenToState": []
+                }
+              ]
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "283752.06",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x1931db4f2aa47310c712156aa8c68be444499aa1": {
+      "first_seen": "2025-10-26T15:58:28.215782",
+      "last_light_update": "2025-10-26T15:58:24.932228",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.000524",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.000524",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.000524",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.000524",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.000524",
+          "assetPositions": [],
+          "time": 1761490706695
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x681b383ab1730d83ee2ee901f08cd6467ca48dfc",
+            "code": "0XPICSOU"
+          },
+          "cumVlm": "31466608.2300000004",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "31466608.2300000004",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x4e308dd40496eab867ed394d84b6d552b5b49724": {
+      "first_seen": "2025-10-26T15:58:38.248192",
+      "last_light_update": "2025-10-26T15:58:34.933172",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "217783.782541",
+            "totalNtlPos": "0.47076",
+            "totalRawUsd": "217783.311781",
+            "totalMarginUsed": "0.047076"
+          },
+          "crossMarginSummary": {
+            "accountValue": "217783.782541",
+            "totalNtlPos": "0.47076",
+            "totalRawUsd": "217783.311781",
+            "totalMarginUsed": "0.047076"
+          },
+          "crossMaintenanceMarginUsed": "0.023538",
+          "withdrawable": "205315.399465",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "HYPE",
+                "szi": "0.01",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "42.8579",
+                "positionValue": "0.47076",
+                "unrealizedPnl": "0.042181",
+                "returnOnEquity": "0.9842059457",
+                "liquidationPx": null,
+                "marginUsed": "0.047076",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "-1672.220235",
+                  "sinceOpen": "0.233562",
+                  "sinceChange": "0.00003"
+                }
+              }
+            }
+          ],
+          "time": 1761490716700
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x699a34d63f7ea8df2075f609c68f08004d1e4ff8",
+            "code": "THOTBOT"
+          },
+          "cumVlm": "250333554.0399999917",
+          "unclaimedRewards": "2837.64590994",
+          "claimedRewards": "281.657773",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "SITBITT",
+              "nReferrals": 5,
+              "referralStates": [
+                {
+                  "cumVlm": "204499708.1899999976",
+                  "cumRewardedFeesSinceReferred": "27879.53239624",
+                  "cumFeesRewardedToReferrer": "2787.92878794",
+                  "timeJoined": 1731401013976,
+                  "user": "0x3fb5da839710949169d716d95800ff6316b3286f",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "204499708.1899999976",
+                        "cumRewardedFeesSinceReferred": "27879.53239624",
+                        "cumFeesRewardedToReferrer": "2787.92878794"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "15920852.0600000005",
+                  "cumRewardedFeesSinceReferred": "2853.340818",
+                  "cumFeesRewardedToReferrer": "285.33163",
+                  "timeJoined": 1709115967000,
+                  "user": "0x6a3929ee121de907c47659d58437e84e4bba4277",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "15920852.0600000005",
+                        "cumRewardedFeesSinceReferred": "2853.340818",
+                        "cumFeesRewardedToReferrer": "285.33163"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "1932665.4099999999",
+                  "cumRewardedFeesSinceReferred": "460.434554",
+                  "cumFeesRewardedToReferrer": "46.043265",
+                  "timeJoined": 1731400718262,
+                  "user": "0xabcf0aba6e9dbff79204c9753e76540e76c830ed",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "1932665.4099999999",
+                        "cumRewardedFeesSinceReferred": "460.434554",
+                        "cumFeesRewardedToReferrer": "46.043265"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1725324086706,
+                  "user": "0x7f87faa6676a87d3c661676af05cdf68d1490123",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "0.0",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "49779.4",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1731400864179,
+                  "user": "0x9ce62c4e7440bb2eb80f09653be9c14997b698f2",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "49779.4",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "250333554.0399999917",
+                "unclaimedRewards": "2837.64590994",
+                "claimedRewards": "281.657773",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 29
+      }
+    },
+    "0xa1d0df035fc67efea14a1985f169c466a0b97d70": {
+      "first_seen": "2025-10-26T15:58:48.243643",
+      "last_light_update": "2025-10-26T15:58:44.934291",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "86867.883809",
+            "totalNtlPos": "73278.599608",
+            "totalRawUsd": "70440.380857",
+            "totalMarginUsed": "13688.621791"
+          },
+          "crossMarginSummary": {
+            "accountValue": "86867.883809",
+            "totalNtlPos": "73278.599608",
+            "totalRawUsd": "70440.380857",
+            "totalMarginUsed": "13688.621791"
+          },
+          "crossMaintenanceMarginUsed": "6130.044475",
+          "withdrawable": "66512.963579",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "ENA",
+                "szi": "41868.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "0.477686",
+                "positionValue": "20807.13996",
+                "unrealizedPnl": "807.36016",
+                "returnOnEquity": "0.4036845246",
+                "liquidationPx": null,
+                "marginUsed": "2080.713996",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "480.501856",
+                  "sinceOpen": "7.627642",
+                  "sinceChange": "7.375019"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "MERL",
+                "szi": "25708.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 3
+                },
+                "entryPx": "0.389105",
+                "positionValue": "10921.78672",
+                "unrealizedPnl": "918.6753",
+                "returnOnEquity": "0.2755168651",
+                "liquidationPx": null,
+                "marginUsed": "3640.595573",
+                "maxLeverage": 3,
+                "cumFunding": {
+                  "allTime": "-188.619277",
+                  "sinceOpen": "-210.637347",
+                  "sinceChange": "-210.637347"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "FARTCOIN",
+                "szi": "-17466.1",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "0.37191",
+                "positionValue": "7082.154228",
+                "unrealizedPnl": "-586.292769",
+                "returnOnEquity": "-0.9025635363",
+                "liquidationPx": "4.8079041426",
+                "marginUsed": "708.215422",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "1780.16143",
+                  "sinceOpen": "-7.240625",
+                  "sinceChange": "-1.747159"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "XPL",
+                "szi": "-26226.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 10
+                },
+                "entryPx": "0.381461",
+                "positionValue": "10629.3978",
+                "unrealizedPnl": "-625.1938",
+                "returnOnEquity": "-0.624931079",
+                "liquidationPx": "3.3372446472",
+                "marginUsed": "1062.93978",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "1810.222242",
+                  "sinceOpen": "-5.25297",
+                  "sinceChange": "-5.25297"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "ASTER",
+                "szi": "-9237.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 3
+                },
+                "entryPx": "1.082941",
+                "positionValue": "10713.9963",
+                "unrealizedPnl": "-710.8637",
+                "returnOnEquity": "-0.2131923254",
+                "liquidationPx": "9.1059902629",
+                "marginUsed": "3571.3321",
+                "maxLeverage": 5,
+                "cumFunding": {
+                  "allTime": "762.490231",
+                  "sinceOpen": "-4.026946",
+                  "sinceChange": "-4.026946"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "ZEC",
+                "szi": "39.18",
+                "leverage": {
+                  "type": "cross",
+                  "value": 5
+                },
+                "entryPx": "255.45",
+                "positionValue": "13124.1246",
+                "unrealizedPnl": "3115.59",
+                "returnOnEquity": "1.556466618",
+                "liquidationPx": null,
+                "marginUsed": "2624.82492",
+                "maxLeverage": 5,
+                "cumFunding": {
+                  "allTime": "35.149845",
+                  "sinceOpen": "-6.055893",
+                  "sinceChange": "-6.055893"
+                }
+              }
+            }
+          ],
+          "time": 1761490726895
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "92447995.3100000024",
+          "unclaimedRewards": "15.49991035",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "DRDOT",
+              "nReferrals": 1,
+              "referralStates": [
+                {
+                  "cumVlm": "307796.73",
+                  "cumRewardedFeesSinceReferred": "154.99921965",
+                  "cumFeesRewardedToReferrer": "15.49991035",
+                  "timeJoined": 1759841622103,
+                  "user": "0xb751d9579798d4e11da8355aeb66abb5c5036748",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "307796.73",
+                        "cumRewardedFeesSinceReferred": "154.99921965",
+                        "cumFeesRewardedToReferrer": "15.49991035"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "92447995.3100000024",
+                "unclaimedRewards": "15.49991035",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 23
+      }
+    },
+    "0x622fc18a3f1a616a331b96e4c17f1b457feb5c6f": {
+      "first_seen": "2025-10-26T15:59:01.126210",
+      "last_light_update": "2025-10-26T15:58:57.683737",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490739755
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "1149976.0800000001",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "1149976.0800000001",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xae78adaba70f18c15418001263504af373884520": {
+      "first_seen": "2025-10-26T15:59:08.767795",
+      "last_light_update": "2025-10-26T15:59:04.935805",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "190937.404445",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "190937.404445",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "190937.404445",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "190937.404445",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "190937.404445",
+          "assetPositions": [],
+          "time": 1761490747539
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "83874367.4899999946",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "BIGGDK",
+              "nReferrals": 3,
+              "referralStates": [
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1758125652636,
+                  "user": "0x6f4a510d5e76ae26963158f2123a5e1198492dbc",
+                  "tokenToState": []
+                },
+                {
+                  "cumVlm": "0.0",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1758125812767,
+                  "user": "0x8cfeee5c0300c7064377e45de4fa761abf5ee55c",
+                  "tokenToState": []
+                },
+                {
+                  "cumVlm": "18513414.870000001",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1758054914895,
+                  "user": "0xb2f80be459bbd26c664ccae1890af4f081c307d7",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "18513414.870000001",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "83874367.4899999946",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xac44974c6bddc4136c687ca592538f9dccd122db": {
+      "first_seen": "2025-10-26T15:59:18.569614",
+      "last_light_update": "2025-10-26T15:59:14.935989",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490756780
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x63396c730b1482055ca1d1d048de38ee614cd086",
+            "code": "JTA"
+          },
+          "cumVlm": "2694953.8100000001",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "2694953.8100000001",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 37
+      }
+    },
+    "0x425069cb2e47d3cc8d50a1d3139db25a226ecdad": {
+      "first_seen": "2025-10-26T15:59:28.464123",
+      "last_light_update": "2025-10-26T15:59:24.937017",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "26997.806348",
+            "totalNtlPos": "103201.6502",
+            "totalRawUsd": "-76203.843852",
+            "totalMarginUsed": "20640.33004"
+          },
+          "crossMarginSummary": {
+            "accountValue": "26997.806348",
+            "totalNtlPos": "103201.6502",
+            "totalRawUsd": "-76203.843852",
+            "totalMarginUsed": "20640.33004"
+          },
+          "crossMaintenanceMarginUsed": "2171.383127",
+          "withdrawable": "6357.476308",
+          "assetPositions": [
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "BTC",
+                "szi": "0.70148",
+                "leverage": {
+                  "type": "cross",
+                  "value": 5
+                },
+                "entryPx": "111800.4",
+                "positionValue": "79698.6502",
+                "unrealizedPnl": "1272.86027",
+                "returnOnEquity": "0.0811506184",
+                "liquidationPx": "77775.5152787271",
+                "marginUsed": "15939.73004",
+                "maxLeverage": 40,
+                "cumFunding": {
+                  "allTime": "28.739911",
+                  "sinceOpen": "12.785439",
+                  "sinceChange": "12.785439"
+                }
+              }
+            },
+            {
+              "type": "oneWay",
+              "position": {
+                "coin": "HYPE",
+                "szi": "500.0",
+                "leverage": {
+                  "type": "cross",
+                  "value": 5
+                },
+                "entryPx": "42.491",
+                "positionValue": "23503.0",
+                "unrealizedPnl": "2257.488427",
+                "returnOnEquity": "0.5312859658",
+                "liquidationPx": null,
+                "marginUsed": "4700.6",
+                "maxLeverage": 10,
+                "cumFunding": {
+                  "allTime": "28.766521",
+                  "sinceOpen": "9.455769",
+                  "sinceChange": "2.588672"
+                }
+              }
+            }
+          ],
+          "time": 1761490766667
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x3151fdc528e6d88f54ce1aba3e6d8d3244cb2c8b",
+            "code": "LIMINAL"
+          },
+          "cumVlm": "2700881.4900000002",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "ACHRIMUS1",
+              "nReferrals": 0,
+              "referralStates": []
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "2700881.4900000002",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ],
+            [
+              360,
+              {
+                "cumVlm": "202041.39",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 2
+      }
+    },
+    "0xc88bc999a4437cf62758aa601b421a0ea2ec85ed": {
+      "first_seen": "2025-10-26T15:59:38.053235",
+      "last_light_update": "2025-10-26T15:59:34.938194",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761490776750
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "927435.91",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "927435.91",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0xf3115b8641808c85544c36cac4024b7de58ef575": {
+      "first_seen": "2025-10-26T16:11:01.331697",
+      "last_light_update": "2025-10-26T16:10:57.972331",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.069225",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.069225",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.069225",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.069225",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.069225",
+          "assetPositions": [],
+          "time": 1761491459884
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0x5e9ee1089755c3435139848e47e6635505d5a13a",
+            "code": "ALPHA"
+          },
+          "cumVlm": "6033890.4400000004",
+          "unclaimedRewards": "8.37633909",
+          "claimedRewards": "40.736344",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "ready",
+            "data": {
+              "code": "TRUMP",
+              "nReferrals": 6,
+              "referralStates": [
+                {
+                  "cumVlm": "718454.25",
+                  "cumRewardedFeesSinceReferred": "213.74892713",
+                  "cumFeesRewardedToReferrer": "21.37213605",
+                  "timeJoined": 1720617410977,
+                  "user": "0x21e54e2b9b02d2c0ad2197d7ac85c34151674012",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "718454.25",
+                        "cumRewardedFeesSinceReferred": "213.74892713",
+                        "cumFeesRewardedToReferrer": "21.37213605"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "468883.7",
+                  "cumRewardedFeesSinceReferred": "134.645073",
+                  "cumFeesRewardedToReferrer": "13.464407",
+                  "timeJoined": 1737384745437,
+                  "user": "0xf0ac0eb26d89286b65628d3d41aee5e82cb3ca4c",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "468883.7",
+                        "cumRewardedFeesSinceReferred": "134.645073",
+                        "cumFeesRewardedToReferrer": "13.464407"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "148004.91",
+                  "cumRewardedFeesSinceReferred": "60.506309",
+                  "cumFeesRewardedToReferrer": "6.05052",
+                  "timeJoined": 1749008249314,
+                  "user": "0x52559b4b6a7e3e065b10b0724bb21bf06d14111f",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "148004.91",
+                        "cumRewardedFeesSinceReferred": "60.506309",
+                        "cumFeesRewardedToReferrer": "6.05052"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "177959.98",
+                  "cumRewardedFeesSinceReferred": "59.794327",
+                  "cumFeesRewardedToReferrer": "5.979327",
+                  "timeJoined": 1706689602412,
+                  "user": "0xd2c30f01c1292250bb5e98dad0988b9deaa6b196",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "177959.98",
+                        "cumRewardedFeesSinceReferred": "59.794327",
+                        "cumFeesRewardedToReferrer": "5.979327"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "83561.85",
+                  "cumRewardedFeesSinceReferred": "22.46293056",
+                  "cumFeesRewardedToReferrer": "2.24629304",
+                  "timeJoined": 1748518405337,
+                  "user": "0xb9666d3fc15a5b69dc01256cbd170b2ea8c5ebbb",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "83561.85",
+                        "cumRewardedFeesSinceReferred": "22.46293056",
+                        "cumFeesRewardedToReferrer": "2.24629304"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "cumVlm": "837.5",
+                  "cumRewardedFeesSinceReferred": "0.0",
+                  "cumFeesRewardedToReferrer": "0.0",
+                  "timeJoined": 1738101613442,
+                  "user": "0xf05cb85d96a7f672087e4c2452c320bbe947f261",
+                  "tokenToState": [
+                    [
+                      0,
+                      {
+                        "cumVlm": "837.5",
+                        "cumRewardedFeesSinceReferred": "0.0",
+                        "cumFeesRewardedToReferrer": "0.0"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "6033890.4400000004",
+                "unclaimedRewards": "8.37633909",
+                "claimedRewards": "40.736344",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    },
+    "0x65eba4111a83a37b0f2b61941380e7b04d5685a2": {
+      "first_seen": "2025-10-26T16:11:09.288583",
+      "last_light_update": "2025-10-26T16:11:05.018746",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.0",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.0",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.0",
+          "assetPositions": [],
+          "time": 1761491467771
+        },
+        "referral": {
+          "referredBy": {
+            "referrer": "0xad9be64fd7a35d99a138b87cb212baefbcdcf045",
+            "code": "RABBYWALLET"
+          },
+          "cumVlm": "391384.8",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "391384.8",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 6
+      }
+    },
+    "0x4484612777c907bcff90de036202f3403afbbef2": {
+      "first_seen": "2025-10-26T16:17:00.849356",
+      "last_light_update": "2025-10-26T16:16:57.859636",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "clearinghouse_state": {
+          "marginSummary": {
+            "accountValue": "0.003162",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.003162",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0.003162",
+            "totalNtlPos": "0.0",
+            "totalRawUsd": "0.003162",
+            "totalMarginUsed": "0.0"
+          },
+          "crossMaintenanceMarginUsed": "0.0",
+          "withdrawable": "0.003162",
+          "assetPositions": [],
+          "time": 1761491819757
+        },
+        "referral": {
+          "referredBy": null,
+          "cumVlm": "806143.12",
+          "unclaimedRewards": "0.0",
+          "claimedRewards": "0.0",
+          "builderRewards": "0.0",
+          "referrerState": {
+            "stage": "needToCreateCode"
+          },
+          "rewardHistory": [],
+          "tokenToState": [
+            [
+              0,
+              {
+                "cumVlm": "806143.12",
+                "unclaimedRewards": "0.0",
+                "claimedRewards": "0.0",
+                "builderRewards": "0.0"
+              }
+            ]
+          ]
+        },
+        "open_orders_count": 0
+      }
+    }
+  }
+}
