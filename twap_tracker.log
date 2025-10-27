@@ -2760,3 +2760,651 @@
 2025-10-26 20:23:09 | INFO | __main__ | Saving trader metrics...
 2025-10-26 20:23:09 | INFO | trader_metrics_manager | Archived metrics to trader_metrics_history\trader_metrics_2025-10-26_202309.json
 2025-10-26 20:23:09 | INFO | __main__ | Metrics summary: {'total_addresses': 34, 'active_traders': 34, 'total_volume': 1635199842.31, 'avg_volume': 48094113.00911765, 'light_fetches': 35, 'deep_fetches': 0, 'pending_updates': 37}
+2025-10-27 21:21:46 | INFO | __main__ | Initializing TWAP Tracker with Order-Size Classification
+2025-10-27 21:21:46 | INFO | api_client.hypurrscan_client | HypurrScan client initialized
+2025-10-27 21:21:46 | INFO | json_logger | JSON logger initialized: json_logs
+2025-10-27 21:21:46 | INFO | twap_state_tracker | Loaded 40 addresses from history
+2025-10-27 21:21:46 | INFO | twap_state_tracker | TWAP State Tracker initialized for HYPE
+2025-10-27 21:21:46 | INFO | api_client.hyperliquid_client | Hyperliquid client initialized: https://api.hyperliquid.xyz
+2025-10-27 21:21:46 | ERROR | trader_metrics_manager | Error loading metrics: Expecting value: line 1 column 1 (char 0)
+2025-10-27 21:21:46 | INFO | trader_metrics_manager | TraderMetricsManager initialized: light=6h, deep=24h
+2025-10-27 21:21:46 | INFO | __main__ | Hyperliquid client and metrics manager initialized
+2025-10-27 21:21:46 | INFO | __main__ | TWAP Tracker initialized for: HYPE
+2025-10-27 21:21:46 | INFO | __main__ | Order-size based classification enabled
+2025-10-27 21:21:46 | INFO | __main__ | Starting TWAP tracking loop
+2025-10-27 21:21:46 | INFO | __main__ | Base cycle: 10s
+2025-10-27 21:21:46 | INFO | __main__ | TWAP fetch interval: 60s
+2025-10-27 21:22:36 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:22:36 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:22:37 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:22:37 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:22:37 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:22:37 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 21:22:37 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:22:39 | INFO | api_client.hypurrscan_client | Network health: 195800 addresses
+2025-10-27 21:22:39 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:22:39 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:22:39 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:22:39 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:22:39 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:22:39 | INFO | api_client.hypurrscan_client | Fetch time: 3.1s
+2025-10-27 21:22:39 | INFO | twap_state_tracker | Discovered 1 new address(es). Total: 41
+2025-10-27 21:22:39 | INFO | twap_state_tracker | [HYPE] UPDATE #1
+2025-10-27 21:22:39 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.6, Sell 0.0, Net +3.6
+2025-10-27 21:22:39 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:22:39 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:22:39 | INFO | twap_state_tracker |   0x4793...450a BUY          22 SPOT   0.8h active
+2025-10-27 21:22:39 | INFO | trader_metrics_manager | Registered 41 new addresses
+2025-10-27 21:22:43 | INFO | trader_metrics_manager | Updated 0x578ee261 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$542,520
+2025-10-27 21:22:49 | INFO | trader_metrics_manager | Updated 0xed91957b (light): Value=$14,348 Positions=2 Leverage=4.4x Vol=$25,450,019
+2025-10-27 21:22:59 | INFO | trader_metrics_manager | Updated 0x90924bd2 (light): Value=$1,912,796 Positions=14 Leverage=10.2x Vol=$730,657,380
+2025-10-27 21:23:09 | INFO | trader_metrics_manager | Updated 0xf3115b86 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$6,038,657
+2025-10-27 21:23:19 | INFO | trader_metrics_manager | Updated 0x4ed4760a (light): Value=$0 Positions=0 Leverage=0.0x Vol=$324,291
+2025-10-27 21:23:29 | INFO | trader_metrics_manager | Updated 0x47930c76 (light): Value=$84,966 Positions=1 Leverage=0.1x Vol=$532,928,087
+2025-10-27 21:23:36 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:23:36 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:23:37 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:23:37 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:23:37 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:23:37 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 21:23:37 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:23:39 | INFO | api_client.hypurrscan_client | Network health: 195800 addresses
+2025-10-27 21:23:39 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:23:39 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:23:39 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:23:39 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:23:39 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:23:39 | INFO | api_client.hypurrscan_client | Fetch time: 3.3s
+2025-10-27 21:23:39 | INFO | twap_state_tracker | [HYPE] UPDATE #2
+2025-10-27 21:23:39 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.6, Sell 0.0, Net +3.6
+2025-10-27 21:23:39 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:23:39 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:23:39 | INFO | twap_state_tracker |   0x4793...450a BUY          22 SPOT   0.8h active
+2025-10-27 21:23:43 | INFO | trader_metrics_manager | Updated 0x44671f07 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$277,254
+2025-10-27 21:23:49 | INFO | trader_metrics_manager | Updated 0xb676a78f (light): Value=$0 Positions=0 Leverage=0.0x Vol=$377,958,576
+2025-10-27 21:23:59 | INFO | trader_metrics_manager | Updated 0x44846127 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$1,323,841
+2025-10-27 21:24:11 | INFO | trader_metrics_manager | Updated 0xe85b80e6 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$27,763,059
+2025-10-27 21:24:19 | INFO | trader_metrics_manager | Updated 0xfb549265 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$124,548,826
+2025-10-27 21:24:29 | INFO | trader_metrics_manager | Updated 0x622fc18a (light): Value=$0 Positions=0 Leverage=0.0x Vol=$1,345,592
+2025-10-27 21:24:36 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:24:36 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:24:37 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:24:37 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:24:37 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:24:37 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 21:24:37 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:24:39 | INFO | api_client.hypurrscan_client | Network health: 195800 addresses
+2025-10-27 21:24:39 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:24:39 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:24:39 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:24:39 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:24:39 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:24:39 | INFO | api_client.hypurrscan_client | Fetch time: 2.9s
+2025-10-27 21:24:39 | INFO | twap_state_tracker | [HYPE] UPDATE #3
+2025-10-27 21:24:39 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.6, Sell 0.0, Net +3.6
+2025-10-27 21:24:39 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:24:39 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:24:39 | INFO | twap_state_tracker |   0x4793...450a BUY          22 SPOT   0.8h active
+2025-10-27 21:24:42 | INFO | trader_metrics_manager | Updated 0x69a31d37 (light): Value=$293,813 Positions=4 Leverage=0.0x Vol=$12,883,957
+2025-10-27 21:24:49 | INFO | trader_metrics_manager | Updated 0xa1d0df03 (light): Value=$86,601 Positions=5 Leverage=0.7x Vol=$92,488,878
+2025-10-27 21:24:59 | INFO | trader_metrics_manager | Updated 0x1f89ef62 (light): Value=$17,188 Positions=0 Leverage=0.0x Vol=$19,678,504
+2025-10-27 21:25:09 | INFO | trader_metrics_manager | Updated 0x295f6f48 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$11,767,562
+2025-10-27 21:25:19 | INFO | trader_metrics_manager | Updated 0x2d0e7bbd (light): Value=$0 Positions=0 Leverage=0.0x Vol=$526,492
+2025-10-27 21:25:29 | INFO | trader_metrics_manager | Updated 0x1931db4f (light): Value=$0 Positions=0 Leverage=0.0x Vol=$32,136,175
+2025-10-27 21:25:36 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:25:36 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:25:37 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:25:37 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:25:37 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:25:37 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 21:25:37 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:25:39 | INFO | api_client.hypurrscan_client | Network health: 195800 addresses
+2025-10-27 21:25:39 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:25:39 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:25:39 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:25:39 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:25:39 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:25:39 | INFO | api_client.hypurrscan_client | Fetch time: 2.9s
+2025-10-27 21:25:39 | INFO | twap_state_tracker | [HYPE] UPDATE #4
+2025-10-27 21:25:39 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.6, Sell 0.0, Net +3.6
+2025-10-27 21:25:39 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:25:39 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:25:39 | INFO | twap_state_tracker |   0x4793...450a BUY          22 SPOT   0.8h active
+2025-10-27 21:25:42 | INFO | trader_metrics_manager | Updated 0x12f787d5 (light): Value=$708 Positions=0 Leverage=0.0x Vol=$5,726,952
+2025-10-27 21:25:49 | INFO | trader_metrics_manager | Updated 0x425069cb (light): Value=$1 Positions=0 Leverage=0.0x Vol=$3,137,803
+2025-10-27 21:25:59 | INFO | trader_metrics_manager | Updated 0x4e308dd4 (light): Value=$217,634 Positions=2 Leverage=0.3x Vol=$250,531,026
+2025-10-27 21:26:09 | INFO | trader_metrics_manager | Updated 0xac44974c (light): Value=$0 Positions=0 Leverage=0.0x Vol=$2,701,986
+2025-10-27 21:26:19 | INFO | trader_metrics_manager | Updated 0x5c0f4638 (light): Value=$4,540 Positions=0 Leverage=0.0x Vol=$6,781,607
+2025-10-27 21:26:29 | INFO | trader_metrics_manager | Updated 0xc88bc999 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$927,931
+2025-10-27 21:26:36 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:26:36 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:26:37 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:26:37 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:26:37 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:26:37 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 21:26:37 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:26:39 | INFO | api_client.hypurrscan_client | Network health: 195800 addresses
+2025-10-27 21:26:39 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:26:39 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:26:39 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:26:39 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:26:39 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:26:39 | INFO | api_client.hypurrscan_client | Fetch time: 3.3s
+2025-10-27 21:26:39 | INFO | twap_state_tracker | [HYPE] UPDATE #5
+2025-10-27 21:26:39 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.6, Sell 0.0, Net +3.6
+2025-10-27 21:26:39 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:26:39 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:26:39 | INFO | twap_state_tracker |   0x4793...450a BUY          22 SPOT   0.8h active
+2025-10-27 21:26:42 | INFO | trader_metrics_manager | Updated 0x43395c11 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$5,923,694
+2025-10-27 21:26:49 | INFO | trader_metrics_manager | Updated 0x5c07b4bb (light): Value=$0 Positions=0 Leverage=0.0x Vol=$1,473,448
+2025-10-27 21:26:59 | INFO | trader_metrics_manager | Updated 0xd9ea8576 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$5,170,815
+2025-10-27 21:27:09 | INFO | trader_metrics_manager | Updated 0x65eba411 (light): Value=$0 Positions=0 Leverage=0.0x Vol=$401,939
+2025-10-27 21:27:19 | INFO | trader_metrics_manager | Updated 0x8c294aeb (light): Value=$56,716 Positions=1 Leverage=1.2x Vol=$119,101,036
+2025-10-27 21:27:29 | INFO | trader_metrics_manager | Updated 0xda0ff39a (light): Value=$20,927 Positions=0 Leverage=0.0x Vol=$61,408,859
+2025-10-27 21:27:35 | INFO | __main__ | Shutdown signal received
+2025-10-27 21:27:35 | INFO | __main__ | Saving trader metrics...
+2025-10-27 21:27:35 | INFO | trader_metrics_manager | Archived metrics to trader_metrics_history\trader_metrics_2025-10-27_212735.json
+2025-10-27 21:27:35 | INFO | __main__ | Metrics summary: {'total_addresses': 30, 'active_traders': 30, 'traders_with_positions': 7, 'total_volume': 2461926766.44, 'total_account_value': 2710236.8, 'avg_volume': 82064225.55, 'avg_account_value': 90341.23, 'light_fetches': 30, 'deep_fetches': 0, 'pending_updates': 11}
+2025-10-27 21:39:27 | INFO | __main__ | Initializing TWAP Tracker with Order-Size Classification
+2025-10-27 21:39:27 | INFO | api_client.hypurrscan_client | HypurrScan client initialized
+2025-10-27 21:39:27 | INFO | json_logger | JSON logger initialized: json_logs
+2025-10-27 21:39:27 | INFO | twap_state_tracker | Loaded 41 addresses from history
+2025-10-27 21:39:27 | INFO | twap_state_tracker | TWAP State Tracker initialized for HYPE
+2025-10-27 21:39:27 | INFO | api_client.hyperliquid_client | Hyperliquid client initialized: https://api.hyperliquid.xyz
+2025-10-27 21:39:27 | INFO | trader_metrics_manager | Loaded metrics for 30 traders
+2025-10-27 21:39:27 | INFO | trader_metrics_manager | TraderMetricsManager initialized: light=6h, deep=24h
+2025-10-27 21:39:27 | INFO | __main__ | Hyperliquid client and metrics manager initialized
+2025-10-27 21:39:27 | INFO | __main__ | TWAP Tracker initialized for: HYPE
+2025-10-27 21:39:27 | INFO | __main__ | Order-size based classification enabled
+2025-10-27 21:39:27 | INFO | __main__ | Starting TWAP tracking loop
+2025-10-27 21:39:27 | INFO | __main__ | Base cycle: 10s
+2025-10-27 21:39:27 | INFO | __main__ | TWAP fetch interval: 60s
+2025-10-27 21:39:33 | INFO | __main__ | Shutdown signal received
+2025-10-27 21:39:33 | INFO | __main__ | Saving trader metrics...
+2025-10-27 21:39:33 | INFO | trader_metrics_manager | Archived metrics to trader_metrics_history\trader_metrics_2025-10-27_213933.json
+2025-10-27 21:39:33 | INFO | __main__ | Metrics summary: {'total_addresses': 30, 'active_traders': 30, 'traders_with_positions': 7, 'total_volume': 2461926766.44, 'total_account_value': 2710236.8, 'avg_volume': 82064225.55, 'avg_account_value': 90341.23, 'light_fetches': 30, 'deep_fetches': 0, 'pending_updates': 0}
+2025-10-27 21:39:42 | INFO | __main__ | Initializing TWAP Tracker with Order-Size Classification
+2025-10-27 21:39:42 | INFO | api_client.hypurrscan_client | HypurrScan client initialized
+2025-10-27 21:39:42 | INFO | json_logger | JSON logger initialized: json_logs
+2025-10-27 21:39:42 | INFO | twap_state_tracker | Loaded 41 addresses from history
+2025-10-27 21:39:42 | INFO | twap_state_tracker | TWAP State Tracker initialized for HYPE
+2025-10-27 21:39:42 | INFO | api_client.hyperliquid_client | Hyperliquid client initialized: https://api.hyperliquid.xyz
+2025-10-27 21:39:42 | ERROR | trader_metrics_manager | Error loading metrics: Expecting value: line 1 column 1 (char 0)
+2025-10-27 21:39:42 | INFO | trader_metrics_manager | TraderMetricsManager initialized: light=6h, deep=24h
+2025-10-27 21:39:42 | INFO | __main__ | Hyperliquid client and metrics manager initialized
+2025-10-27 21:39:42 | INFO | __main__ | TWAP Tracker initialized for: HYPE
+2025-10-27 21:39:42 | INFO | __main__ | Order-size based classification enabled
+2025-10-27 21:39:42 | INFO | __main__ | Starting TWAP tracking loop
+2025-10-27 21:39:42 | INFO | __main__ | Base cycle: 10s
+2025-10-27 21:39:42 | INFO | __main__ | TWAP fetch interval: 60s
+2025-10-27 21:40:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:40:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:40:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:40:32 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:40:32 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:40:32 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 21:40:32 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:40:34 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:40:34 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:40:34 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:40:34 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:40:34 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:40:34 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:40:34 | INFO | api_client.hypurrscan_client | Fetch time: 2.7s
+2025-10-27 21:40:34 | INFO | twap_state_tracker | [HYPE] UPDATE #1
+2025-10-27 21:40:34 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.6, Sell 0.0, Net +3.6
+2025-10-27 21:40:34 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:40:34 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:40:34 | INFO | twap_state_tracker |   0x4793...450a BUY          22 SPOT   0.8h active
+2025-10-27 21:40:34 | INFO | trader_metrics_manager | Registered 41 new addresses
+2025-10-27 21:41:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:41:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:41:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:41:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:41:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:41:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:41:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:41:35 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:41:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:41:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:41:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:41:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:41:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:41:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.5s
+2025-10-27 21:41:35 | INFO | twap_state_tracker | [HYPE] UPDATE #2
+2025-10-27 21:41:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:41:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:41:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:41:35 | WARNING | twap_state_tracker | Status changes: 1
+2025-10-27 21:41:35 | WARNING | twap_state_tracker |   STATUS: 0x4793...450a BUY          22 active → canceled
+2025-10-27 21:42:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:42:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:42:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:42:32 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:42:32 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:42:32 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:42:32 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:42:34 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:42:34 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:42:34 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:42:34 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:42:34 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:42:34 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:42:34 | INFO | api_client.hypurrscan_client | Fetch time: 2.6s
+2025-10-27 21:42:34 | INFO | twap_state_tracker | [HYPE] UPDATE #3
+2025-10-27 21:42:34 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:42:34 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:42:34 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:43:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:43:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:43:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:43:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:43:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:43:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:43:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:43:36 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:43:36 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:43:36 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:43:36 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:43:36 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:43:36 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:43:36 | INFO | api_client.hypurrscan_client | Fetch time: 3.9s
+2025-10-27 21:43:36 | INFO | twap_state_tracker | [HYPE] UPDATE #4
+2025-10-27 21:43:36 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:43:36 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:43:36 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:44:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:44:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:44:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:44:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:44:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:44:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:44:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:44:35 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:44:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:44:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:44:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:44:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:44:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:44:35 | INFO | api_client.hypurrscan_client | Fetch time: 2.9s
+2025-10-27 21:44:35 | INFO | twap_state_tracker | [HYPE] UPDATE #5
+2025-10-27 21:44:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:44:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:44:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:45:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:45:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:45:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:45:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:45:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:45:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:45:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:45:35 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:45:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:45:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:45:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:45:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:45:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:45:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.2s
+2025-10-27 21:45:35 | INFO | twap_state_tracker | [HYPE] UPDATE #6
+2025-10-27 21:45:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:45:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:45:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:46:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:46:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:46:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:46:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:46:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:46:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:46:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:46:35 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:46:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:46:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:46:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:46:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:46:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:46:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.1s
+2025-10-27 21:46:35 | INFO | twap_state_tracker | [HYPE] UPDATE #7
+2025-10-27 21:46:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:46:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:46:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:47:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:47:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:47:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:47:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:47:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:47:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:47:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:47:35 | INFO | api_client.hypurrscan_client | Network health: 195801 addresses
+2025-10-27 21:47:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:47:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:47:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:47:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:47:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:47:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.3s
+2025-10-27 21:47:35 | INFO | twap_state_tracker | [HYPE] UPDATE #8
+2025-10-27 21:47:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:47:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:47:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:48:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:48:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:48:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:48:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:48:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:48:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:48:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:48:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:48:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:48:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:48:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:48:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:48:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:48:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.4s
+2025-10-27 21:48:35 | INFO | twap_state_tracker | [HYPE] UPDATE #9
+2025-10-27 21:48:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:48:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:48:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:49:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:49:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:49:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:49:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:49:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:49:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:49:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:49:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:49:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:49:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:49:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:49:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:49:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:49:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.5s
+2025-10-27 21:49:35 | INFO | twap_state_tracker | [HYPE] UPDATE #10
+2025-10-27 21:49:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:49:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:49:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:50:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:50:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:50:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:50:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:50:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:50:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:50:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:50:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:50:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:50:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:50:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:50:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:50:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:50:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.1s
+2025-10-27 21:50:35 | INFO | twap_state_tracker | [HYPE] UPDATE #11
+2025-10-27 21:50:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:50:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:50:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:51:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:51:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:51:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:51:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:51:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:51:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:51:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:51:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:51:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:51:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:51:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:51:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:51:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:51:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.6s
+2025-10-27 21:51:35 | INFO | twap_state_tracker | [HYPE] UPDATE #12
+2025-10-27 21:51:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:51:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:51:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:52:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:52:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:52:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:52:32 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:52:32 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:52:32 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:52:32 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:52:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:52:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:52:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:52:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:52:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:52:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:52:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.1s
+2025-10-27 21:52:35 | INFO | twap_state_tracker | [HYPE] UPDATE #13
+2025-10-27 21:52:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:52:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:52:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:53:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:53:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:53:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:53:32 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:53:32 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:53:32 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:53:32 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:53:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:53:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:53:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:53:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:53:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:53:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:53:35 | INFO | api_client.hypurrscan_client | Fetch time: 2.8s
+2025-10-27 21:53:35 | INFO | twap_state_tracker | [HYPE] UPDATE #14
+2025-10-27 21:53:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:53:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:53:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:54:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:54:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:54:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:54:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:54:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:54:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:54:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:54:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:54:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:54:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:54:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:54:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:54:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:54:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.3s
+2025-10-27 21:54:35 | INFO | twap_state_tracker | [HYPE] UPDATE #15
+2025-10-27 21:54:35 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:54:35 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:54:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:55:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:55:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:55:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:55:32 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:55:32 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:55:32 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:55:32 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:55:34 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:55:34 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:55:34 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:55:34 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:55:34 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:55:34 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:55:34 | INFO | api_client.hypurrscan_client | Fetch time: 2.6s
+2025-10-27 21:55:34 | INFO | twap_state_tracker | [HYPE] UPDATE #16
+2025-10-27 21:55:34 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:55:34 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:55:34 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:56:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:56:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:56:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:56:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:56:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:56:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:56:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:56:34 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:56:34 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:56:34 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:56:34 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:56:34 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:56:34 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:56:34 | INFO | api_client.hypurrscan_client | Fetch time: 2.6s
+2025-10-27 21:56:34 | INFO | twap_state_tracker | [HYPE] UPDATE #17
+2025-10-27 21:56:34 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:56:34 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:56:34 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:57:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:57:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:57:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:57:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 21:57:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 21:57:33 | INFO | api_client.hypurrscan_client | Status: 1 active, 4 inactive
+2025-10-27 21:57:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:57:34 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:57:34 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:57:34 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:57:34 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:57:34 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:57:34 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 21:57:34 | INFO | api_client.hypurrscan_client | Fetch time: 2.7s
+2025-10-27 21:57:34 | INFO | twap_state_tracker | [HYPE] UPDATE #18
+2025-10-27 21:57:34 | INFO | twap_state_tracker | Orders: 1 active, 5 total | Pressure/min: Buy 3.1, Sell 0.0, Net +3.1
+2025-10-27 21:57:34 | INFO | twap_state_tracker | Active orders (1):
+2025-10-27 21:57:34 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:58:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:58:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:58:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:58:33 | INFO | api_client.hypurrscan_client | Processing 6 HYPE TWAP orders...
+2025-10-27 21:58:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 6 SPOT, 0 PERP
+2025-10-27 21:58:33 | INFO | api_client.hypurrscan_client | Status: 2 active, 4 inactive
+2025-10-27 21:58:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:58:35 | INFO | api_client.hypurrscan_client | Network health: 195802 addresses
+2025-10-27 21:58:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:58:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:58:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:58:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:58:35 | INFO | api_client.hypurrscan_client | Data points: 7
+2025-10-27 21:58:35 | INFO | api_client.hypurrscan_client | Fetch time: 2.9s
+2025-10-27 21:58:35 | INFO | twap_state_tracker | Discovered 1 new address(es). Total: 42
+2025-10-27 21:58:35 | INFO | twap_state_tracker | [HYPE] UPDATE #19
+2025-10-27 21:58:35 | INFO | twap_state_tracker | Orders: 2 active, 6 total | Pressure/min: Buy 3.1, Sell 999.3, Net -996.2
+2025-10-27 21:58:35 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:58:35 | INFO | twap_state_tracker |   0xa8cd...7275 SELL     29,980 SPOT   0.5h active
+2025-10-27 21:58:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 21:58:35 | INFO | twap_state_tracker | New orders: 1
+2025-10-27 21:58:35 | INFO | twap_state_tracker |   NEW: 0xa8cd...7275 SELL     29,980 SPOT 0.5h
+2025-10-27 21:58:35 | INFO | trader_metrics_manager | Registered 1 new addresses
+2025-10-27 21:59:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 21:59:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 21:59:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 21:59:33 | INFO | api_client.hypurrscan_client | Processing 6 HYPE TWAP orders...
+2025-10-27 21:59:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 6 SPOT, 0 PERP
+2025-10-27 21:59:33 | INFO | api_client.hypurrscan_client | Status: 2 active, 4 inactive
+2025-10-27 21:59:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 21:59:35 | INFO | api_client.hypurrscan_client | Network health: 195804 addresses
+2025-10-27 21:59:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 21:59:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 21:59:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 21:59:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 21:59:35 | INFO | api_client.hypurrscan_client | Data points: 7
+2025-10-27 21:59:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.1s
+2025-10-27 21:59:35 | INFO | twap_state_tracker | [HYPE] UPDATE #20
+2025-10-27 21:59:35 | INFO | twap_state_tracker | Orders: 2 active, 6 total | Pressure/min: Buy 3.1, Sell 999.3, Net -996.2
+2025-10-27 21:59:35 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 21:59:35 | INFO | twap_state_tracker |   0xa8cd...7275 SELL     29,980 SPOT   0.5h active
+2025-10-27 21:59:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 22:00:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 22:00:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 22:00:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 22:00:33 | INFO | api_client.hypurrscan_client | Processing 6 HYPE TWAP orders...
+2025-10-27 22:00:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 6 SPOT, 0 PERP
+2025-10-27 22:00:33 | INFO | api_client.hypurrscan_client | Status: 2 active, 4 inactive
+2025-10-27 22:00:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 22:00:35 | INFO | api_client.hypurrscan_client | Network health: 195804 addresses
+2025-10-27 22:00:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 22:00:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 22:00:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 22:00:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 22:00:35 | INFO | api_client.hypurrscan_client | Data points: 7
+2025-10-27 22:00:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.2s
+2025-10-27 22:00:35 | INFO | twap_state_tracker | [HYPE] UPDATE #21
+2025-10-27 22:00:35 | INFO | twap_state_tracker | Orders: 2 active, 6 total | Pressure/min: Buy 3.1, Sell 999.3, Net -996.2
+2025-10-27 22:00:35 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 22:00:35 | INFO | twap_state_tracker |   0xa8cd...7275 SELL     29,980 SPOT   0.5h active
+2025-10-27 22:00:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 22:01:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 22:01:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 22:01:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 22:01:32 | INFO | api_client.hypurrscan_client | Processing 6 HYPE TWAP orders...
+2025-10-27 22:01:32 | INFO | api_client.hypurrscan_client | HYPE TWAP: 6 SPOT, 0 PERP
+2025-10-27 22:01:32 | INFO | api_client.hypurrscan_client | Status: 2 active, 4 inactive
+2025-10-27 22:01:32 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 22:01:34 | INFO | api_client.hypurrscan_client | Network health: 195804 addresses
+2025-10-27 22:01:34 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 22:01:34 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 22:01:34 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 22:01:34 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 22:01:34 | INFO | api_client.hypurrscan_client | Data points: 7
+2025-10-27 22:01:34 | INFO | api_client.hypurrscan_client | Fetch time: 2.6s
+2025-10-27 22:01:34 | INFO | twap_state_tracker | [HYPE] UPDATE #22
+2025-10-27 22:01:34 | INFO | twap_state_tracker | Orders: 2 active, 6 total | Pressure/min: Buy 3.1, Sell 999.3, Net -996.2
+2025-10-27 22:01:34 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 22:01:34 | INFO | twap_state_tracker |   0xa8cd...7275 SELL     29,980 SPOT   0.5h active
+2025-10-27 22:01:34 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 22:02:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 22:02:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 22:02:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 22:02:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 22:02:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 22:02:33 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 22:02:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 22:02:35 | INFO | api_client.hypurrscan_client | Network health: 195804 addresses
+2025-10-27 22:02:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 22:02:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 22:02:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 22:02:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 22:02:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 22:02:35 | INFO | api_client.hypurrscan_client | Fetch time: 2.9s
+2025-10-27 22:02:35 | INFO | twap_state_tracker | [HYPE] UPDATE #23
+2025-10-27 22:02:35 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.1, Sell 999.3, Net -996.2
+2025-10-27 22:02:35 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 22:02:35 | INFO | twap_state_tracker |   0xa8cd...7275 SELL     29,980 SPOT   0.5h active
+2025-10-27 22:02:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 22:02:35 | WARNING | twap_state_tracker | Canceled orders: 1
+2025-10-27 22:02:35 | WARNING | twap_state_tracker |   CANCELED: 0x4793...450a BUY          22 0.8h
+2025-10-27 22:03:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 22:03:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 22:03:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 22:03:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 22:03:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 22:03:33 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 22:03:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 22:03:35 | INFO | api_client.hypurrscan_client | Network health: 195804 addresses
+2025-10-27 22:03:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 22:03:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 22:03:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 22:03:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 22:03:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 22:03:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.4s
+2025-10-27 22:03:35 | INFO | twap_state_tracker | [HYPE] UPDATE #24
+2025-10-27 22:03:35 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.1, Sell 999.3, Net -996.2
+2025-10-27 22:03:35 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 22:03:35 | INFO | twap_state_tracker |   0xa8cd...7275 SELL     29,980 SPOT   0.5h active
+2025-10-27 22:03:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 22:04:32 | INFO | api_client.hypurrscan_client | Starting data collection for: HYPE
+2025-10-27 22:04:32 | INFO | api_client.hypurrscan_client | Fetching whale activity for: HYPE
+2025-10-27 22:04:32 | INFO | api_client.hypurrscan_client | Got HYPE holders
+2025-10-27 22:04:33 | INFO | api_client.hypurrscan_client | Processing 5 HYPE TWAP orders...
+2025-10-27 22:04:33 | INFO | api_client.hypurrscan_client | HYPE TWAP: 5 SPOT, 0 PERP
+2025-10-27 22:04:33 | INFO | api_client.hypurrscan_client | Status: 2 active, 3 inactive
+2025-10-27 22:04:33 | INFO | api_client.hypurrscan_client | Fetching network health...
+2025-10-27 22:04:35 | INFO | api_client.hypurrscan_client | Network health: 195804 addresses
+2025-10-27 22:04:35 | INFO | api_client.hypurrscan_client | Data Collection Complete:
+2025-10-27 22:04:35 | INFO | api_client.hypurrscan_client | Working endpoints: 2
+2025-10-27 22:04:35 | INFO | api_client.hypurrscan_client | Failed endpoints: 0
+2025-10-27 22:04:35 | INFO | api_client.hypurrscan_client | Success rate: 100.0%
+2025-10-27 22:04:35 | INFO | api_client.hypurrscan_client | Data points: 6
+2025-10-27 22:04:35 | INFO | api_client.hypurrscan_client | Fetch time: 3.0s
+2025-10-27 22:04:35 | INFO | twap_state_tracker | [HYPE] UPDATE #25
+2025-10-27 22:04:35 | INFO | twap_state_tracker | Orders: 2 active, 5 total | Pressure/min: Buy 3.1, Sell 999.3, Net -996.2
+2025-10-27 22:04:35 | INFO | twap_state_tracker | Active orders (2):
+2025-10-27 22:04:35 | INFO | twap_state_tracker |   0xa8cd...7275 SELL     29,980 SPOT   0.5h active
+2025-10-27 22:04:35 | INFO | twap_state_tracker |   0x622f...5c6f BUY       4,481 SPOT  24.0h active
+2025-10-27 22:04:58 | INFO | __main__ | Shutdown signal received
+2025-10-27 22:04:58 | INFO | __main__ | Saving trader metrics...
+2025-10-27 22:04:58 | INFO | trader_metrics_manager | Archived metrics to trader_metrics_history\trader_metrics_2025-10-27_220458.json
+2025-10-27 22:04:58 | INFO | __main__ | Metrics summary: {'total_addresses': 42, 'active_traders': 42, 'traders_with_positions': 10, 'total_volume': 2589910603.37, 'total_account_value': 4856563.32, 'avg_volume': 61664538.18, 'avg_account_value': 115632.46, 'light_fetches': 42, 'deep_fetches': 0, 'pending_updates': 0}
