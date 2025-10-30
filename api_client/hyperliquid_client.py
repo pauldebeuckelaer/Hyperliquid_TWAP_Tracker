@@ -30,16 +30,21 @@ class HyperliquidClient:
         self.timeout = config.get('timeout', 10)
         self.rate_limit_delay = config.get('rate_limit_delay', 0.5)
 
+        self._all_mids_cache = None
+        self._all_mids_cache_time = None
+        self._all_mids_cache_ttl = config.get('all_mids_cache_ttl', 5)
+
+        self._spot_token_map = None  # Will be lazy loaded
+        self._spot_meta_cache_time = None
+
+        self._token_name_cache = {}
+
         logger.info(f"Hyperliquid client initialized: {self.api_url}")
 
-    def _make_request(
-            self,
-            request_type: str,
-            params: Dict[str, Any],
-            retry_count: int = 2
-    ) -> Optional[Any]:
+    def _make_request(self, request_type: str, params: Dict[str, Any], retry_count: int = 2) -> Optional[Any]:
         """
         Make a request to the Hyperliquid info endpoint
+        IMPROVED: Better logging and error details
 
         Args:
             request_type: The type of info request
@@ -53,29 +58,66 @@ class HyperliquidClient:
 
         for attempt in range(retry_count + 1):
             try:
+                logger.debug(f"🌐 API call: {request_type} (attempt {attempt + 1}/{retry_count + 1})")
+
                 response = requests.post(
                     self.info_endpoint,
                     json=payload,
                     headers={"Content-Type": "application/json"},
                     timeout=self.timeout
                 )
+
+                # Log response status
+                logger.debug(f"   Response status: {response.status_code}")
+
                 response.raise_for_status()
-                return response.json()
+
+                result = response.json()
+
+                # 🔍 IMPROVED: Log response details for critical endpoints
+                if request_type == "allMids" and logger.isEnabledFor(logging.DEBUG):
+                    if isinstance(result, dict):
+                        logger.debug(f"   allMids response: {len(result)} entries")
+                    elif isinstance(result, list):
+                        logger.debug(f"   allMids response: list with {len(result)} items")
+                    else:
+                        logger.debug(f"   allMids response type: {type(result)}")
+
+                return result
 
             except requests.exceptions.Timeout:
-                logger.warning(f"Request timeout for {request_type} (attempt {attempt + 1}/{retry_count + 1})")
+                logger.warning(
+                    f"⏱️  Timeout for {request_type} "
+                    f"(attempt {attempt + 1}/{retry_count + 1})"
+                )
                 if attempt == retry_count:
-                    logger.error(f"Failed {request_type} after {retry_count + 1} attempts")
+                    logger.error(
+                        f"❌ {request_type} failed after {retry_count + 1} attempts (timeout)"
+                    )
+                    return None
+
+            except requests.exceptions.HTTPError as e:
+                logger.error(
+                    f"❌ HTTP error for {request_type}: {e.response.status_code} - {e.response.text}"
+                )
+                if attempt == retry_count:
                     return None
 
             except requests.exceptions.RequestException as e:
-                logger.error(f"Request error for {request_type}: {e}")
+                logger.error(f"❌ Request error for {request_type}: {e}")
+                if attempt == retry_count:
+                    return None
+
+            except ValueError as e:
+                # JSON decode error
+                logger.error(f"❌ Invalid JSON response for {request_type}: {e}")
                 if attempt == retry_count:
                     return None
 
             except Exception as e:
-                logger.error(f"Unexpected error for {request_type}: {e}")
-                return None
+                logger.error(f"❌ Unexpected error for {request_type}: {e}")
+                if attempt == retry_count:
+                    return None
 
         return None
 
@@ -103,6 +145,76 @@ class HyperliquidClient:
             }
         """
         return self._make_request("clearinghouseState", {"user": address})
+
+    def _get_spot_token_map(self, force_refresh: bool = False) -> Dict[str, int]:
+        """
+        Get mapping of token name -> index for spot tokens
+        Cached for 1 hour
+
+        Args:
+            force_refresh: Force refresh the cache
+
+        Returns:
+            Dict like {"HYPE": 150, "PURR": 10, ...}
+        """
+        # Check if we need to refresh cache
+        if (not force_refresh and
+                self._spot_token_map is not None and
+                self._spot_meta_cache_time is not None):
+
+            # Cache for 1 hour
+            age = (datetime.now() - self._spot_meta_cache_time).total_seconds()
+            if age < 3600:
+                return self._spot_token_map
+
+        # Fetch fresh metadata
+        try:
+            meta = self.get_spot_meta()
+            if not meta:
+                logger.warning("Failed to fetch spot metadata")
+                return self._spot_token_map or {}
+
+            # Build mapping
+            token_map = {}
+            for token in meta.get("tokens", []):
+                name = token.get("name")
+                index = token.get("index")
+                if name and index is not None:
+                    token_map[name] = index
+
+            self._spot_token_map = token_map
+            self._spot_meta_cache_time = datetime.now()
+
+            logger.info(f"Loaded spot token map with {len(token_map)} tokens")
+            logger.debug(f"Sample tokens: {list(token_map.items())[:5]}")
+
+            return token_map
+
+        except Exception as e:
+            logger.error(f"Error building spot token map: {e}")
+            return self._spot_token_map or {}
+
+    def get_spot_clearinghouse_state(self, address: str) -> Optional[Dict]:
+        """
+        Get user's spot clearinghouse state (spot token balances)
+
+        Args:
+            address: User address in 0x format
+
+        Returns:
+            {
+                "balances": [
+                    {
+                        "coin": "USDC",
+                        "token": "0x...",
+                        "hold": "100.0",      # Amount locked in orders
+                        "total": "1000.0",     # Total balance
+                        "entryNtl": "1000.0"   # Cost basis
+                    }
+                ]
+            }
+        """
+        return self._make_request("spotClearinghouseState", {"user": address})
 
     def get_user_role(self, address: str) -> Optional[Dict]:
         """
@@ -329,14 +441,63 @@ class HyperliquidClient:
     # Market Data
     # =============================================================================
 
-    def get_all_mids(self) -> Optional[Dict[str, str]]:
+    def get_all_mids(self, use_cache: bool = True) -> Optional[Dict[str, str]]:
         """
-        Get mid prices for all assets
+        Get mid prices for all assets (perps + spot)
+
+        IMPROVED: Added caching to reduce API load and improve performance
+        Cache TTL is configurable (default 5 seconds)
+
+        Args:
+            use_cache: If True, return cached data if fresh enough
 
         Returns:
-            Dict of {coin: price}
+            Dict of {coin: price} where:
+            - Perp coins: "BTC", "ETH", "HYPE", "kBONK", etc.
+            - Spot coins: "@1", "@150", "@223", etc. (@ + spot index)
+
+        Examples:
+            >>> client.get_all_mids()
+            {
+                "BTC": "107367.5",
+                "ETH": "3756.25",
+                "HYPE": "44.5495",
+                "kBONK": "0.00001234",
+                "FARTCOIN": "0.123456",
+                "@1": "31.2265",      # PURR spot
+                "@150": "44.506",     # HYPE spot
+                ...
+            }
         """
-        return self._make_request("allMids", {})
+        # Check cache freshness
+        if use_cache and self._all_mids_cache is not None and self._all_mids_cache_time is not None:
+            age_seconds = (datetime.now() - self._all_mids_cache_time).total_seconds()
+
+            if age_seconds < self._all_mids_cache_ttl:
+                logger.debug(f"📦 Using cached all_mids (age: {age_seconds:.1f}s)")
+                return self._all_mids_cache
+            else:
+                logger.debug(f"🔄 Cache expired (age: {age_seconds:.1f}s), refreshing...")
+
+        # Fetch fresh data
+        result = self._make_request("allMids", {})
+
+        if result:
+            # Update cache
+            self._all_mids_cache = result
+            self._all_mids_cache_time = datetime.now()
+            logger.debug(
+                f"✅ Cached fresh all_mids data: {len(result)} entries, "
+                f"TTL={self._all_mids_cache_ttl}s"
+            )
+        else:
+            logger.warning(f"⚠️  Failed to fetch all_mids, cache not updated")
+            # Return stale cache if available (better than nothing)
+            if self._all_mids_cache is not None:
+                logger.warning(f"⚠️  Returning stale cache as fallback")
+                return self._all_mids_cache
+
+        return result
 
     def get_l2_book(
             self,
@@ -387,19 +548,572 @@ class HyperliquidClient:
 
         return self._make_request("candleSnapshot", {"req": req})
 
+    def get_spot_price(self, token: str, quote: str = "USDC") -> Optional[float]:
+        """
+        Get current mid price for a spot token pair from L2 order book
+
+        Args:
+            token: Token name (e.g., "HYPE", "PURR")
+            quote: Quote currency (default: "USDC")
+
+        Returns:
+            Mid price or None if order book is empty
+        """
+        try:
+            # Determine the coin identifier
+            if token.startswith('@'):
+                # Already in index format
+                coin = token
+            elif token in ["USDC", "USDT", "USD"]:
+                # Stablecoins don't need price lookup
+                logger.debug(f"⚠️  {token} is a stablecoin, returning 1.0")
+                return 1.0
+            else:
+                # Look up the index for this token
+                token_map = self._get_spot_token_map()
+
+                if token not in token_map:
+                    logger.warning(f"⚠️  Token {token} not found in spot metadata")
+                    return None
+
+                index = token_map[token]
+                coin = f"@{index}"
+                logger.debug(f"📍 Mapped {token} -> {coin}")
+
+            # Fetch orderbook
+            book = self.get_l2_book(coin)
+
+            if not book:
+                logger.debug(f"❌ {coin}: book is None or empty")
+                return None
+
+            # Handle response structure
+            if isinstance(book, dict):
+                levels = book.get('levels')
+            else:
+                levels = book
+
+            if not levels or len(levels) < 2:
+                logger.debug(f"❌ {coin}: insufficient levels")
+                return None
+
+            bids = levels[0]
+            asks = levels[1]
+
+            if not bids or not asks:
+                logger.debug(f"❌ {coin}: empty bids or asks")
+                return None
+
+            best_bid = float(bids[0]['px'])
+            best_ask = float(asks[0]['px'])
+            mid = (best_bid + best_ask) / 2
+
+            logger.debug(f"✅ {token} ({coin}): bid={best_bid}, ask={best_ask}, mid={mid}")
+            return mid
+
+        except Exception as e:
+            logger.warning(f"❌ Failed to get spot price for {token}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return None
+
+    def get_spot_meta(self) -> Optional[Dict]:
+        """
+        Get spot token metadata (indices, names, tokens)
+
+        Returns:
+            {
+                "tokens": [
+                    {"index": 0, "name": "USDC", "szDecimals": 6, ...},
+                    {"index": 150, "name": "HYPE", "szDecimals": 8, ...},
+                    ...
+                ],
+                "universe": [...]
+            }
+        """
+        return self._make_request("spotMeta", {})
+
+    def get_token_price(self, token: str) -> Optional[float]:
+        """
+        Get best available price for any token using multi-strategy approach
+
+        Priority waterfall:
+        1. Stablecoins (1:1 USD)
+        2. Bridged assets (U-prefix): 5 strategies
+           - Exact underlying perp match (UBTC -> BTC)
+           - k-prefix match (UBONK -> kBONK)
+           - Fuzzy perp match (UFART -> FARTCOIN)
+           - Spot index lookup (underlying spot market)
+           - Fuzzy spot match (rare edge cases)
+        3. Direct perp lookup
+        4. Direct spot lookup via index
+        5. Orderbook fallback (slowest, last resort)
+
+        Args:
+            token: Token name (e.g., "HYPE", "PURR", "UBTC", "PUMP")
+
+        Returns:
+            Price or None if not available (illiquid/delisted)
+
+        Examples:
+            >>> client.get_token_price("USDC")
+            1.0
+            >>> client.get_token_price("BTC")
+            107367.5
+            >>> client.get_token_price("UBTC")
+            107367.5  # Uses BTC perp price
+            >>> client.get_token_price("UBONK")
+            0.00001234  # Uses kBONK perp price
+            >>> client.get_token_price("UFART")
+            0.123456  # Uses FARTCOIN via fuzzy match
+            >>> client.get_token_price("LATINA")
+            0.021788  # Uses spot market
+            >>> client.get_token_price("LICKO")
+            None  # Illiquid, no price available
+        """
+        try:
+            # =================================================================
+            # STRATEGY 0: Stablecoins (always 1:1 USD)
+            # =================================================================
+            if token in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0"]:
+                logger.debug(f"✅ {token}: stablecoin = $1.00")
+                return 1.0
+
+            # =================================================================
+            # Get all_mids (cached for performance)
+            # =================================================================
+            all_mids = self.get_all_mids()
+
+            if all_mids is None:
+                logger.error(f"❌ {token}: all_mids API call returned None (API failure)")
+                # Try orderbook fallback immediately
+                return self.get_spot_price_from_orderbook(token)
+
+            if not all_mids:
+                logger.error(f"❌ {token}: all_mids returned empty dict")
+                return self.get_spot_price_from_orderbook(token)
+
+            logger.debug(f"✅ all_mids loaded: {len(all_mids)} price entries")
+
+            # =================================================================
+            # BRIDGED ASSETS (U-prefix): Multi-strategy approach
+            # =================================================================
+            if token.startswith('U') and len(token) > 1:
+                underlying = token[1:]  # UBONK -> BONK, UFART -> FART
+
+                logger.debug(f"🔍 {token}: Detected bridged asset, underlying = '{underlying}'")
+
+                # -----------------------------------------------------------------
+                # STRATEGY 1: Exact underlying name in perps
+                # -----------------------------------------------------------------
+                # Works for: UBTC->BTC, UETH->ETH, USOL->SOL, UPUMP->PUMP
+                logger.debug(f"   Strategy 1: Exact perp match '{underlying}'")
+
+                if underlying in all_mids:
+                    price = all_mids[underlying]
+                    price_float = float(price)
+                    logger.info(f"💱 {token}: Strategy 1 SUCCESS - '{underlying}' perp = ${price_float:,.6f}")
+                    return price_float
+                else:
+                    logger.debug(f"   ❌ '{underlying}' not in perps")
+
+                # -----------------------------------------------------------------
+                # STRATEGY 2: k-prefix variant (for scaled tokens)
+                # -----------------------------------------------------------------
+                # Works for: UBONK->kBONK, UPEPE->kPEPE
+                k_variant = f"k{underlying}"
+                logger.debug(f"   Strategy 2: k-prefix match '{k_variant}'")
+
+                if k_variant in all_mids:
+                    price = all_mids[k_variant]
+                    price_float = float(price)
+                    logger.info(f"💱 {token}: Strategy 2 SUCCESS - '{k_variant}' perp = ${price_float:,.6f}")
+                    # Cache this mapping for future lookups
+                    self._token_name_cache[underlying] = k_variant
+                    return price_float
+                else:
+                    logger.debug(f"   ❌ '{k_variant}' not in perps")
+
+                # -----------------------------------------------------------------
+                # STRATEGY 3: Fuzzy match in perps (cached)
+                # -----------------------------------------------------------------
+                # Works for: UFART->FARTCOIN, and other naming mismatches
+                logger.debug(f"   Strategy 3: Fuzzy perp match for '{underlying}'")
+
+                fuzzy_match = self._find_similar_token_in_all_mids(underlying, all_mids)
+                if fuzzy_match and fuzzy_match not in [underlying, k_variant]:
+                    price = all_mids[fuzzy_match]
+                    price_float = float(price)
+                    logger.info(
+                        f"💱 {token}: Strategy 3 SUCCESS - '{fuzzy_match}' via fuzzy = ${price_float:,.6f}"
+                    )
+                    return price_float
+                else:
+                    logger.debug(f"   ❌ No fuzzy perp match found")
+
+                # -----------------------------------------------------------------
+                # STRATEGY 4: Underlying spot market via index
+                # -----------------------------------------------------------------
+                # Works for: UBONK spot (BONK/USDC), even if perp is kBONK/USDC
+                logger.debug(f"   Strategy 4: Spot index lookup for '{underlying}'")
+
+                underlying_spot_index = self._get_spot_token_index(underlying)
+
+                if underlying_spot_index is not None:
+                    spot_key = f"@{underlying_spot_index}"
+                    logger.debug(f"   Found spot index {underlying_spot_index}, checking '{spot_key}'")
+
+                    if spot_key in all_mids:
+                        price = all_mids[spot_key]
+                        price_float = float(price)
+                        logger.info(
+                            f"💱 {token}: Strategy 4 SUCCESS - '{underlying}' spot = ${price_float:,.6f}"
+                        )
+                        return price_float
+                    else:
+                        logger.debug(f"   ❌ '{spot_key}' not in all_mids (illiquid spot)")
+                else:
+                    logger.debug(f"   ❌ '{underlying}' not in spot metadata")
+
+                # -----------------------------------------------------------------
+                # STRATEGY 5: Fuzzy match on spot token names
+                # -----------------------------------------------------------------
+                # Handles rare edge cases where spot has completely different name
+                logger.debug(f"   Strategy 5: Fuzzy spot name match for '{underlying}'")
+
+                spot_tokens = self._get_spot_token_map()
+                fuzzy_spot = self._find_similar_token_name(underlying, list(spot_tokens.keys()))
+
+                if fuzzy_spot and fuzzy_spot != underlying:
+                    logger.debug(f"   Found fuzzy spot match: '{fuzzy_spot}'")
+                    fuzzy_spot_index = spot_tokens.get(fuzzy_spot)
+
+                    if fuzzy_spot_index is not None:
+                        spot_key = f"@{fuzzy_spot_index}"
+
+                        if spot_key in all_mids:
+                            price = all_mids[spot_key]
+                            price_float = float(price)
+                            logger.info(
+                                f"💱 {token}: Strategy 5 SUCCESS - '{fuzzy_spot}' fuzzy spot = ${price_float:,.6f}"
+                            )
+                            return price_float
+                        else:
+                            logger.debug(f"   ❌ '{spot_key}' not in all_mids")
+                else:
+                    logger.debug(f"   ❌ No fuzzy spot match found")
+
+                # All bridged asset strategies failed
+                logger.warning(
+                    f"⚠️  {token}: All 5 strategies FAILED for underlying '{underlying}' "
+                    f"(tried: exact perp, k-prefix, fuzzy perp, spot index, fuzzy spot)"
+                )
+
+            # =================================================================
+            # NON-BRIDGED TOKENS: Direct lookups
+            # =================================================================
+
+            # -----------------------------------------------------------------
+            # STEP 1: Direct perp price
+            # -----------------------------------------------------------------
+            logger.debug(f"🔍 {token}: Checking direct perp price")
+
+            if token in all_mids:
+                price = all_mids[token]
+                price_float = float(price)
+                logger.info(f"📊 {token}: Found perp price = ${price_float:,.6f}")
+                return price_float
+            else:
+                logger.debug(f"   ❌ '{token}' not in perps")
+
+            # -----------------------------------------------------------------
+            # STEP 2: Spot price via index
+            # -----------------------------------------------------------------
+            logger.debug(f"🔍 {token}: Checking spot price via index")
+
+            token_index = self._get_spot_token_index(token)
+
+            if token_index is not None:
+                spot_key = f"@{token_index}"
+                logger.debug(f"   Found spot index {token_index}, checking '{spot_key}'")
+
+                if spot_key in all_mids:
+                    price = all_mids[spot_key]
+                    price_float = float(price)
+                    logger.info(f"📈 {token}: Found spot price = ${price_float:,.6f}")
+                    return price_float
+                else:
+                    logger.warning(
+                        f"⚠️  {token}: Has spot index {token_index} but '@{token_index}' "
+                        f"not in all_mids (likely illiquid - no recent trades)"
+                    )
+            else:
+                logger.debug(f"   ❌ '{token}' not in spot metadata")
+
+            # -----------------------------------------------------------------
+            # STEP 3: Orderbook fallback (slow, last resort)
+            # -----------------------------------------------------------------
+            logger.warning(
+                f"⚠️  {token}: Not found in all_mids anywhere, trying orderbook fallback..."
+            )
+
+            orderbook_price = self.get_spot_price_from_orderbook(token)
+
+            if orderbook_price:
+                logger.info(f"📖 {token}: Got price from orderbook = ${orderbook_price:,.6f}")
+                return orderbook_price
+
+            # -----------------------------------------------------------------
+            # Complete failure - token is illiquid or delisted
+            # -----------------------------------------------------------------
+            logger.error(
+                f"❌ {token}: NO PRICE AVAILABLE - all strategies exhausted "
+                f"(likely illiquid or delisted)"
+            )
+            return None
+
+        except Exception as e:
+            logger.error(f"❌ {token}: Unexpected error in get_token_price: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return None
+
+    def _find_similar_token_in_all_mids(
+            self,
+            token: str,
+            all_mids: Dict[str, str]
+    ) -> Optional[str]:
+        """
+        Find a similar token name in all_mids (perp markets only)
+        Uses intelligent caching to avoid repeated lookups
+
+        Matching priority:
+        1. Check cache first
+        2. Exact match
+        3. Case-insensitive exact match
+        4. Suffix match (e.g., FART matches FARTCOIN)
+        5. Prefix match (e.g., DOGE matches DOGEFI)
+        6. Shortest match (most likely correct)
+
+        Args:
+            token: Token to search for (e.g., "FART", "BONK")
+            all_mids: The all_mids dict
+
+        Returns:
+            Best matched token name or None
+
+        Examples:
+            >>> _find_similar_token_in_all_mids("FART", {"FARTCOIN": "0.123"})
+            "FARTCOIN"
+            >>> _find_similar_token_in_all_mids("BTC", {"BTC": "100000"})
+            "BTC"
+        """
+        # Check cache first
+        if token in self._token_name_cache:
+            cached_name = self._token_name_cache[token]
+            if cached_name in all_mids:
+                logger.debug(f"📦 Cache hit: '{token}' -> '{cached_name}'")
+                return cached_name
+            else:
+                # Cached name no longer valid (token delisted?), clear it
+                logger.debug(f"🗑️  Cache miss: '{token}' -> '{cached_name}' no longer valid")
+                del self._token_name_cache[token]
+
+        token_upper = token.upper()
+
+        # Exact match (no fuzzy needed)
+        if token in all_mids:
+            return token
+
+        # Get perp tokens only (exclude spot indices like @123)
+        perp_keys = [k for k in all_mids.keys() if not k.startswith('@')]
+
+        # Find tokens containing the search term
+        matches = [k for k in perp_keys if token_upper in k.upper()]
+
+        if not matches:
+            logger.debug(f"   No perp tokens contain '{token}'")
+            return None
+
+        logger.debug(f"   Found {len(matches)} potential matches: {matches}")
+
+        # Single match - easy
+        if len(matches) == 1:
+            match = matches[0]
+            logger.debug(f"🔍 Fuzzy matched '{token}' -> '{match}' (only match)")
+            # Cache it
+            self._token_name_cache[token] = match
+            return match
+
+        # Multiple matches - use priority rules
+
+        # Priority 1: Case-insensitive exact match
+        for match in matches:
+            if match.upper() == token_upper:
+                logger.debug(f"🔍 Fuzzy matched '{token}' -> '{match}' (case-insensitive exact)")
+                self._token_name_cache[token] = match
+                return match
+
+        # Priority 2: Token that ends with our search term
+        # e.g., FART matches FARTCOIN (most common pattern)
+        suffix_matches = [m for m in matches if m.upper().endswith(token_upper)]
+        if suffix_matches:
+            match = suffix_matches[0]
+            logger.debug(f"🔍 Fuzzy matched '{token}' -> '{match}' (suffix match)")
+            self._token_name_cache[token] = match
+            return match
+
+        # Priority 3: Token that starts with our search term
+        # e.g., DOGE matches DOGEFI
+        prefix_matches = [m for m in matches if m.upper().startswith(token_upper)]
+        if prefix_matches:
+            match = prefix_matches[0]
+            logger.debug(f"🔍 Fuzzy matched '{token}' -> '{match}' (prefix match)")
+            self._token_name_cache[token] = match
+            return match
+
+        # Priority 4: Shortest match (most likely to be correct)
+        match = min(matches, key=len)
+        logger.debug(
+            f"🔍 Fuzzy matched '{token}' -> '{match}' "
+            f"(shortest of {len(matches)} matches)"
+        )
+        self._token_name_cache[token] = match
+        return match
+
+    def _find_similar_token_name(
+            self,
+            token: str,
+            token_names: List[str]
+    ) -> Optional[str]:
+        """
+        Find similar token name in a list (for spot token names)
+
+        Same priority as _find_similar_token_in_all_mids but without caching
+        (spot names are less likely to need fuzzy matching)
+
+        Args:
+            token: Token to search for
+            token_names: List of token names to search in
+
+        Returns:
+            Best matched token name or None
+        """
+        token_upper = token.upper()
+
+        # Exact match
+        if token in token_names:
+            return token
+
+        # Find similar names
+        matches = [name for name in token_names if token_upper in name.upper()]
+
+        if not matches:
+            return None
+
+        if len(matches) == 1:
+            return matches[0]
+
+        # Priority 1: Case-insensitive exact match
+        for match in matches:
+            if match.upper() == token_upper:
+                return match
+
+        # Priority 2: Suffix match
+        for match in matches:
+            if match.upper().endswith(token_upper):
+                return match
+
+        # Priority 3: Prefix match
+        for match in matches:
+            if match.upper().startswith(token_upper):
+                return match
+
+        # Priority 4: Shortest match
+        return min(matches, key=len)
+
+
+    def _get_spot_token_index(self, token: str) -> Optional[int]:
+        """
+        Get spot token index from cached metadata
+
+        Args:
+            token: Token name
+
+        Returns:
+            Token index or None
+        """
+        token_map = self._get_spot_token_map()
+        return token_map.get(token)
+
+    def get_spot_price_from_orderbook(self, token: str) -> Optional[float]:
+        """
+        Get spot price from L2 orderbook (fallback method)
+        This is slower - only use when all_mids doesn't have the price
+
+        Args:
+            token: Token name
+
+        Returns:
+            Mid price from orderbook or None
+        """
+        try:
+            # Get token index
+            token_index = self._get_spot_token_index(token)
+            if token_index is None:
+                logger.debug(f"❌ {token}: not found in spot metadata")
+                return None
+
+            coin = f"@{token_index}"
+
+            # Fetch orderbook
+            book = self.get_l2_book(coin)
+
+            if not book:
+                logger.debug(f"❌ {coin}: book is None or empty")
+                return None
+
+            # Handle response structure
+            if isinstance(book, dict):
+                levels = book.get('levels')
+            else:
+                levels = book
+
+            if not levels or len(levels) < 2:
+                logger.debug(f"❌ {coin}: insufficient levels")
+                return None
+
+            bids = levels[0]
+            asks = levels[1]
+
+            if not bids or not asks:
+                logger.debug(f"❌ {coin}: empty bids or asks")
+                return None
+
+            best_bid = float(bids[0]['px'])
+            best_ask = float(asks[0]['px'])
+            mid = (best_bid + best_ask) / 2
+
+            logger.debug(f"✅ {token} ({coin}): orderbook mid = ${mid:,.6f}")
+            return mid
+
+        except Exception as e:
+            logger.warning(f"❌ Failed to get orderbook price for {token}: {e}")
+            return None
+
     # =============================================================================
     # Convenience Methods
     # =============================================================================
 
     def get_trader_profile(self, address: str) -> Dict:
         """
-        Get comprehensive trader profile
+        Get comprehensive trader profile (UPDATED: includes spot balances)
 
         Args:
             address: User address in 0x format
 
         Returns:
-            Dict with all key metrics combined
+            Dict with all key metrics combined including spot balance
         """
         profile = {
             "address": address,
@@ -412,7 +1126,7 @@ class HyperliquidClient:
         if role_data:
             profile["metrics"]["role"] = role_data.get("role", "unknown")
 
-        # State & positions
+        # State & positions (PERPETUALS)
         state = self.get_user_state(address)
         if state:
             margin = state.get("marginSummary", {})
@@ -426,6 +1140,32 @@ class HyperliquidClient:
                 p for p in positions
                 if p.get("position", {}).get("szi") != "0"
             ])
+
+        # Spot balances (replace existing spot section)
+        spot_state = self.get_spot_clearinghouse_state(address)
+        spot_value = 0
+
+        if spot_state:
+            for balance in spot_state.get("balances", []):
+                coin = balance.get("coin", "")
+                total = float(balance.get("total", 0))
+
+                if total <= 0:
+                    continue
+
+                if coin in ["USDC", "USDT"]:
+                    spot_value += total
+                else:
+                    price = self.get_spot_price(coin)
+                    if price:
+                        spot_value += total * price
+
+        profile["metrics"]["spot_value"] = spot_value
+
+        # Calculate total portfolio value (perps + spot)
+        perp_value = profile["metrics"].get("account_value", 0)
+        spot_val = profile["metrics"].get("spot_value", 0)
+        profile["metrics"]["total_portfolio_value"] = perp_value + spot_val
 
         # Volume & referral
         referral = self.get_referral_info(address)
@@ -465,6 +1205,37 @@ class HyperliquidClient:
                     profile["metrics"]["all_time_vlm"] = float(all_time.get("vlm", 0))
 
         return profile
+
+    def clear_price_cache(self):
+        """
+        Clear all price-related caches
+        Call this when you want to force fresh data
+        """
+        self._all_mids_cache = None
+        self._all_mids_cache_time = None
+        self._token_name_cache = {}
+        logger.info("🗑️  Cleared all price caches")
+
+    def get_cache_stats(self) -> Dict:
+        """
+        Get cache statistics for monitoring
+
+        Returns:
+            Dict with cache info
+        """
+        stats = {
+            "all_mids_cached": self._all_mids_cache is not None,
+            "all_mids_age_seconds": None,
+            "token_name_mappings": len(self._token_name_cache),
+            "cached_mappings": dict(self._token_name_cache)
+        }
+
+        if self._all_mids_cache_time:
+            stats["all_mids_age_seconds"] = (
+                    datetime.now() - self._all_mids_cache_time
+            ).total_seconds()
+
+        return stats
 
     def get_recent_24h_fills(self, address: str) -> Optional[List[Dict]]:
         """

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Data models for Hyperliquid trader information
+UPDATED: Added spot balance tracking for total portfolio value
 """
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
@@ -40,6 +41,32 @@ class Position:
             leverage=float(position.get("leverage", {}).get("value", 1)),
             liquidation_price=float(position.get("liquidationPx", 0)) or None,
             margin_used=float(position.get("marginUsed", 0))
+        )
+
+
+@dataclass
+class SpotBalance:
+    """Represents a spot token balance - NEW MODEL"""
+    coin: str
+    token: str  # Token address or identifier
+    hold: float  # Amount locked in orders
+    total: float  # Total balance
+    entry_notional: float  # Cost basis
+
+    @property
+    def available(self) -> float:
+        """Get available (not locked) balance"""
+        return self.total - self.hold
+
+    @classmethod
+    def from_api_data(cls, data: Dict) -> 'SpotBalance':
+        """Create SpotBalance from API response"""
+        return cls(
+            coin=data.get("coin", ""),
+            token=data.get("token", ""),
+            hold=float(data.get("hold", 0)),
+            total=float(data.get("total", 0)),
+            entry_notional=float(data.get("entryNtl", 0))
         )
 
 
@@ -202,13 +229,15 @@ class PortfolioPeriod:
 
 @dataclass
 class TraderMetrics:
-    """Comprehensive trader metrics"""
+    """Comprehensive trader metrics - UPDATED with spot balance support"""
     address: str
     timestamp: datetime
 
-    # Account info
+    # Account info - UPDATED
     role: str = "unknown"
-    account_value: float = 0
+    account_value: float = 0  # Perpetuals account value
+    spot_value: float = 0  # NEW: Spot wallet value
+    total_portfolio_value: float = 0  # NEW: Total value (perps + spot)
     position_value: float = 0
     margin_used: float = 0
     withdrawable: float = 0
@@ -240,18 +269,18 @@ class TraderMetrics:
 
     @property
     def roi(self) -> float:
-        """Calculate ROI if possible"""
-        if self.account_value > 0 and self.all_time_pnl != 0:
-            initial_value = self.account_value - self.all_time_pnl
+        """Calculate ROI if possible - UPDATED to use total_portfolio_value"""
+        if self.total_portfolio_value > 0 and self.all_time_pnl != 0:
+            initial_value = self.total_portfolio_value - self.all_time_pnl
             if initial_value > 0:
                 return (self.all_time_pnl / initial_value) * 100
         return 0
 
     @property
     def leverage_ratio(self) -> float:
-        """Calculate leverage ratio"""
-        if self.account_value > 0:
-            return self.position_value / self.account_value
+        """Calculate leverage ratio - UPDATED to use total_portfolio_value"""
+        if self.total_portfolio_value > 0:
+            return self.position_value / self.total_portfolio_value
         return 0
 
     @property
@@ -260,12 +289,14 @@ class TraderMetrics:
         return self.num_fills > 0 or self.num_positions > 0
 
     def to_dict(self) -> Dict:
-        """Convert to dictionary"""
+        """Convert to dictionary - UPDATED with new fields"""
         return {
             "address": self.address,
             "timestamp": self.timestamp.isoformat(),
             "role": self.role,
             "account_value": self.account_value,
+            "spot_value": self.spot_value,  # NEW
+            "total_portfolio_value": self.total_portfolio_value,  # NEW
             "position_value": self.position_value,
             "margin_used": self.margin_used,
             "withdrawable": self.withdrawable,
@@ -291,7 +322,7 @@ class TraderMetrics:
 
     @classmethod
     def from_profile_data(cls, profile: Dict) -> 'TraderMetrics':
-        """Create TraderMetrics from trader profile dict"""
+        """Create TraderMetrics from trader profile dict - UPDATED"""
         metrics = profile.get("metrics", {})
 
         # Parse timestamp
@@ -311,6 +342,8 @@ class TraderMetrics:
             timestamp=timestamp,
             role=metrics.get("role", "unknown"),
             account_value=metrics.get("account_value", 0),
+            spot_value=metrics.get("spot_value", 0),  # NEW
+            total_portfolio_value=metrics.get("total_portfolio_value", 0),  # NEW
             position_value=metrics.get("position_value", 0),
             margin_used=metrics.get("margin_used", 0),
             withdrawable=metrics.get("withdrawable", 0),

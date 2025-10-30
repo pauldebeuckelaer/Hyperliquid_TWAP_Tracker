@@ -2,6 +2,7 @@
 """
 Trader Metrics Manager
 Manages collection and storage of trader metrics with two-tier system
+UPDATED: Now tracks spot balances and total portfolio value
 """
 import logging
 import json
@@ -177,6 +178,7 @@ class TraderMetricsManager:
     def fetch_light_metrics(self, address: str) -> Dict:
         """
         Fetch light metrics (fast, essential data)
+        UPDATED: Now includes spot balance and total portfolio value with proper token valuation
 
         Args:
             address: Trader address
@@ -201,24 +203,105 @@ class TraderMetricsManager:
             metrics["data"]["user_role"] = {"error": str(e)}
             logger.warning(f"Failed to get role for {address[:10]}: {e}")
 
-        # 2. Clearinghouse state (positions, account value)
+        # 2. Clearinghouse state (positions, account value) - UPDATED
         try:
             state = self.hl_client.get_user_state(address)
 
             # Store simplified account summary
             margin_summary = state.get("marginSummary", {})
+            perp_value = float(margin_summary.get("accountValue", 0))
+
+            spot_value = 0
+            spot_balances_detail = []  # Track individual balances for debugging
+            try:
+                spot_state = self.hl_client.get_spot_clearinghouse_state(address)
+                if spot_state:
+                    balances = spot_state.get("balances", [])
+
+                    for balance in balances:
+                        total = float(balance.get("total", 0))
+                        coin = balance.get("coin", "")
+
+                        if total == 0:
+                            continue  # Skip zero balances
+
+                        token_value = 0
+
+                        # Stablecoins are 1:1 USD
+                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0"]:
+                            token_value = total
+                            spot_value += total
+                            spot_balances_detail.append({
+                                "coin": coin,
+                                "amount": total,
+                                "value": token_value,
+                                "price_source": "stablecoin_1:1"
+                            })
+                        else:
+                            # Use optimized get_token_price (checks all_mids first, then orderbook)
+                            price = self.hl_client.get_token_price(coin)
+
+                            if price:
+                                token_value = total * price
+                                spot_value += token_value
+
+                                # Determine price source for logging
+                                if coin.startswith('U'):
+                                    price_source = "bridged_asset"
+                                else:
+                                    price_source = "all_mids"
+
+                                spot_balances_detail.append({
+                                    "coin": coin,
+                                    "amount": total,
+                                    "value": token_value,
+                                    "price": price,
+                                    "price_source": price_source
+                                })
+                            else:
+                                # No price available
+                                if total > 0.01:  # Only log non-dust amounts
+                                    logger.warning(
+                                        f"⚠️  No price data for {coin} (amount: {total:.6f}) on {address[:10]}"
+                                    )
+                                spot_balances_detail.append({
+                                    "coin": coin,
+                                    "amount": total,
+                                    "value": 0,
+                                    "price_source": "MISSING_PRICE"
+                                })
+
+                    # Log spot balance breakdown for accounts with significant balances
+                    if spot_value > 1000:
+                        logger.debug(f"💰 Spot breakdown for {address[:10]}: Total=${spot_value:,.2f}")
+                        for bal in spot_balances_detail:
+                            if bal['value'] > 0:
+                                logger.debug(
+                                    f"   {bal['coin']}: {bal['amount']:,.6f} = ${bal['value']:,.2f}"
+                                )
+
+            except Exception as e:
+                logger.warning(f"Failed to get spot balance for {address[:10]}: {e}")
+                spot_value = 0
+                spot_balances_detail = []
+
+            # Calculate total portfolio value
+            total_portfolio = perp_value + spot_value
+
             metrics["data"]["account"] = {
-                "value": float(margin_summary.get("accountValue", 0)),
+                "value": perp_value,
+                "spot_value": spot_value,  # NEW
+                "spot_balances_detail": spot_balances_detail,  # NEW - for debugging
+                "total_portfolio_value": total_portfolio,  # NEW
                 "position_value": float(margin_summary.get("totalNtlPos", 0)),
                 "margin_used": float(margin_summary.get("totalMarginUsed", 0)),
                 "withdrawable": float(state.get("withdrawable", 0))
             }
 
-            # Calculate leverage ratio
-            acct_val = metrics["data"]["account"]["value"]
+            # Calculate leverage ratio - UPDATED to use total portfolio
             pos_val = metrics["data"]["account"]["position_value"]
             metrics["data"]["account"]["leverage_ratio"] = (
-                round(pos_val / acct_val, 2) if acct_val > 0 else 0
+                round(pos_val / total_portfolio, 2) if total_portfolio > 0 else 0
             )
 
             # Parse positions (includes liquidation prices from API!)
@@ -351,7 +434,7 @@ class TraderMetricsManager:
             # Log summary (DEBUG level - won't show in console)
             data = metrics["data"]
             acct = data.get("account", {})
-            acct_val = acct.get("value", 0)
+            acct_val = acct.get("total_portfolio_value", acct.get("value", 0))  # UPDATED: prefer total
             num_pos = acct.get("num_positions", 0)
             leverage = acct.get("leverage_ratio", 0)
             cum_vol = data.get("cumulative_volume", 0)
@@ -388,7 +471,7 @@ class TraderMetricsManager:
         """Check if it's time to save"""
         # Save every 5 minutes
         minutes_since_save = (datetime.now() - self.last_save_time).total_seconds() / 60
-        return minutes_since_save >= 5
+        return minutes_since_save >= 2
 
     def save_if_needed(self):
         """Save metrics if needed"""
@@ -396,7 +479,7 @@ class TraderMetricsManager:
             self._save_metrics()
 
     def get_summary(self) -> Dict:
-        """Get summary statistics"""
+        """Get summary statistics - UPDATED to use total portfolio value"""
         total = len(self.metrics_data["traders"])
 
         if total == 0:
@@ -422,8 +505,8 @@ class TraderMetricsManager:
             if account.get("num_positions", 0) > 0:
                 with_positions += 1
 
-            # Account value
-            total_account_value += account.get("value", 0)
+            # Account value - UPDATED: use total_portfolio_value if available
+            total_account_value += account.get("total_portfolio_value", account.get("value", 0))
 
         return {
             "total_addresses": total,
