@@ -24,7 +24,7 @@
     "console": true,
     "modules": {
       "api_client.hypurrscan_client": "INFO",
-      "api_client.hyperliquid_client": "DEBUG",
+      "api_client.hyperliquid_client": "INFO",
       "twap_state_tracker": "INFO",
       "__main__": "INFO"
     }
