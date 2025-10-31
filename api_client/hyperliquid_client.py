@@ -405,17 +405,9 @@ class HyperliquidClient:
         """
         return self._make_request("subAccounts", {"user": address})
 
-    def get_vault_equities(self, address: str) -> Optional[List[Dict]]:
-        """
-        Get user's vault deposits
-
-        Args:
-            address: User address in 0x format
-
-        Returns:
-            List of vault deposits
-        """
-        return self._make_request("userVaultEquities", {"user": address})
+    # =============================================================================
+    # Vault Methods - UPDATED with comprehensive documentation
+    # =============================================================================
 
     def get_vault_details(
             self,
@@ -423,19 +415,121 @@ class HyperliquidClient:
             user: Optional[str] = None
     ) -> Optional[Dict]:
         """
-        Get details for a specific vault
+        Get detailed information about a specific vault
+
+        Endpoint: POST https://api.hyperliquid.xyz/info
+        Request: {"type": "vaultDetails", "vaultAddress": "0x...", "user": "0x..." (optional)}
+
+        Response includes:
+        - name: Vault name
+        - vaultAddress: Vault address
+        - leader: Leader address
+        - description: Vault description
+        - portfolio: Performance history (day/week/month/allTime)
+        - apr: Annual percentage rate
+        - followers: List of followers with their equity and PnL
+        - leaderFraction: Leader's fraction of vault
+        - leaderCommission: Commission rate
+        - maxDistributable: Maximum amount that can be distributed
+        - maxWithdrawable: Maximum amount that can be withdrawn
+        - followerState: User-specific info if user param provided
+
+        Example response:
+        {
+            "name": "Test Vault",
+            "vaultAddress": "0xdfc...",
+            "leader": "0x677...",
+            "description": "Vault description",
+            "portfolio": [
+                ["day", {"accountValueHistory": [...], "pnlHistory": [...], "vlm": "0.0"}],
+                ["week", {...}],
+                ["month", {...}],
+                ["allTime", {...}]
+            ],
+            "apr": 0.36387,
+            "followers": [
+                {
+                    "user": "0x005...",
+                    "vaultEquity": "714491.71026243",
+                    "pnl": "3203.43026143",
+                    "allTimePnl": "79843.74476743",
+                    "daysFollowing": 388,
+                    "vaultEntryTime": 1700926145201,
+                    "lockupUntil": 1734824439201
+                }
+            ],
+            "leaderFraction": 0.000790,
+            "leaderCommission": 0,
+            "maxDistributable": 94856870.164485,
+            "maxWithdrawable": 742557.680863,
+            "followerState": {...}  # Only if user param provided
+        }
 
         Args:
-            vault_address: Vault address
-            user: Optional user address for follower-specific info
+            vault_address: Vault address in 42-character hexadecimal format
+            user: Optional user address to check follower state
 
         Returns:
-            Vault details, performance, followers
+            Dict with vault details or None on error
+
+        Example:
+            >>> # Get vault info without user context
+            >>> vault = client.get_vault_details("0xdfc...")
+            >>> print(f"Vault: {vault['name']}, APR: {vault['apr']*100:.2f}%")
+
+            >>> # Get vault info with user's follower state
+            >>> vault = client.get_vault_details("0xdfc...", user="0x1234...")
+            >>> if vault.get("followerState"):
+            >>>     equity = float(vault["followerState"]["vaultEquity"])
+            >>>     print(f"Your equity: ${equity:,.2f}")
+
+            >>> # Analyze vault followers
+            >>> vault = client.get_vault_details("0xdfc...")
+            >>> total_followers = len(vault["followers"])
+            >>> total_equity = sum(float(f["vaultEquity"]) for f in vault["followers"])
+            >>> print(f"{total_followers} followers, ${total_equity:,.2f} total")
         """
         params = {"vaultAddress": vault_address}
         if user:
             params["user"] = user
         return self._make_request("vaultDetails", params)
+
+    def get_user_vault_equities(self, address: str):
+        """
+        Get user's vault equity positions
+
+        Endpoint: POST https://api.hyperliquid.xyz/info
+        Request: {"type": "userVaultEquities", "user": "0x..."}
+
+        Returns:
+            List of dicts with vaultAddress and equity (USD value)
+            Example: [{"vaultAddress": "0xdfc...", "equity": "742500.08"}]
+            Empty list [] if user has no vault deposits
+            None on API error
+
+        Example:
+            >>> equities = client.get_user_vault_equities("0x677d831a...")
+            >>> print(equities)
+            [
+                {'vaultAddress': '0x63c621a3...', 'equity': '4712.62'},
+                {'vaultAddress': '0xdfc24b07...', 'equity': '335790.34'}
+            ]
+            >>>
+            >>> # Calculate total vault value
+            >>> total = sum(float(e["equity"]) for e in equities)
+            >>> print(f"Total in vaults: ${total:,.2f}")
+            Total in vaults: $340,502.96
+        """
+        return self._make_request("userVaultEquities", {"user": address})
+
+    # Optional: Add backward compatibility alias
+    def get_vault_equities(self, address: str):
+        """
+        Get user's vault deposits (legacy name)
+
+        Use get_user_vault_equities() instead for clarity.
+        """
+        return self.get_user_vault_equities(address)
 
     # =============================================================================
     # Market Data
@@ -1266,50 +1360,3 @@ class HyperliquidClient:
         return self.get_user_fills_by_time(address, start, now)
 
 
-# =============================================================================
-# Usage Example
-# =============================================================================
-
-if __name__ == "__main__":
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-
-    # Initialize client
-    client = HyperliquidClient()
-
-    # Example address
-    test_address = "0x0606f126f03ee5f51f168fbe9be39ea5370a9bee"
-
-    print("\n" + "=" * 70)
-    print("Testing Hyperliquid Client")
-    print("=" * 70)
-
-    # Get trader profile
-    print(f"\nFetching profile for {test_address}...")
-    profile = client.get_trader_profile(test_address)
-
-    print("\n📊 Trader Profile:")
-    for key, value in profile.get("metrics", {}).items():
-        print(f"  {key}: {value}")
-
-    # Get recent fills
-    print("\n📈 Recent Fills:")
-    fills = client.get_user_fills(test_address)
-    if fills:
-        print(f"  Found {len(fills)} fills")
-        if fills:
-            latest = fills[0]
-            print(f"  Latest: {latest.get('side')} {latest.get('sz')} @ {latest.get('px')}")
-    else:
-        print("  No fills found")
-
-    # Get TWAP fills
-    print("\n🎯 TWAP Fills:")
-    twap_fills = client.get_twap_slice_fills(test_address)
-    if twap_fills:
-        print(f"  Found {len(twap_fills)} TWAP fills")
-    else:
-        print("  No TWAP fills found")

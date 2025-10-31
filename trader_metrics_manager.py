@@ -178,7 +178,7 @@ class TraderMetricsManager:
     def fetch_light_metrics(self, address: str) -> Dict:
         """
         Fetch light metrics (fast, essential data)
-        UPDATED: Now includes spot balance and total portfolio value with proper token valuation
+        UPDATED: Now includes spot balance, vault holdings, and total portfolio value
 
         Args:
             address: Trader address
@@ -211,8 +211,9 @@ class TraderMetricsManager:
             margin_summary = state.get("marginSummary", {})
             perp_value = float(margin_summary.get("accountValue", 0))
 
+            # Get spot balance
             spot_value = 0
-            spot_balances_detail = []  # Track individual balances for debugging
+            spot_balances_detail = []
             try:
                 spot_state = self.hl_client.get_spot_clearinghouse_state(address)
                 if spot_state:
@@ -223,7 +224,7 @@ class TraderMetricsManager:
                         coin = balance.get("coin", "")
 
                         if total == 0:
-                            continue  # Skip zero balances
+                            continue
 
                         token_value = 0
 
@@ -238,18 +239,14 @@ class TraderMetricsManager:
                                 "price_source": "stablecoin_1:1"
                             })
                         else:
-                            # Use optimized get_token_price (checks all_mids first, then orderbook)
+                            # Use optimized get_token_price
                             price = self.hl_client.get_token_price(coin)
 
                             if price:
                                 token_value = total * price
                                 spot_value += token_value
 
-                                # Determine price source for logging
-                                if coin.startswith('U'):
-                                    price_source = "bridged_asset"
-                                else:
-                                    price_source = "all_mids"
+                                price_source = "bridged_asset" if coin.startswith('U') else "all_mids"
 
                                 spot_balances_detail.append({
                                     "coin": coin,
@@ -259,8 +256,7 @@ class TraderMetricsManager:
                                     "price_source": price_source
                                 })
                             else:
-                                # No price available
-                                if total > 0.01:  # Only log non-dust amounts
+                                if total > 0.01:
                                     logger.warning(
                                         f"⚠️  No price data for {coin} (amount: {total:.6f}) on {address[:10]}"
                                     )
@@ -271,7 +267,7 @@ class TraderMetricsManager:
                                     "price_source": "MISSING_PRICE"
                                 })
 
-                    # Log spot balance breakdown for accounts with significant balances
+                    # Log spot balance breakdown for significant balances
                     if spot_value > 1000:
                         logger.debug(f"💰 Spot breakdown for {address[:10]}: Total=${spot_value:,.2f}")
                         for bal in spot_balances_detail:
@@ -285,14 +281,46 @@ class TraderMetricsManager:
                 spot_value = 0
                 spot_balances_detail = []
 
-            # Calculate total portfolio value
-            total_portfolio = perp_value + spot_value
+            # Get vault holdings - NEW
+            vault_value = 0
+            vault_details = []
+            try:
+                vault_equities = self.hl_client.get_user_vault_equities(address)
+
+                if vault_equities:
+                    for vault_eq in vault_equities:
+                        vault_addr = vault_eq["vaultAddress"]
+                        equity = float(vault_eq["equity"])
+
+                        vault_value += equity
+                        vault_details.append({
+                            "vault_address": vault_addr,
+                            "equity": equity
+                        })
+
+                    # Log vault holdings for significant amounts
+                    if vault_value > 1000:
+                        logger.debug(f"🏦 Vault holdings for {address[:10]}: Total=${vault_value:,.2f}")
+                        for vault in vault_details:
+                            logger.debug(
+                                f"   {vault['vault_address'][:10]}...: ${vault['equity']:,.2f}"
+                            )
+
+            except Exception as e:
+                logger.warning(f"Failed to get vaults for {address[:10]}: {e}")
+                vault_value = 0
+                vault_details = []
+
+            # Calculate total portfolio value (perps + spot + vaults) - UPDATED
+            total_portfolio = perp_value + spot_value + vault_value
 
             metrics["data"]["account"] = {
                 "value": perp_value,
-                "spot_value": spot_value,  # NEW
-                "spot_balances_detail": spot_balances_detail,  # NEW - for debugging
-                "total_portfolio_value": total_portfolio,  # NEW
+                "spot_value": spot_value,
+                "spot_balances_detail": spot_balances_detail,
+                "vault_value": vault_value,  # NEW
+                "vault_details": vault_details,  # NEW
+                "total_portfolio_value": total_portfolio,  # UPDATED
                 "position_value": float(margin_summary.get("totalNtlPos", 0)),
                 "margin_used": float(margin_summary.get("totalMarginUsed", 0)),
                 "withdrawable": float(state.get("withdrawable", 0))
