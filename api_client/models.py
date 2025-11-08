@@ -46,6 +46,7 @@ class TWAPOrder:
     product_type: str
     status: str
     duration_minutes: int
+    order_hash: str = ""
 
     # Calculated/optional fields
     elapsed_minutes: Optional[int] = None
@@ -106,6 +107,7 @@ class TWAPOrder:
             product_type=product_type,
             status=status,
             duration_minutes=twap_info.get('m', 0),
+            order_hash=raw_order.get('order_hash', raw_order.get('hash', '')),
             timestamp=datetime.now(),
             raw_data=raw_order
         )
@@ -337,7 +339,7 @@ class TWAPSnapshot:
 
         def order_key(order):
             """Create unique key: (address, size, duration) tuple"""
-            return order.full_address, order.size, order.duration_minutes
+            return order.order_hash
 
         current_order_keys = {order_key(o): o for o in self.orders}
         previous_order_keys = {order_key(o): o for o in previous.orders}

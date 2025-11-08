@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-Hyperliquid API Client
+Hyperliquid API Client - REFACTORED WITH PROPER LOGGING LEVELS
 Provides access to Hyperliquid Info endpoint for trader data
+
+LOGGING STRATEGY:
+- DEBUG: Individual price lookups, cache hits, strategy attempts, API calls
+- INFO: Important initializations, summaries, cache refreshes
+- WARNING: Illiquid tokens, fallback attempts, degraded functionality
+- ERROR: Complete failures, API errors
 """
 import logging
 import requests
@@ -44,7 +50,6 @@ class HyperliquidClient:
     def _make_request(self, request_type: str, params: Dict[str, Any], retry_count: int = 2) -> Optional[Any]:
         """
         Make a request to the Hyperliquid info endpoint
-        IMPROVED: Better logging and error details
 
         Args:
             request_type: The type of info request
@@ -67,14 +72,13 @@ class HyperliquidClient:
                     timeout=self.timeout
                 )
 
-                # Log response status
                 logger.debug(f"   Response status: {response.status_code}")
 
                 response.raise_for_status()
 
                 result = response.json()
 
-                # 🔍 IMPROVED: Log response details for critical endpoints
+                # Log response details for critical endpoints
                 if request_type == "allMids" and logger.isEnabledFor(logging.DEBUG):
                     if isinstance(result, dict):
                         logger.debug(f"   allMids response: {len(result)} entries")
@@ -165,6 +169,7 @@ class HyperliquidClient:
             # Cache for 1 hour
             age = (datetime.now() - self._spot_meta_cache_time).total_seconds()
             if age < 3600:
+                logger.debug(f"📦 Using cached spot token map (age: {age:.1f}s)")
                 return self._spot_token_map
 
         # Fetch fresh metadata
@@ -185,6 +190,7 @@ class HyperliquidClient:
             self._spot_token_map = token_map
             self._spot_meta_cache_time = datetime.now()
 
+            # INFO level for important cache refresh
             logger.info(f"Loaded spot token map with {len(token_map)} tokens")
             logger.debug(f"Sample tokens: {list(token_map.items())[:5]}")
 
@@ -406,7 +412,7 @@ class HyperliquidClient:
         return self._make_request("subAccounts", {"user": address})
 
     # =============================================================================
-    # Vault Methods - UPDATED with comprehensive documentation
+    # Vault Methods
     # =============================================================================
 
     def get_vault_details(
@@ -414,122 +420,19 @@ class HyperliquidClient:
             vault_address: str,
             user: Optional[str] = None
     ) -> Optional[Dict]:
-        """
-        Get detailed information about a specific vault
-
-        Endpoint: POST https://api.hyperliquid.xyz/info
-        Request: {"type": "vaultDetails", "vaultAddress": "0x...", "user": "0x..." (optional)}
-
-        Response includes:
-        - name: Vault name
-        - vaultAddress: Vault address
-        - leader: Leader address
-        - description: Vault description
-        - portfolio: Performance history (day/week/month/allTime)
-        - apr: Annual percentage rate
-        - followers: List of followers with their equity and PnL
-        - leaderFraction: Leader's fraction of vault
-        - leaderCommission: Commission rate
-        - maxDistributable: Maximum amount that can be distributed
-        - maxWithdrawable: Maximum amount that can be withdrawn
-        - followerState: User-specific info if user param provided
-
-        Example response:
-        {
-            "name": "Test Vault",
-            "vaultAddress": "0xdfc...",
-            "leader": "0x677...",
-            "description": "Vault description",
-            "portfolio": [
-                ["day", {"accountValueHistory": [...], "pnlHistory": [...], "vlm": "0.0"}],
-                ["week", {...}],
-                ["month", {...}],
-                ["allTime", {...}]
-            ],
-            "apr": 0.36387,
-            "followers": [
-                {
-                    "user": "0x005...",
-                    "vaultEquity": "714491.71026243",
-                    "pnl": "3203.43026143",
-                    "allTimePnl": "79843.74476743",
-                    "daysFollowing": 388,
-                    "vaultEntryTime": 1700926145201,
-                    "lockupUntil": 1734824439201
-                }
-            ],
-            "leaderFraction": 0.000790,
-            "leaderCommission": 0,
-            "maxDistributable": 94856870.164485,
-            "maxWithdrawable": 742557.680863,
-            "followerState": {...}  # Only if user param provided
-        }
-
-        Args:
-            vault_address: Vault address in 42-character hexadecimal format
-            user: Optional user address to check follower state
-
-        Returns:
-            Dict with vault details or None on error
-
-        Example:
-            >>> # Get vault info without user context
-            >>> vault = client.get_vault_details("0xdfc...")
-            >>> print(f"Vault: {vault['name']}, APR: {vault['apr']*100:.2f}%")
-
-            >>> # Get vault info with user's follower state
-            >>> vault = client.get_vault_details("0xdfc...", user="0x1234...")
-            >>> if vault.get("followerState"):
-            >>>     equity = float(vault["followerState"]["vaultEquity"])
-            >>>     print(f"Your equity: ${equity:,.2f}")
-
-            >>> # Analyze vault followers
-            >>> vault = client.get_vault_details("0xdfc...")
-            >>> total_followers = len(vault["followers"])
-            >>> total_equity = sum(float(f["vaultEquity"]) for f in vault["followers"])
-            >>> print(f"{total_followers} followers, ${total_equity:,.2f} total")
-        """
+        """Get detailed information about a specific vault"""
         params = {"vaultAddress": vault_address}
         if user:
             params["user"] = user
         return self._make_request("vaultDetails", params)
 
     def get_user_vault_equities(self, address: str):
-        """
-        Get user's vault equity positions
-
-        Endpoint: POST https://api.hyperliquid.xyz/info
-        Request: {"type": "userVaultEquities", "user": "0x..."}
-
-        Returns:
-            List of dicts with vaultAddress and equity (USD value)
-            Example: [{"vaultAddress": "0xdfc...", "equity": "742500.08"}]
-            Empty list [] if user has no vault deposits
-            None on API error
-
-        Example:
-            >>> equities = client.get_user_vault_equities("0x677d831a...")
-            >>> print(equities)
-            [
-                {'vaultAddress': '0x63c621a3...', 'equity': '4712.62'},
-                {'vaultAddress': '0xdfc24b07...', 'equity': '335790.34'}
-            ]
-            >>>
-            >>> # Calculate total vault value
-            >>> total = sum(float(e["equity"]) for e in equities)
-            >>> print(f"Total in vaults: ${total:,.2f}")
-            Total in vaults: $340,502.96
-        """
+        """Get user's vault equity positions"""
         return self._make_request("userVaultEquities", {"user": address})
 
-    # Optional: Add backward compatibility alias
     def get_vault_equities(self, address: str):
-        """
-        Get user's vault deposits (legacy name)
-
-        Use get_user_vault_equities() instead for clarity.
-        """
-        return self.get_user_vault_equities(address)
+        """Get user's vault deposits (legacy name)"""
+        return self._get_user_vault_equities(address)
 
     # =============================================================================
     # Market Data
@@ -539,7 +442,6 @@ class HyperliquidClient:
         """
         Get mid prices for all assets (perps + spot)
 
-        IMPROVED: Added caching to reduce API load and improve performance
         Cache TTL is configurable (default 5 seconds)
 
         Args:
@@ -549,19 +451,6 @@ class HyperliquidClient:
             Dict of {coin: price} where:
             - Perp coins: "BTC", "ETH", "HYPE", "kBONK", etc.
             - Spot coins: "@1", "@150", "@223", etc. (@ + spot index)
-
-        Examples:
-            >>> client.get_all_mids()
-            {
-                "BTC": "107367.5",
-                "ETH": "3756.25",
-                "HYPE": "44.5495",
-                "kBONK": "0.00001234",
-                "FARTCOIN": "0.123456",
-                "@1": "31.2265",      # PURR spot
-                "@150": "44.506",     # HYPE spot
-                ...
-            }
         """
         # Check cache freshness
         if use_cache and self._all_mids_cache is not None and self._all_mids_cache_time is not None:
@@ -734,11 +623,6 @@ class HyperliquidClient:
         Priority waterfall:
         1. Stablecoins (1:1 USD)
         2. Bridged assets (U-prefix): 5 strategies
-           - Exact underlying perp match (UBTC -> BTC)
-           - k-prefix match (UBONK -> kBONK)
-           - Fuzzy perp match (UFART -> FARTCOIN)
-           - Spot index lookup (underlying spot market)
-           - Fuzzy spot match (rare edge cases)
         3. Direct perp lookup
         4. Direct spot lookup via index
         5. Orderbook fallback (slowest, last resort)
@@ -748,22 +632,6 @@ class HyperliquidClient:
 
         Returns:
             Price or None if not available (illiquid/delisted)
-
-        Examples:
-            >>> client.get_token_price("USDC")
-            1.0
-            >>> client.get_token_price("BTC")
-            107367.5
-            >>> client.get_token_price("UBTC")
-            107367.5  # Uses BTC perp price
-            >>> client.get_token_price("UBONK")
-            0.00001234  # Uses kBONK perp price
-            >>> client.get_token_price("UFART")
-            0.123456  # Uses FARTCOIN via fuzzy match
-            >>> client.get_token_price("LATINA")
-            0.021788  # Uses spot market
-            >>> client.get_token_price("LICKO")
-            None  # Illiquid, no price available
         """
         try:
             # =================================================================
@@ -800,13 +668,13 @@ class HyperliquidClient:
                 # -----------------------------------------------------------------
                 # STRATEGY 1: Exact underlying name in perps
                 # -----------------------------------------------------------------
-                # Works for: UBTC->BTC, UETH->ETH, USOL->SOL, UPUMP->PUMP
                 logger.debug(f"   Strategy 1: Exact perp match '{underlying}'")
 
                 if underlying in all_mids:
                     price = all_mids[underlying]
                     price_float = float(price)
-                    logger.info(f"💱 {token}: Strategy 1 SUCCESS - '{underlying}' perp = ${price_float:,.6f}")
+                    # DEBUG for individual price lookups
+                    logger.debug(f"💱 {token}: Strategy 1 SUCCESS - '{underlying}' perp = ${price_float:,.6f}")
                     return price_float
                 else:
                     logger.debug(f"   ❌ '{underlying}' not in perps")
@@ -814,14 +682,13 @@ class HyperliquidClient:
                 # -----------------------------------------------------------------
                 # STRATEGY 2: k-prefix variant (for scaled tokens)
                 # -----------------------------------------------------------------
-                # Works for: UBONK->kBONK, UPEPE->kPEPE
                 k_variant = f"k{underlying}"
                 logger.debug(f"   Strategy 2: k-prefix match '{k_variant}'")
 
                 if k_variant in all_mids:
                     price = all_mids[k_variant]
                     price_float = float(price)
-                    logger.info(f"💱 {token}: Strategy 2 SUCCESS - '{k_variant}' perp = ${price_float:,.6f}")
+                    logger.debug(f"💱 {token}: Strategy 2 SUCCESS - '{k_variant}' perp = ${price_float:,.6f}")
                     # Cache this mapping for future lookups
                     self._token_name_cache[underlying] = k_variant
                     return price_float
@@ -831,14 +698,13 @@ class HyperliquidClient:
                 # -----------------------------------------------------------------
                 # STRATEGY 3: Fuzzy match in perps (cached)
                 # -----------------------------------------------------------------
-                # Works for: UFART->FARTCOIN, and other naming mismatches
                 logger.debug(f"   Strategy 3: Fuzzy perp match for '{underlying}'")
 
                 fuzzy_match = self._find_similar_token_in_all_mids(underlying, all_mids)
                 if fuzzy_match and fuzzy_match not in [underlying, k_variant]:
                     price = all_mids[fuzzy_match]
                     price_float = float(price)
-                    logger.info(
+                    logger.debug(
                         f"💱 {token}: Strategy 3 SUCCESS - '{fuzzy_match}' via fuzzy = ${price_float:,.6f}"
                     )
                     return price_float
@@ -848,7 +714,6 @@ class HyperliquidClient:
                 # -----------------------------------------------------------------
                 # STRATEGY 4: Underlying spot market via index
                 # -----------------------------------------------------------------
-                # Works for: UBONK spot (BONK/USDC), even if perp is kBONK/USDC
                 logger.debug(f"   Strategy 4: Spot index lookup for '{underlying}'")
 
                 underlying_spot_index = self._get_spot_token_index(underlying)
@@ -860,7 +725,7 @@ class HyperliquidClient:
                     if spot_key in all_mids:
                         price = all_mids[spot_key]
                         price_float = float(price)
-                        logger.info(
+                        logger.debug(
                             f"💱 {token}: Strategy 4 SUCCESS - '{underlying}' spot = ${price_float:,.6f}"
                         )
                         return price_float
@@ -872,7 +737,6 @@ class HyperliquidClient:
                 # -----------------------------------------------------------------
                 # STRATEGY 5: Fuzzy match on spot token names
                 # -----------------------------------------------------------------
-                # Handles rare edge cases where spot has completely different name
                 logger.debug(f"   Strategy 5: Fuzzy spot name match for '{underlying}'")
 
                 spot_tokens = self._get_spot_token_map()
@@ -888,7 +752,7 @@ class HyperliquidClient:
                         if spot_key in all_mids:
                             price = all_mids[spot_key]
                             price_float = float(price)
-                            logger.info(
+                            logger.debug(
                                 f"💱 {token}: Strategy 5 SUCCESS - '{fuzzy_spot}' fuzzy spot = ${price_float:,.6f}"
                             )
                             return price_float
@@ -915,7 +779,8 @@ class HyperliquidClient:
             if token in all_mids:
                 price = all_mids[token]
                 price_float = float(price)
-                logger.info(f"📊 {token}: Found perp price = ${price_float:,.6f}")
+                # DEBUG for individual price lookups
+                logger.debug(f"📊 {token}: Found perp price = ${price_float:,.6f}")
                 return price_float
             else:
                 logger.debug(f"   ❌ '{token}' not in perps")
@@ -934,7 +799,8 @@ class HyperliquidClient:
                 if spot_key in all_mids:
                     price = all_mids[spot_key]
                     price_float = float(price)
-                    logger.info(f"📈 {token}: Found spot price = ${price_float:,.6f}")
+                    # DEBUG for individual price lookups
+                    logger.debug(f"📈 {token}: Found spot price = ${price_float:,.6f}")
                     return price_float
                 else:
                     logger.warning(
@@ -954,7 +820,8 @@ class HyperliquidClient:
             orderbook_price = self.get_spot_price_from_orderbook(token)
 
             if orderbook_price:
-                logger.info(f"📖 {token}: Got price from orderbook = ${orderbook_price:,.6f}")
+                # INFO level when fallback succeeds (unusual but important)
+                logger.info(f"📖 {token}: Got price from orderbook fallback = ${orderbook_price:,.6f}")
                 return orderbook_price
 
             # -----------------------------------------------------------------
@@ -980,27 +847,6 @@ class HyperliquidClient:
         """
         Find a similar token name in all_mids (perp markets only)
         Uses intelligent caching to avoid repeated lookups
-
-        Matching priority:
-        1. Check cache first
-        2. Exact match
-        3. Case-insensitive exact match
-        4. Suffix match (e.g., FART matches FARTCOIN)
-        5. Prefix match (e.g., DOGE matches DOGEFI)
-        6. Shortest match (most likely correct)
-
-        Args:
-            token: Token to search for (e.g., "FART", "BONK")
-            all_mids: The all_mids dict
-
-        Returns:
-            Best matched token name or None
-
-        Examples:
-            >>> _find_similar_token_in_all_mids("FART", {"FARTCOIN": "0.123"})
-            "FARTCOIN"
-            >>> _find_similar_token_in_all_mids("BTC", {"BTC": "100000"})
-            "BTC"
         """
         # Check cache first
         if token in self._token_name_cache:
@@ -1049,7 +895,6 @@ class HyperliquidClient:
                 return match
 
         # Priority 2: Token that ends with our search term
-        # e.g., FART matches FARTCOIN (most common pattern)
         suffix_matches = [m for m in matches if m.upper().endswith(token_upper)]
         if suffix_matches:
             match = suffix_matches[0]
@@ -1058,7 +903,6 @@ class HyperliquidClient:
             return match
 
         # Priority 3: Token that starts with our search term
-        # e.g., DOGE matches DOGEFI
         prefix_matches = [m for m in matches if m.upper().startswith(token_upper)]
         if prefix_matches:
             match = prefix_matches[0]
@@ -1080,19 +924,7 @@ class HyperliquidClient:
             token: str,
             token_names: List[str]
     ) -> Optional[str]:
-        """
-        Find similar token name in a list (for spot token names)
-
-        Same priority as _find_similar_token_in_all_mids but without caching
-        (spot names are less likely to need fuzzy matching)
-
-        Args:
-            token: Token to search for
-            token_names: List of token names to search in
-
-        Returns:
-            Best matched token name or None
-        """
+        """Find similar token name in a list (for spot token names)"""
         token_upper = token.upper()
 
         # Exact match
@@ -1126,17 +958,8 @@ class HyperliquidClient:
         # Priority 4: Shortest match
         return min(matches, key=len)
 
-
     def _get_spot_token_index(self, token: str) -> Optional[int]:
-        """
-        Get spot token index from cached metadata
-
-        Args:
-            token: Token name
-
-        Returns:
-            Token index or None
-        """
+        """Get spot token index from cached metadata"""
         token_map = self._get_spot_token_map()
         return token_map.get(token)
 
@@ -1144,12 +967,6 @@ class HyperliquidClient:
         """
         Get spot price from L2 orderbook (fallback method)
         This is slower - only use when all_mids doesn't have the price
-
-        Args:
-            token: Token name
-
-        Returns:
-            Mid price from orderbook or None
         """
         try:
             # Get token index
@@ -1200,15 +1017,7 @@ class HyperliquidClient:
     # =============================================================================
 
     def get_trader_profile(self, address: str) -> Dict:
-        """
-        Get comprehensive trader profile (UPDATED: includes spot balances)
-
-        Args:
-            address: User address in 0x format
-
-        Returns:
-            Dict with all key metrics combined including spot balance
-        """
+        """Get comprehensive trader profile (includes spot balances)"""
         profile = {
             "address": address,
             "timestamp": datetime.now().isoformat(),
@@ -1235,7 +1044,7 @@ class HyperliquidClient:
                 if p.get("position", {}).get("szi") != "0"
             ])
 
-        # Spot balances (replace existing spot section)
+        # Spot balances
         spot_state = self.get_spot_clearinghouse_state(address)
         spot_value = 0
 
@@ -1301,22 +1110,14 @@ class HyperliquidClient:
         return profile
 
     def clear_price_cache(self):
-        """
-        Clear all price-related caches
-        Call this when you want to force fresh data
-        """
+        """Clear all price-related caches"""
         self._all_mids_cache = None
         self._all_mids_cache_time = None
         self._token_name_cache = {}
         logger.info("🗑️  Cleared all price caches")
 
     def get_cache_stats(self) -> Dict:
-        """
-        Get cache statistics for monitoring
-
-        Returns:
-            Dict with cache info
-        """
+        """Get cache statistics for monitoring"""
         stats = {
             "all_mids_cached": self._all_mids_cache is not None,
             "all_mids_age_seconds": None,
@@ -1332,31 +1133,13 @@ class HyperliquidClient:
         return stats
 
     def get_recent_24h_fills(self, address: str) -> Optional[List[Dict]]:
-        """
-        Convenience method to get fills from last 24 hours
-
-        Args:
-            address: User address
-
-        Returns:
-            List of fills from last 24h
-        """
+        """Get fills from last 24 hours"""
         now = int(datetime.now().timestamp() * 1000)
         start = now - (24 * 60 * 60 * 1000)
         return self.get_user_fills_by_time(address, start, now)
 
     def get_recent_7d_fills(self, address: str) -> Optional[List[Dict]]:
-        """
-        Convenience method to get fills from last 7 days
-
-        Args:
-            address: User address
-
-        Returns:
-            List of fills from last 7 days
-        """
+        """Get fills from last 7 days"""
         now = int(datetime.now().timestamp() * 1000)
         start = now - (7 * 24 * 60 * 60 * 1000)
         return self.get_user_fills_by_time(address, start, now)
-
-

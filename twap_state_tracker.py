@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-TWAP State Tracker
+TWAP State Tracker - REFACTORED WITH PROPER LOGGING LEVELS
 Tracks TWAP order states and changes
+
+LOGGING STRATEGY:
+- DEBUG: Individual order tracking, address discoveries, file operations
+- INFO: Snapshot summaries, significant state changes, new/completed orders
+- WARNING: Canceled orders, status changes (unusual events)
+- ERROR: File operation failures, data errors
 """
 import logging
 import json
@@ -57,12 +63,12 @@ class TWAPStateTracker:
                 logger.error(f"Error loading address history: {e}")
                 logger.exception(e)
         else:
-            logger.info("No existing address history file found, will create new one")
+            logger.debug("No existing address history file found, will create new one")
 
     def _save_address_history(self):
         """Save address history to file as dictionary"""
         try:
-            logger.debug(f"Attempting to save {len(self.all_addresses_seen)} addresses")
+            logger.debug(f"Saving {len(self.all_addresses_seen)} addresses to history")
 
             # Create dictionary with addresses as keys and empty dicts as values
             addresses_dict = {address: {} for address in sorted(self.all_addresses_seen)}
@@ -74,7 +80,7 @@ class TWAPStateTracker:
             # Verify file was written
             if self.address_history_file.exists():
                 file_size = self.address_history_file.stat().st_size
-                logger.debug(f"Address history saved successfully: {file_size} bytes")
+                logger.debug(f"Address history saved: {file_size} bytes")
             else:
                 logger.error("File was not created after write attempt!")
 
@@ -93,6 +99,13 @@ class TWAPStateTracker:
             self.update_count
         )
 
+        # DEBUG: Individual order tracking (verbose, routine)
+        for order in new_snapshot.orders:
+            logger.debug(
+                f"Order tracking: {order.display_address} - "
+                f"Hash: {order.order_hash[:16]}... - Size: {order.size}"
+            )
+
         # Update history
         self.previous_snapshot = self.current_snapshot
         self.current_snapshot = new_snapshot
@@ -101,15 +114,18 @@ class TWAPStateTracker:
         addresses_before = len(self.all_addresses_seen)
         self.all_addresses_seen.update(new_snapshot.unique_addresses)
 
-        # Log if new addresses discovered
+        # DEBUG: Log if new addresses discovered (frequent during early runtime)
         if len(self.all_addresses_seen) > addresses_before:
             new_count = len(self.all_addresses_seen) - addresses_before
-            logger.info(f"Discovered {new_count} new address(es). Total: {len(self.all_addresses_seen)}")
+            logger.debug(
+                f"Discovered {new_count} new address(es). "
+                f"Total: {len(self.all_addresses_seen)}"
+            )
 
         # Always save address history
         self._save_address_history()
 
-        # Log summary
+        # INFO: Log snapshot summary (important state overview)
         self._log_snapshot_summary()
 
         # Detect changes
@@ -128,10 +144,11 @@ class TWAPStateTracker:
             self._save_to_json(new_snapshot, changes)
 
     def _log_snapshot_summary(self):
-        """Log snapshot with order details"""
+        """Log snapshot with order details - INFO level for important overview"""
         snapshot = self.current_snapshot
         stats = snapshot.get_stats()
 
+        # INFO: High-level summary
         logger.info(f"[{self.symbol}] UPDATE #{self.update_count}")
         logger.info(
             f"Orders: {stats['active_orders']} active, {stats['total_orders']} total | "
@@ -147,6 +164,7 @@ class TWAPStateTracker:
         active_count = sum(1 for o in sorted_orders if o.is_active)
 
         if active_count > 0:
+            # INFO: Active orders list (important for monitoring)
             logger.info(f"Active orders ({active_count}):")
             for order in sorted_orders:
                 if not order.is_active:
@@ -165,9 +183,9 @@ class TWAPStateTracker:
         """Detect and log changes between snapshots"""
         changes = self.current_snapshot.compare_with(self.previous_snapshot)
 
-        # Log new orders with details
+        # INFO: New orders (important event)
         if changes['new_orders']:
-            logger.info(f"New orders: {len(changes['new_orders'])}")
+            logger.info(f"🆕 New orders detected: {len(changes['new_orders'])}")
             for order in changes['new_orders']:
                 addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
                 logger.info(
@@ -185,9 +203,9 @@ class TWAPStateTracker:
             else:
                 completed_orders.append(order)
 
-        # Log completed orders (finished successfully)
+        # INFO: Completed orders (important event - finished successfully)
         if completed_orders:
-            logger.info(f"Completed orders: {len(completed_orders)}")
+            logger.info(f"✅ Completed orders: {len(completed_orders)}")
             for order in completed_orders:
                 addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
                 logger.info(
@@ -195,9 +213,9 @@ class TWAPStateTracker:
                     f"{order.duration_hours:.1f}h (status: {order.status})"
                 )
 
-        # Log canceled orders
+        # WARNING: Canceled orders (unusual, potentially important)
         if canceled_orders:
-            logger.warning(f"Canceled orders: {len(canceled_orders)}")
+            logger.warning(f"❌ Canceled orders: {len(canceled_orders)}")
             for order in canceled_orders:
                 addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
                 logger.warning(
@@ -205,9 +223,9 @@ class TWAPStateTracker:
                     f"{order.duration_hours:.1f}h"
                 )
 
-        # Log status changes with details
+        # WARNING: Status changes (unusual, potentially important)
         if changes['status_changes']:
-            logger.warning(f"Status changes: {len(changes['status_changes'])}")
+            logger.warning(f"🔄 Status changes detected: {len(changes['status_changes'])}")
             for change in changes['status_changes']:
                 addr = f"{change['address'][:6]}...{change['address'][-4:]}"
                 logger.warning(
@@ -256,6 +274,7 @@ class TWAPStateTracker:
 
         # Pass simple dicts to json logger
         self.json_logger.log_data(json_data)
+        logger.debug(f"Saved snapshot #{snapshot.update_number} to JSON")
 
     def get_current_stats(self) -> Dict:
         """Get current statistics"""

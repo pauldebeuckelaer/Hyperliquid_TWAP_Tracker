@@ -49,6 +49,8 @@ class TraderMetricsManager:
         self.addresses_seen: Set[str] = set()
         self.last_save_time = datetime.now()
 
+        self.dust_threshold = self.config.get('dust_threshold', 5.0)
+
         logger.info(
             f"TraderMetricsManager initialized: "
             f"light={self.light_interval_hours}h, deep={self.deep_interval_hours}h"
@@ -214,6 +216,8 @@ class TraderMetricsManager:
             # Get spot balance
             spot_value = 0
             spot_balances_detail = []
+            dust_value = 0
+            dust_count = 0
             try:
                 spot_state = self.hl_client.get_spot_clearinghouse_state(address)
                 if spot_state:
@@ -231,30 +235,36 @@ class TraderMetricsManager:
                         # Stablecoins are 1:1 USD
                         if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0"]:
                             token_value = total
-                            spot_value += total
-                            spot_balances_detail.append({
-                                "coin": coin,
-                                "amount": total,
-                                "value": token_value,
-                                "price_source": "stablecoin_1:1"
-                            })
+                            if token_value > self.dust_threshold:
+                                spot_value += total
+                                spot_balances_detail.append({
+                                    "coin": coin,
+                                    "amount": total,
+                                    "value": token_value,
+                                    "price_source": "stablecoin_1:1"
+                                })
+                            else:
+                                dust_value += token_value
+                                dust_count += 1
                         else:
                             # Use optimized get_token_price
                             price = self.hl_client.get_token_price(coin)
 
                             if price:
                                 token_value = total * price
-                                spot_value += token_value
-
-                                price_source = "bridged_asset" if coin.startswith('U') else "all_mids"
-
-                                spot_balances_detail.append({
-                                    "coin": coin,
-                                    "amount": total,
-                                    "value": token_value,
-                                    "price": price,
-                                    "price_source": price_source
-                                })
+                                if token_value > self.dust_threshold:
+                                    spot_value += token_value
+                                    price_source = "bridged_asset" if coin.startswith('U') else "all_mids"
+                                    spot_balances_detail.append({
+                                        "coin": coin,
+                                        "amount": total,
+                                        "value": token_value,
+                                        "price": price,
+                                        "price_source": price_source
+                                    })
+                                else:
+                                    dust_value += token_value
+                                    dust_count += 1
                             else:
                                 if total > 0.01:
                                     logger.warning(
@@ -318,6 +328,8 @@ class TraderMetricsManager:
                 "value": perp_value,
                 "spot_value": spot_value,
                 "spot_balances_detail": spot_balances_detail,
+                "dust_value": dust_value,  # ADD THIS - optional tracking
+                "dust_count": dust_count,
                 "vault_value": vault_value,  # NEW
                 "vault_details": vault_details,  # NEW
                 "total_portfolio_value": total_portfolio,  # UPDATED

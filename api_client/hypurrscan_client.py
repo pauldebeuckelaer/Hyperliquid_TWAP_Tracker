@@ -121,6 +121,14 @@ class HypurrScanClient:
             if result and isinstance(result, list):
                 logger.info(f"Processing {len(result)} {symbol} TWAP orders...")
 
+                # ADD THIS NEW DEBUG BLOCK HERE:
+                if len(result) > 0:
+                    logger.debug("=" * 60)
+                    logger.debug("RAW FIRST ORDER FROM API:")
+                    import json
+                    logger.debug(json.dumps(result[0], indent=2))
+                    logger.debug("=" * 60)
+
                 # DEBUG: Log all orders from API
                 logger.debug("=" * 60)
                 logger.debug("DEBUG: ALL ORDERS FROM API:")
@@ -181,15 +189,23 @@ class HypurrScanClient:
                 enriched_order['size'] = twap_info.get('s', 0)
                 enriched_order['duration_ms'] = twap_info.get('m', 0)
                 enriched_order['product_type'] = product_type
+                enriched_order['order_hash'] = order.get('hash', '')  # ← ADD THIS LINE
 
-                # Status detection
                 ended_value = order.get('ended')
+                error_field = order.get('error')
+
                 if ended_value == 'canceled':
                     enriched_order['status'] = 'canceled'
-                elif ended_value is not None and ended_value != 'N/A':
-                    enriched_order['status'] = 'completed'
-                else:
+                elif ended_value == 'error' or error_field:
+                    enriched_order['status'] = 'error'
+                elif ended_value is None and not error_field:
                     enriched_order['status'] = 'active'
+                elif ended_value:  # Has an 'ended' value that's not canceled/error
+                    # This is likely a completion - log it for investigation
+                    enriched_order['status'] = 'completed'  # Normalize to 'completed'
+                    logger.debug(f"🎯 COMPLETED ORDER DETECTED - ended field: {ended_value}")
+                else:
+                    enriched_order['status'] = str(ended_value) if ended_value else 'unknown'
 
                 enriched.append(enriched_order)
 
