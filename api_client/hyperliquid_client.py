@@ -11,7 +11,7 @@ LOGGING STRATEGY:
 """
 import logging
 import requests
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -700,16 +700,20 @@ class HyperliquidClient:
                 # -----------------------------------------------------------------
                 logger.debug(f"   Strategy 3: Fuzzy perp match for '{underlying}'")
 
-                fuzzy_match = self._find_similar_token_in_all_mids(underlying, all_mids)
-                if fuzzy_match and fuzzy_match not in [underlying, k_variant]:
-                    price = all_mids[fuzzy_match]
-                    price_float = float(price)
-                    logger.debug(
-                        f"💱 {token}: Strategy 3 SUCCESS - '{fuzzy_match}' via fuzzy = ${price_float:,.6f}"
-                    )
-                    return price_float
+                # ADD THIS CHECK:
+                if len(underlying) < 3:
+                    logger.debug(f"   ⚠️  Skipping fuzzy perp match - '{underlying}' too short (min 3 chars)")
                 else:
-                    logger.debug(f"   ❌ No fuzzy perp match found")
+                    fuzzy_match = self._find_similar_token_in_all_mids(underlying, all_mids)
+                    if fuzzy_match and fuzzy_match not in [underlying, k_variant]:
+                        price = all_mids[fuzzy_match]
+                        price_float = float(price)
+                        logger.debug(
+                            f"💱 {token}: Strategy 3 SUCCESS - '{fuzzy_match}' via fuzzy = ${price_float:,.6f}"
+                        )
+                        return price_float
+                    else:
+                        logger.debug(f"   ❌ No fuzzy perp match found")
 
                 # -----------------------------------------------------------------
                 # STRATEGY 4: Underlying spot market via index
@@ -762,7 +766,7 @@ class HyperliquidClient:
                     logger.debug(f"   ❌ No fuzzy spot match found")
 
                 # All bridged asset strategies failed
-                logger.warning(
+                logger.debug(
                     f"⚠️  {token}: All 5 strategies FAILED for underlying '{underlying}' "
                     f"(tried: exact perp, k-prefix, fuzzy perp, spot index, fuzzy spot)"
                 )
@@ -803,7 +807,7 @@ class HyperliquidClient:
                     logger.debug(f"📈 {token}: Found spot price = ${price_float:,.6f}")
                     return price_float
                 else:
-                    logger.warning(
+                    logger.debug(
                         f"⚠️  {token}: Has spot index {token_index} but '@{token_index}' "
                         f"not in all_mids (likely illiquid - no recent trades)"
                     )
@@ -813,7 +817,7 @@ class HyperliquidClient:
             # -----------------------------------------------------------------
             # STEP 3: Orderbook fallback (slow, last resort)
             # -----------------------------------------------------------------
-            logger.warning(
+            logger.debug(
                 f"⚠️  {token}: Not found in all_mids anywhere, trying orderbook fallback..."
             )
 
@@ -827,14 +831,14 @@ class HyperliquidClient:
             # -----------------------------------------------------------------
             # Complete failure - token is illiquid or delisted
             # -----------------------------------------------------------------
-            logger.error(
+            logger.debug(
                 f"❌ {token}: NO PRICE AVAILABLE - all strategies exhausted "
                 f"(likely illiquid or delisted)"
             )
             return None
 
         except Exception as e:
-            logger.error(f"❌ {token}: Unexpected error in get_token_price: {e}")
+            logger.debug(f"❌ {token}: Unexpected error in get_token_price: {e}")
             import traceback
             logger.debug(traceback.format_exc())
             return None
@@ -1016,8 +1020,17 @@ class HyperliquidClient:
     # Convenience Methods
     # =============================================================================
 
-    def get_trader_profile(self, address: str) -> Dict:
-        """Get comprehensive trader profile (includes spot balances)"""
+    def get_trader_profile(self, address: str, whitelisted_tokens: Optional[Set[str]] = None) -> Dict:
+        """
+        Get comprehensive trader profile (includes spot balances with filtering)
+
+        Args:
+            address: Trader address
+            whitelisted_tokens: Set of sub-$1 tokens to allow (uses default if None)
+        """
+        if whitelisted_tokens is None:
+            whitelisted_tokens = {"PUMP", "kBONK", "BONK", "PEPE", "SHIB", "FLOKI", "WIF"}
+
         profile = {
             "address": address,
             "timestamp": datetime.now().isoformat(),
@@ -1044,7 +1057,7 @@ class HyperliquidClient:
                 if p.get("position", {}).get("szi") != "0"
             ])
 
-        # Spot balances
+        # Spot balances - WITH FILTERING
         spot_state = self.get_spot_clearinghouse_state(address)
         spot_value = 0
 
@@ -1056,11 +1069,28 @@ class HyperliquidClient:
                 if total <= 0:
                     continue
 
-                if coin in ["USDC", "USDT"]:
+                # Stablecoins
+                if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0"]:
                     spot_value += total
                 else:
-                    price = self.get_spot_price(coin)
+                    price = self.get_token_price(coin)
+
                     if price:
+                        # FILTER 1: Exact $1.00 for non-stablecoins (stale data)
+                        if price == 1.0:
+                            logger.debug(f"🚫 {coin}: Filtered out - exact $1.00 default price (amount: {total:.2f})")
+                            continue
+
+                        # FILTER 2: Sub-$1 tokens must be whitelisted
+                        if price < 1.0 and coin not in whitelisted_tokens:
+                            token_value = total * price  # Calculate BEFORE logging
+                            logger.debug(
+                                f"🚫 {coin}: Filtered out - sub-$1 token not whitelisted "
+                                f"(price: ${price:.6f}, amount: {total:.2f}, value: ${token_value:.2f})"
+                            )
+                            continue
+
+                        # Price passed filters, add to spot value
                         spot_value += total * price
 
         profile["metrics"]["spot_value"] = spot_value

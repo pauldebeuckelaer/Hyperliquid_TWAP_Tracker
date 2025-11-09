@@ -322,7 +322,7 @@ def save_results(results, output_file):
 
 if __name__ == "__main__":
     # Configuration
-    TARGET_ADDRESS = "0x2057d4f2b6ea957b63371980775b0a5505a438f0"
+    TARGET_ADDRESS = "0x16ef82c790ab0c14ea19b58a6c5d0880237e622f"
     DATA_FOLDER = "json_logs"
     FILE_PATTERN = f"{DATA_FOLDER}/HYPE_*.jsonl"
     OUTPUT_FILE = f"address_{TARGET_ADDRESS[-8:]}_activity.json"

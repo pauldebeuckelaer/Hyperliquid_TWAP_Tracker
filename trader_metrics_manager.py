@@ -233,7 +233,7 @@ class TraderMetricsManager:
                         token_value = 0
 
                         # Stablecoins are 1:1 USD
-                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0"]:
+                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE"]:
                             token_value = total
                             if token_value > self.dust_threshold:
                                 spot_value += total
@@ -251,7 +251,27 @@ class TraderMetricsManager:
                             price = self.hl_client.get_token_price(coin)
 
                             if price:
+                                # FILTER 1: Exact $1.00 for non-stablecoins (stale data)
+                                if price == 1.0:
+                                    logger.debug(
+                                        f"🚫 {coin}: Filtered out - exact $1.00 default price (amount: {total:.2f})")
+                                    dust_count += 1
+                                    continue
+
+                                # FILTER 2: Sub-$1 tokens must be whitelisted
+                                whitelisted_tokens = {"UFART","PURR","UPUMP","UXPL","PUMP", "kBONK", "BONK", "PEPE", "SHIB", "FLOKI", "WIF"}
+                                if price < 1.0 and coin not in whitelisted_tokens:
+                                    token_value = total * price
+                                    logger.debug(
+                                        f"🚫 {coin}: Filtered out - sub-$1 token not whitelisted "
+                                        f"(price: ${price:.6f}, amount: {total:.2f}, value: ${token_value:.2f})"
+                                    )
+                                    dust_count += 1
+                                    continue
+
+                                # Price passed filters, calculate value
                                 token_value = total * price
+
                                 if token_value > self.dust_threshold:
                                     spot_value += token_value
                                     price_source = "bridged_asset" if coin.startswith('U') else "all_mids"
@@ -262,20 +282,18 @@ class TraderMetricsManager:
                                         "price": price,
                                         "price_source": price_source
                                     })
+                                    logger.info(f"✅ {coin}: Included - ${token_value:.2f} (price: ${price:.6f})")
                                 else:
                                     dust_value += token_value
                                     dust_count += 1
+                                    logger.debug(f"💨 {coin}: Dust - ${token_value:.2f} < ${self.dust_threshold}")
                             else:
                                 if total > 0.01:
-                                    logger.warning(
-                                        f"⚠️  No price data for {coin} (amount: {total:.6f}) on {address[:10]}"
+                                    logger.debug(
+                                        f"🚫 {coin}: Filtered out - no price available (amount: {total:.6f}) - "
+                                        f"likely illiquid/delisted on {address[:10]}"
                                     )
-                                spot_balances_detail.append({
-                                    "coin": coin,
-                                    "amount": total,
-                                    "value": 0,
-                                    "price_source": "MISSING_PRICE"
-                                })
+                                dust_count += 1
 
                     # Log spot balance breakdown for significant balances
                     if spot_value > 1000:
