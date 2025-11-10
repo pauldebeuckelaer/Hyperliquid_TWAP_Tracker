@@ -3,6 +3,7 @@
 Trader Metrics Manager
 Manages collection and storage of trader metrics with two-tier system
 UPDATED: Now tracks spot balances and total portfolio value
+UPDATED: Enhanced filtering with blacklist and price sanity checks
 """
 import logging
 import json
@@ -51,10 +52,31 @@ class TraderMetricsManager:
 
         self.dust_threshold = self.config.get('dust_threshold', 5.0)
 
+        # FILTERING CONFIGURATION
+        # Blacklist for known problematic tokens (add more as you discover them)
+        self.blacklisted_tokens = self.config.get('blacklisted_tokens', {
+            "NIGGO",
+            "LIQD",
+            "FUND",
+            # Add more tokens here as needed
+        })
+
+        # Whitelist for trusted sub-$1 tokens
+        self.whitelisted_sub_dollar_tokens = self.config.get('whitelisted_sub_dollar_tokens', {
+            "UFART", "PURR", "UPUMP", "UXPL", "PUMP",
+            "kBONK", "BONK", "PEPE", "SHIB", "FLOKI", "WIF", "UBTC"
+        })
+
+        # Price thresholds
+        self.max_reasonable_price = self.config.get('max_reasonable_price', 50000)  # $50k
+        self.suspicious_dollar_range = self.config.get('suspicious_dollar_range', (0.995, 1.005))
+
         logger.info(
             f"TraderMetricsManager initialized: "
             f"light={self.light_interval_hours}h, deep={self.deep_interval_hours}h"
         )
+        logger.info(f"Filtering: {len(self.blacklisted_tokens)} blacklisted, "
+                    f"{len(self.whitelisted_sub_dollar_tokens)} whitelisted sub-$1 tokens")
 
     def _load_metrics(self) -> Dict:
         """Load existing metrics from file"""
@@ -177,10 +199,49 @@ class TraderMetricsManager:
             return self.update_queue.popleft()
         return None
 
+    def _should_include_token(self, coin: str, price: float, amount: float) -> tuple[bool, str]:
+        """
+        Determine if a token should be included based on filtering rules
+
+        Args:
+            coin: Token name
+            price: Token price in USD
+            amount: Token amount held
+
+        Returns:
+            (should_include, reason) tuple
+        """
+        token_value = amount * price
+
+        # FILTER 0: Blacklist check (highest priority)
+        if coin in self.blacklisted_tokens:
+            return False, f"blacklisted"
+
+        # FILTER 1: Price suspiciously close to $1.00 (stale data indicator)
+        min_dollar, max_dollar = self.suspicious_dollar_range
+        if min_dollar <= price <= max_dollar:
+            return False, f"suspicious $1.00 price ({price:.6f})"
+
+        # FILTER 2: Absurdly high prices (likely illiquid/manipulated)
+        if price > self.max_reasonable_price:
+            return False, f"suspicious high price ${price:,.2f} (>${self.max_reasonable_price:,.0f})"
+
+        # FILTER 3: Sub-$1 tokens must be whitelisted
+        if price < 1.0 and coin not in self.whitelisted_sub_dollar_tokens:
+            return False, f"sub-$1 not whitelisted (${price:.6f})"
+
+        # FILTER 4: Dust threshold
+        if token_value <= self.dust_threshold:
+            return False, f"dust (${token_value:.2f} < ${self.dust_threshold})"
+
+        # All filters passed!
+        return True, "passed all filters"
+
     def fetch_light_metrics(self, address: str) -> Dict:
         """
         Fetch light metrics (fast, essential data)
         UPDATED: Now includes spot balance, vault holdings, and total portfolio value
+        UPDATED: Enhanced filtering with blacklist and price sanity checks
 
         Args:
             address: Trader address
@@ -213,11 +274,13 @@ class TraderMetricsManager:
             margin_summary = state.get("marginSummary", {})
             perp_value = float(margin_summary.get("accountValue", 0))
 
-            # Get spot balance
+            # Get spot balance with ENHANCED FILTERING
             spot_value = 0
             spot_balances_detail = []
             dust_value = 0
             dust_count = 0
+            filtered_tokens = []  # Track what we filtered and why
+
             try:
                 spot_state = self.hl_client.get_spot_clearinghouse_state(address)
                 if spot_state:
@@ -232,7 +295,7 @@ class TraderMetricsManager:
 
                         token_value = 0
 
-                        # Stablecoins are 1:1 USD
+                        # Stablecoins are 1:1 USD (skip filtering)
                         if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE"]:
                             token_value = total
                             if token_value > self.dust_threshold:
@@ -247,33 +310,18 @@ class TraderMetricsManager:
                                 dust_value += token_value
                                 dust_count += 1
                         else:
-                            # Use optimized get_token_price
+                            # Get price using optimized lookup
                             price = self.hl_client.get_token_price(coin)
 
                             if price:
-                                # FILTER 1: Exact $1.00 for non-stablecoins (stale data)
-                                if price == 1.0:
-                                    logger.debug(
-                                        f"🚫 {coin}: Filtered out - exact $1.00 default price (amount: {total:.2f})")
-                                    dust_count += 1
-                                    continue
+                                # Apply filtering rules
+                                should_include, reason = self._should_include_token(coin, price, total)
 
-                                # FILTER 2: Sub-$1 tokens must be whitelisted
-                                whitelisted_tokens = {"UFART","PURR","UPUMP","UXPL","PUMP", "kBONK", "BONK", "PEPE", "SHIB", "FLOKI", "WIF"}
-                                if price < 1.0 and coin not in whitelisted_tokens:
+                                if should_include:
+                                    # Token passed all filters - include it
                                     token_value = total * price
-                                    logger.debug(
-                                        f"🚫 {coin}: Filtered out - sub-$1 token not whitelisted "
-                                        f"(price: ${price:.6f}, amount: {total:.2f}, value: ${token_value:.2f})"
-                                    )
-                                    dust_count += 1
-                                    continue
-
-                                # Price passed filters, calculate value
-                                token_value = total * price
-
-                                if token_value > self.dust_threshold:
                                     spot_value += token_value
+
                                     price_source = "bridged_asset" if coin.startswith('U') else "all_mids"
                                     spot_balances_detail.append({
                                         "coin": coin,
@@ -284,10 +332,35 @@ class TraderMetricsManager:
                                     })
                                     logger.info(f"✅ {coin}: Included - ${token_value:.2f} (price: ${price:.6f})")
                                 else:
-                                    dust_value += token_value
+                                    # Token filtered out
+                                    token_value = total * price
+
+                                    # Track for debugging
+                                    filtered_tokens.append({
+                                        "coin": coin,
+                                        "reason": reason,
+                                        "price": price,
+                                        "amount": total,
+                                        "value": token_value
+                                    })
+
+                                    if token_value > self.dust_threshold:
+                                        # Significant value filtered - log as INFO
+                                        logger.info(
+                                            f"🚫 {coin}: Filtered - {reason} "
+                                            f"(amount: {total:.6f}, value: ${token_value:.2f})"
+                                        )
+                                    else:
+                                        # Dust filtered - log as DEBUG
+                                        logger.debug(
+                                            f"🚫 {coin}: Filtered - {reason} "
+                                            f"(amount: {total:.6f}, value: ${token_value:.2f})"
+                                        )
+                                        dust_value += token_value
+
                                     dust_count += 1
-                                    logger.debug(f"💨 {coin}: Dust - ${token_value:.2f} < ${self.dust_threshold}")
                             else:
+                                # No price available
                                 if total > 0.01:
                                     logger.debug(
                                         f"🚫 {coin}: Filtered out - no price available (amount: {total:.6f}) - "
@@ -304,12 +377,21 @@ class TraderMetricsManager:
                                     f"   {bal['coin']}: {bal['amount']:,.6f} = ${bal['value']:,.2f}"
                                 )
 
+                    # Log filtering summary if significant tokens were filtered
+                    if filtered_tokens:
+                        total_filtered_value = sum(t['value'] for t in filtered_tokens)
+                        if total_filtered_value > 100:  # Only log if >$100 filtered
+                            logger.info(
+                                f"🔍 {address[:10]}: Filtered {len(filtered_tokens)} tokens "
+                                f"worth ${total_filtered_value:,.2f}"
+                            )
+
             except Exception as e:
                 logger.warning(f"Failed to get spot balance for {address[:10]}: {e}")
                 spot_value = 0
                 spot_balances_detail = []
 
-            # Get vault holdings - NEW
+            # Get vault holdings
             vault_value = 0
             vault_details = []
             try:
@@ -339,24 +421,24 @@ class TraderMetricsManager:
                 vault_value = 0
                 vault_details = []
 
-            # Calculate total portfolio value (perps + spot + vaults) - UPDATED
+            # Calculate total portfolio value (perps + spot + vaults)
             total_portfolio = perp_value + spot_value + vault_value
 
             metrics["data"]["account"] = {
                 "value": perp_value,
                 "spot_value": spot_value,
                 "spot_balances_detail": spot_balances_detail,
-                "dust_value": dust_value,  # ADD THIS - optional tracking
+                "dust_value": dust_value,
                 "dust_count": dust_count,
-                "vault_value": vault_value,  # NEW
-                "vault_details": vault_details,  # NEW
-                "total_portfolio_value": total_portfolio,  # UPDATED
+                "vault_value": vault_value,
+                "vault_details": vault_details,
+                "total_portfolio_value": total_portfolio,
                 "position_value": float(margin_summary.get("totalNtlPos", 0)),
                 "margin_used": float(margin_summary.get("totalMarginUsed", 0)),
                 "withdrawable": float(state.get("withdrawable", 0))
             }
 
-            # Calculate leverage ratio - UPDATED to use total portfolio
+            # Calculate leverage ratio - uses total portfolio
             pos_val = metrics["data"]["account"]["position_value"]
             metrics["data"]["account"]["leverage_ratio"] = (
                 round(pos_val / total_portfolio, 2) if total_portfolio > 0 else 0
@@ -448,10 +530,6 @@ class TraderMetricsManager:
             metrics["data"]["subaccounts_count"] = 0
             logger.warning(f"Failed to get subaccounts for {address[:10]}: {e}")
 
-        # REMOVED: Portfolio (full history) - causes 8MB bloat
-        # REMOVED: Fees (mostly static) - not needed per address
-        # REMOVED: Vault equities - can add back if needed
-
         return metrics
 
     def update_trader(self, address: str, update_type: str = 'light'):
@@ -492,7 +570,7 @@ class TraderMetricsManager:
             # Log summary (DEBUG level - won't show in console)
             data = metrics["data"]
             acct = data.get("account", {})
-            acct_val = acct.get("total_portfolio_value", acct.get("value", 0))  # UPDATED: prefer total
+            acct_val = acct.get("total_portfolio_value", acct.get("value", 0))
             num_pos = acct.get("num_positions", 0)
             leverage = acct.get("leverage_ratio", 0)
             cum_vol = data.get("cumulative_volume", 0)
@@ -527,7 +605,7 @@ class TraderMetricsManager:
 
     def should_save(self) -> bool:
         """Check if it's time to save"""
-        # Save every 5 minutes
+        # Save every 2 minutes
         minutes_since_save = (datetime.now() - self.last_save_time).total_seconds() / 60
         return minutes_since_save >= 2
 
@@ -537,7 +615,7 @@ class TraderMetricsManager:
             self._save_metrics()
 
     def get_summary(self) -> Dict:
-        """Get summary statistics - UPDATED to use total portfolio value"""
+        """Get summary statistics - uses total portfolio value"""
         total = len(self.metrics_data["traders"])
 
         if total == 0:
@@ -563,7 +641,7 @@ class TraderMetricsManager:
             if account.get("num_positions", 0) > 0:
                 with_positions += 1
 
-            # Account value - UPDATED: use total_portfolio_value if available
+            # Account value - uses total_portfolio_value if available
             total_account_value += account.get("total_portfolio_value", account.get("value", 0))
 
         return {

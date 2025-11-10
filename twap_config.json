@@ -24,8 +24,9 @@
     "console": true,
     "modules": {
       "api_client.hypurrscan_client": "INFO",
-      "api_client.hyperliquid_client": "INFO",
+      "api_client.hyperliquid_client": "DEBUG",
       "twap_state_tracker": "INFO",
+      "trader_metrics_manager": "DEBUG",
       "__main__": "INFO"
     }
   },

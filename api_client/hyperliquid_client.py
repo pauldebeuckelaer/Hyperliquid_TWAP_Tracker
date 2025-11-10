@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Hyperliquid API Client - REFACTORED WITH PROPER LOGGING LEVELS
+Hyperliquid API Client - REFACTORED WITH PROPER LOGGING LEVELS AND PRICE VALIDATION
 Provides access to Hyperliquid Info endpoint for trader data
 
 LOGGING STRATEGY:
 - DEBUG: Individual price lookups, cache hits, strategy attempts, API calls
 - INFO: Important initializations, summaries, cache refreshes
-- WARNING: Illiquid tokens, fallback attempts, degraded functionality
+- WARNING: Illiquid tokens, fallback attempts, degraded functionality, suspicious prices
 - ERROR: Complete failures, API errors
 """
 import logging
@@ -616,9 +616,36 @@ class HyperliquidClient:
         """
         return self._make_request("spotMeta", {})
 
+    def _validate_price(self, token: str, price: float) -> float:
+        """
+        Validate and log warnings for suspicious prices
+
+        Args:
+            token: Token name
+            price: Price to validate
+
+        Returns:
+            The same price (warnings only, doesn't filter)
+        """
+        # SANITY CHECK: Flag absurdly high prices
+        if price > 50000:
+            logger.warning(
+                f"⚠️  {token}: Suspicious high price ${price:,.2f} "
+                f"(>$50k threshold) - likely illiquid/stale data"
+            )
+
+        # SANITY CHECK: Flag suspiciously exact $1.00 for non-stablecoins
+        if 0.9999 <= price <= 1.0001:
+            logger.warning(
+                f"⚠️  {token}: Suspicious $1.00 price - likely stale/default data"
+            )
+
+        return price
+
     def get_token_price(self, token: str) -> Optional[float]:
         """
         Get best available price for any token using multi-strategy approach
+        NOW WITH PRICE VALIDATION
 
         Priority waterfall:
         1. Stablecoins (1:1 USD)
@@ -675,7 +702,7 @@ class HyperliquidClient:
                     price_float = float(price)
                     # DEBUG for individual price lookups
                     logger.debug(f"💱 {token}: Strategy 1 SUCCESS - '{underlying}' perp = ${price_float:,.6f}")
-                    return price_float
+                    return self._validate_price(token, price_float)
                 else:
                     logger.debug(f"   ❌ '{underlying}' not in perps")
 
@@ -691,7 +718,7 @@ class HyperliquidClient:
                     logger.debug(f"💱 {token}: Strategy 2 SUCCESS - '{k_variant}' perp = ${price_float:,.6f}")
                     # Cache this mapping for future lookups
                     self._token_name_cache[underlying] = k_variant
-                    return price_float
+                    return self._validate_price(token, price_float)
                 else:
                     logger.debug(f"   ❌ '{k_variant}' not in perps")
 
@@ -711,7 +738,7 @@ class HyperliquidClient:
                         logger.debug(
                             f"💱 {token}: Strategy 3 SUCCESS - '{fuzzy_match}' via fuzzy = ${price_float:,.6f}"
                         )
-                        return price_float
+                        return self._validate_price(token, price_float)
                     else:
                         logger.debug(f"   ❌ No fuzzy perp match found")
 
@@ -732,7 +759,7 @@ class HyperliquidClient:
                         logger.debug(
                             f"💱 {token}: Strategy 4 SUCCESS - '{underlying}' spot = ${price_float:,.6f}"
                         )
-                        return price_float
+                        return self._validate_price(token, price_float)
                     else:
                         logger.debug(f"   ❌ '{spot_key}' not in all_mids (illiquid spot)")
                 else:
@@ -759,7 +786,7 @@ class HyperliquidClient:
                             logger.debug(
                                 f"💱 {token}: Strategy 5 SUCCESS - '{fuzzy_spot}' fuzzy spot = ${price_float:,.6f}"
                             )
-                            return price_float
+                            return self._validate_price(token, price_float)
                         else:
                             logger.debug(f"   ❌ '{spot_key}' not in all_mids")
                 else:
@@ -785,7 +812,7 @@ class HyperliquidClient:
                 price_float = float(price)
                 # DEBUG for individual price lookups
                 logger.debug(f"📊 {token}: Found perp price = ${price_float:,.6f}")
-                return price_float
+                return self._validate_price(token, price_float)
             else:
                 logger.debug(f"   ❌ '{token}' not in perps")
 
@@ -805,7 +832,7 @@ class HyperliquidClient:
                     price_float = float(price)
                     # DEBUG for individual price lookups
                     logger.debug(f"📈 {token}: Found spot price = ${price_float:,.6f}")
-                    return price_float
+                    return self._validate_price(token, price_float)
                 else:
                     logger.debug(
                         f"⚠️  {token}: Has spot index {token_index} but '@{token_index}' "
@@ -826,7 +853,7 @@ class HyperliquidClient:
             if orderbook_price:
                 # INFO level when fallback succeeds (unusual but important)
                 logger.info(f"📖 {token}: Got price from orderbook fallback = ${orderbook_price:,.6f}")
-                return orderbook_price
+                return self._validate_price(token, orderbook_price)
 
             # -----------------------------------------------------------------
             # Complete failure - token is illiquid or delisted
