@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
- HypurrScan Client - Multi-Symbol Support
-Simplified client for fetching TWAP data for multiple symbols
+HypurrScan Client - CORRECTED FOR SPOT + PERP
+==============================================
+Uses /twap/* to get ALL TWAPs, then filters by asset_id
 """
 
 import requests
@@ -12,6 +13,20 @@ from dataclasses import dataclass
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# HYPE Asset ID Constants
+HYPE_PERP_ID = 159
+HYPE_SPOT_ID = 10107
+
+
+def get_hype_market_type(asset_id: int) -> str:
+    """Determine if HYPE asset_id is perp or spot"""
+    if asset_id == HYPE_PERP_ID:
+        return "PERP"
+    elif asset_id == HYPE_SPOT_ID:
+        return "SPOT"
+    else:
+        return "UNKNOWN"
 
 
 @dataclass
@@ -25,7 +40,7 @@ class HypurrScanData:
 
 
 class HypurrScanClient:
-    """ HypurrScan Client - Multi-Symbol Support"""
+    """HypurrScan Client - SPOT + PERP Support via /twap/*"""
 
     def __init__(self, config: Dict = None):
         self.config = config or {}
@@ -49,7 +64,7 @@ class HypurrScanClient:
             'last_fetch_time': None
         }
 
-        logger.info(f"HypurrScan client initialized")
+        logger.info(f"HypurrScan client initialized (SPOT + PERP via /twap/*)")
 
     def _get(self, endpoint: str) -> Optional[Dict]:
         """Simple GET request with error handling"""
@@ -88,7 +103,11 @@ class HypurrScanClient:
             time.sleep(self.rate_limit_delay)
 
     def get_whale_activity(self, symbols: List[str] = None) -> Dict[str, Any]:
-        """Get whale activity for specified symbols"""
+        """
+        Get whale activity for specified symbols
+
+        Uses /twap/* to get ALL TWAPs, then filters by symbol
+        """
         if symbols is None:
             symbols = ['HYPE']
 
@@ -114,35 +133,37 @@ class HypurrScanClient:
             else:
                 data['endpoints_failed'].append(endpoint)
 
-            # 2. Get TWAP data
-            endpoint = f'twap/{symbol}'
-            result = self._get(endpoint)
+            # 2. Get ALL TWAPs (SPOT + PERP for all tokens)
+            logger.info(f"Fetching ALL TWAPs via /twap/*...")
+            endpoint = 'twap/*'
+            all_twaps = self._get(endpoint)
 
-            if result and isinstance(result, list):
-                logger.info(f"Processing {len(result)} {symbol} TWAP orders...")
+            if all_twaps and isinstance(all_twaps, list):
+                logger.info(f"Got {len(all_twaps)} total TWAPs across all tokens/markets")
 
-                # ADD THIS NEW DEBUG BLOCK HERE:
-                if len(result) > 0:
-                    logger.debug("=" * 60)
-                    logger.debug("RAW FIRST ORDER FROM API:")
-                    import json
-                    logger.debug(json.dumps(result[0], indent=2))
-                    logger.debug("=" * 60)
-
-                # DEBUG: Log all orders from API
-                logger.debug("=" * 60)
-                logger.debug("DEBUG: ALL ORDERS FROM API:")
-                for i, order in enumerate(result, 1):
-                    addr = order.get('user', 'unknown')
+                # Filter for HYPE only (both SPOT and PERP)
+                hype_twaps = []
+                for order in all_twaps:
                     action = order.get('action', {})
-                    twap = action.get('twap', {})
-                    size = twap.get('s', 0)
-                    ended = order.get('ended', 'N/A')
-                    logger.debug(f"  Order {i}: {addr} - Size: {size} - Ended: {ended}")
-                logger.debug("=" * 60)
+                    twap_info = action.get('twap', {})
+                    asset_id = twap_info.get('a')
+
+                    # Keep only HYPE orders (both markets)
+                    if asset_id in [HYPE_PERP_ID, HYPE_SPOT_ID]:
+                        hype_twaps.append(order)
+
+                logger.info(f"Filtered to {len(hype_twaps)} {symbol} TWAPs (SPOT + PERP)")
+
+                # Debug: Show first order if we have any
+                if len(hype_twaps) > 0:
+                    logger.debug("=" * 60)
+                    logger.debug("RAW FIRST HYPE ORDER FROM API:")
+                    import json
+                    logger.debug(json.dumps(hype_twaps[0], indent=2))
+                    logger.debug("=" * 60)
 
                 # Enrich with proper status and product type detection
-                enriched_orders = self._enrich_orders(result, symbol)
+                enriched_orders = self._enrich_orders(hype_twaps, symbol)
                 data['twap_data'][symbol] = enriched_orders
 
                 # Log summary
@@ -157,6 +178,7 @@ class HypurrScanClient:
                 data['data_points'] += len(enriched_orders)
             else:
                 data['endpoints_failed'].append(endpoint)
+                logger.warning("Failed to fetch TWAPs from /twap/*")
 
         return data
 
@@ -173,14 +195,19 @@ class HypurrScanClient:
                 twap_info = action.get('twap', {})
                 user_address = order.get('user', 'unknown')
 
-                # Get fields
+                # Get asset ID and determine market type
                 asset_id = twap_info.get('a', 0)
-                b_field = twap_info.get('b', True)
-                t_field = twap_info.get('t', False)
+                product_type = get_hype_market_type(asset_id)
 
-                # Simple detection: For now, assume all TWAPs are SPOT
-                # When PERP TWAPs appear, they'll have different asset IDs
-                product_type = "SPOT"
+                # Log if we see a PERP!
+                if product_type == "PERP":
+                    logger.debug(
+                        f"✅ PERP TWAP: Asset ID {asset_id}, User: {user_address[:10]}, Size: {twap_info.get('s', 0)}")
+                elif product_type == "UNKNOWN":
+                    logger.warning(f"Unknown HYPE asset ID: {asset_id}")
+
+                # Get fields
+                b_field = twap_info.get('b', True)
                 side = 'BUY' if b_field else 'SELL'
 
                 # Add enriched fields
@@ -189,7 +216,8 @@ class HypurrScanClient:
                 enriched_order['size'] = twap_info.get('s', 0)
                 enriched_order['duration_ms'] = twap_info.get('m', 0)
                 enriched_order['product_type'] = product_type
-                enriched_order['order_hash'] = order.get('hash', '')  # ← ADD THIS LINE
+                enriched_order['asset_id'] = asset_id
+                enriched_order['order_hash'] = order.get('hash', '')
 
                 ended_value = order.get('ended')
                 error_field = order.get('error')
@@ -200,9 +228,8 @@ class HypurrScanClient:
                     enriched_order['status'] = 'error'
                 elif ended_value is None and not error_field:
                     enriched_order['status'] = 'active'
-                elif ended_value:  # Has an 'ended' value that's not canceled/error
-                    # This is likely a completion - log it for investigation
-                    enriched_order['status'] = 'completed'  # Normalize to 'completed'
+                elif ended_value:
+                    enriched_order['status'] = 'completed'
                     logger.debug(f"🎯 COMPLETED ORDER DETECTED - ended field: {ended_value}")
                 else:
                     enriched_order['status'] = str(ended_value) if ended_value else 'unknown'
@@ -247,7 +274,7 @@ class HypurrScanClient:
         start_time = time.time()
         logger.info(f"Starting data collection for: {', '.join(symbols)}")
 
-        # Get whale activity data
+        # Get whale activity data (includes both SPOT and PERP now via /twap/*)
         whale_data = self.get_whale_activity(symbols)
 
         # Get network health (use first symbol)

@@ -144,40 +144,89 @@ class TWAPStateTracker:
             self._save_to_json(new_snapshot, changes)
 
     def _log_snapshot_summary(self):
-        """Log snapshot with order details - INFO level for important overview"""
+        """Log snapshot with order details - separated by SPOT and PERP markets"""
         snapshot = self.current_snapshot
         stats = snapshot.get_stats()
 
         # INFO: High-level summary
         logger.info(f"[{self.symbol}] UPDATE #{self.update_count}")
+        logger.info(f"=" * 70)
         logger.info(
-            f"Orders: {stats['active_orders']} active, {stats['total_orders']} total | "
-            f"Pressure/min: Buy {stats['buy_pressure_per_min']:.1f}, "
-            f"Sell {stats['sell_pressure_per_min']:.1f}, "
+            f"Total Orders: {stats['total_orders']} | "
+            f"Active: {stats['active_orders']} ({stats['spot_orders']} SPOT, {stats['perp_orders']} PERP)"
+        )
+
+        # SHOW PRESSURE FOR EACH MARKET SEPARATELY
+        logger.info(
+            f"💵 SPOT Pressure/min: "
+            f"Buy {stats['spot_buy_pressure_per_min']:.1f} | "
+            f"Sell {stats['spot_sell_pressure_per_min']:.1f} | "
+            f"Net {stats['spot_net_pressure_per_min']:+.1f}"
+        )
+        logger.info(
+            f"⚡ PERP Pressure/min: "
+            f"Buy {stats['perp_buy_pressure_per_min']:.1f} | "
+            f"Sell {stats['perp_sell_pressure_per_min']:.1f} | "
+            f"Net {stats['perp_net_pressure_per_min']:+.1f}"
+        )
+        logger.info(
+            f"📊 TOTAL Pressure/min: "
+            f"Buy {stats['buy_pressure_per_min']:.1f} | "
+            f"Sell {stats['sell_pressure_per_min']:.1f} | "
             f"Net {stats['net_pressure_per_min']:+.1f}"
         )
 
-        # Sort orders by size (largest first)
-        sorted_orders = sorted(snapshot.orders, key=lambda o: o.size, reverse=True)
+        # Separate orders by market
+        spot_orders = [o for o in snapshot.orders if o.product_type == 'SPOT']
+        perp_orders = [o for o in snapshot.orders if o.product_type == 'PERP']
 
-        # Count active orders for logging
-        active_count = sum(1 for o in sorted_orders if o.is_active)
+        # Sort each by size (largest first)
+        spot_orders.sort(key=lambda o: o.size, reverse=True)
+        perp_orders.sort(key=lambda o: o.size, reverse=True)
 
-        if active_count > 0:
-            # INFO: Active orders list (important for monitoring)
-            logger.info(f"Active orders ({active_count}):")
-            for order in sorted_orders:
+        # Count active orders
+        active_spot = sum(1 for o in spot_orders if o.is_active)
+        active_perp = sum(1 for o in perp_orders if o.is_active)
+
+        # ========== SPOT MARKET ==========
+        logger.info(f"=" * 70)
+        if active_spot > 0:
+            logger.info(f"💵 SPOT MARKET - {active_spot} Active Orders")
+            logger.info(f"-" * 70)
+            for order in spot_orders:
                 if not order.is_active:
                     continue
 
-                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
+                addr = f"{order.full_address}"
+                side_emoji = "🟢" if order.is_buy_side else "🔴"
 
                 logger.info(
-                    f"  {addr} {order.side:4s} {order.size:>10,.0f} "
-                    f"{order.product_type} {order.duration_hours:>5.1f}h {order.status}"
+                    f"  {side_emoji} {addr} | {order.side:4s} | "
+                    f"{order.size:>10,.0f} | {order.duration_hours:>5.1f}h"
                 )
         else:
-            logger.info("No active orders")
+            logger.info(f"💵 SPOT MARKET - No Active Orders")
+
+        # ========== PERP MARKET ==========
+        logger.info(f"=" * 70)
+        if active_perp > 0:
+            logger.info(f"⚡ PERP MARKET - {active_perp} Active Orders")
+            logger.info(f"-" * 70)
+            for order in perp_orders:
+                if not order.is_active:
+                    continue
+
+                addr = f"{order.full_address}"
+                side_emoji = "🟢" if order.is_buy_side else "🔴"
+
+                logger.info(
+                    f"  {side_emoji} {addr} | {order.side:4s} | "
+                    f"{order.size:>10,.0f} | {order.duration_hours:>5.1f}h"
+                )
+        else:
+            logger.info(f"⚡ PERP MARKET - No Active Orders")
+
+        logger.info(f"=" * 70)
 
     def _detect_changes(self):
         """Detect and log changes between snapshots"""
@@ -187,7 +236,7 @@ class TWAPStateTracker:
         if changes['new_orders']:
             logger.info(f"🆕 New orders detected: {len(changes['new_orders'])}")
             for order in changes['new_orders']:
-                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
+                addr = f"{order.full_address}"
                 logger.info(
                     f"  NEW: {addr} {order.side:4s} {order.size:>10,.0f} "
                     f"{order.product_type} {order.duration_hours:.1f}h"
@@ -207,7 +256,7 @@ class TWAPStateTracker:
         if completed_orders:
             logger.info(f"✅ Completed orders: {len(completed_orders)}")
             for order in completed_orders:
-                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
+                addr = f"{order.full_address}"
                 logger.info(
                     f"  COMPLETED: {addr} {order.side:4s} {order.size:>10,.0f} "
                     f"{order.duration_hours:.1f}h (status: {order.status})"
@@ -217,7 +266,7 @@ class TWAPStateTracker:
         if canceled_orders:
             logger.warning(f"❌ Canceled orders: {len(canceled_orders)}")
             for order in canceled_orders:
-                addr = f"{order.full_address[:6]}...{order.full_address[-4:]}"
+                addr = f"{order.full_address}"
                 logger.warning(
                     f"  CANCELED: {addr} {order.side:4s} {order.size:>10,.0f} "
                     f"{order.duration_hours:.1f}h"
@@ -227,7 +276,7 @@ class TWAPStateTracker:
         if changes['status_changes']:
             logger.warning(f"🔄 Status changes detected: {len(changes['status_changes'])}")
             for change in changes['status_changes']:
-                addr = f"{change['address'][:6]}...{change['address'][-4:]}"
+                addr = f"{change['address']}"
                 logger.warning(
                     f"  STATUS: {addr} {change['side']:4s} {change['size']:>10,.0f} "
                     f"{change['old_status']} → {change['new_status']}"

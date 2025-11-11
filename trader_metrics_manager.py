@@ -58,18 +58,30 @@ class TraderMetricsManager:
             "NIGGO",
             "LIQD",
             "FUND",
+            "STEEL",
+            "HWTR",
+            "SWAP"
             # Add more tokens here as needed
+        })
+
+        self.whitelisted_high_value_tokens = self.config.get('whitelisted_high_value_tokens', {
+            "UBTC",  # Wrapped/bridged Bitcoin (~$105K)
+            "BTC",  # Bitcoin
+            "WBTC",  # Wrapped Bitcoin
+            "tBTC",  # Threshold Bitcoin
+            # Add other wrapped BTC variants as needed
         })
 
         # Whitelist for trusted sub-$1 tokens
         self.whitelisted_sub_dollar_tokens = self.config.get('whitelisted_sub_dollar_tokens', {
             "UFART", "PURR", "UPUMP", "UXPL", "PUMP",
-            "kBONK", "BONK", "PEPE", "SHIB", "FLOKI", "WIF", "UBTC"
+            "kBONK", "BONK", "PEPE", "SHIB", "FLOKI", "WIF",
         })
 
         # Price thresholds
         self.max_reasonable_price = self.config.get('max_reasonable_price', 50000)  # $50k
         self.suspicious_dollar_range = self.config.get('suspicious_dollar_range', (0.995, 1.005))
+        self.max_high_value_token_price = self.config.get('max_high_value_token_price', 150000)
 
         logger.info(
             f"TraderMetricsManager initialized: "
@@ -222,9 +234,16 @@ class TraderMetricsManager:
         if min_dollar <= price <= max_dollar:
             return False, f"suspicious $1.00 price ({price:.6f})"
 
-        # FILTER 2: Absurdly high prices (likely illiquid/manipulated)
+        # FILTER 2: High prices - check whitelist first
         if price > self.max_reasonable_price:
-            return False, f"suspicious high price ${price:,.2f} (>${self.max_reasonable_price:,.0f})"
+            if coin in self.whitelisted_high_value_tokens:
+                # Legitimate high-value token, but still sanity check
+                if price > self.max_high_value_token_price:
+                    return False, f"price ${price:,.2f} exceeds even high-value max (${self.max_high_value_token_price:,.0f})"
+                logger.debug(f"✅ {coin}: High-value whitelisted token (${price:,.2f})")
+                # Continue to other checks (dust threshold, etc.)
+            else:
+                return False, f"suspicious high price ${price:,.2f} (>${self.max_reasonable_price:,.0f})"
 
         # FILTER 3: Sub-$1 tokens must be whitelisted
         if price < 1.0 and coin not in self.whitelisted_sub_dollar_tokens:
@@ -249,7 +268,7 @@ class TraderMetricsManager:
         Returns:
             Dict with metrics
         """
-        logger.debug(f"Fetching LIGHT metrics for {address[:10]}...")
+        logger.debug(f"Fetching LIGHT metrics for {address}...")
 
         metrics = {
             "address": address,
@@ -264,7 +283,7 @@ class TraderMetricsManager:
             metrics["data"]["user_role"] = role
         except Exception as e:
             metrics["data"]["user_role"] = {"error": str(e)}
-            logger.warning(f"Failed to get role for {address[:10]}: {e}")
+            logger.warning(f"Failed to get role for {address}: {e}")
 
         # 2. Clearinghouse state (positions, account value) - UPDATED
         try:
@@ -364,13 +383,13 @@ class TraderMetricsManager:
                                 if total > 0.01:
                                     logger.debug(
                                         f"🚫 {coin}: Filtered out - no price available (amount: {total:.6f}) - "
-                                        f"likely illiquid/delisted on {address[:10]}"
+                                        f"likely illiquid/delisted on {address}"
                                     )
                                 dust_count += 1
 
                     # Log spot balance breakdown for significant balances
                     if spot_value > 1000:
-                        logger.debug(f"💰 Spot breakdown for {address[:10]}: Total=${spot_value:,.2f}")
+                        logger.debug(f"💰 Spot breakdown for {address}: Total=${spot_value:,.2f}")
                         for bal in spot_balances_detail:
                             if bal['value'] > 0:
                                 logger.debug(
@@ -382,12 +401,12 @@ class TraderMetricsManager:
                         total_filtered_value = sum(t['value'] for t in filtered_tokens)
                         if total_filtered_value > 100:  # Only log if >$100 filtered
                             logger.info(
-                                f"🔍 {address[:10]}: Filtered {len(filtered_tokens)} tokens "
+                                f"🔍 {address}: Filtered {len(filtered_tokens)} tokens "
                                 f"worth ${total_filtered_value:,.2f}"
                             )
 
             except Exception as e:
-                logger.warning(f"Failed to get spot balance for {address[:10]}: {e}")
+                logger.warning(f"Failed to get spot balance for {address}: {e}")
                 spot_value = 0
                 spot_balances_detail = []
 
@@ -410,14 +429,14 @@ class TraderMetricsManager:
 
                     # Log vault holdings for significant amounts
                     if vault_value > 1000:
-                        logger.debug(f"🏦 Vault holdings for {address[:10]}: Total=${vault_value:,.2f}")
+                        logger.debug(f"🏦 Vault holdings for {address}: Total=${vault_value:,.2f}")
                         for vault in vault_details:
                             logger.debug(
                                 f"   {vault['vault_address'][:10]}...: ${vault['equity']:,.2f}"
                             )
 
             except Exception as e:
-                logger.warning(f"Failed to get vaults for {address[:10]}: {e}")
+                logger.warning(f"Failed to get vaults for {address}: {e}")
                 vault_value = 0
                 vault_details = []
 
@@ -468,7 +487,7 @@ class TraderMetricsManager:
         except Exception as e:
             metrics["data"]["account"] = {"error": str(e)}
             metrics["data"]["positions"] = []
-            logger.warning(f"Failed to get state for {address[:10]}: {e}")
+            logger.warning(f"Failed to get state for {address}: {e}")
 
         # 3. Referral info (cumulative volume)
         try:
@@ -476,7 +495,7 @@ class TraderMetricsManager:
             metrics["data"]["cumulative_volume"] = float(referral.get("cumVlm", 0))
         except Exception as e:
             metrics["data"]["cumulative_volume"] = 0
-            logger.warning(f"Failed to get referral for {address[:10]}: {e}")
+            logger.warning(f"Failed to get referral for {address}: {e}")
 
         # 4. Open orders (just count)
         try:
@@ -484,7 +503,7 @@ class TraderMetricsManager:
             metrics["data"]["open_orders_count"] = len(orders) if orders else 0
         except Exception as e:
             metrics["data"]["open_orders_count"] = 0
-            logger.warning(f"Failed to get orders for {address[:10]}: {e}")
+            logger.warning(f"Failed to get orders for {address}: {e}")
 
         return metrics
 
@@ -498,7 +517,7 @@ class TraderMetricsManager:
         Returns:
             Dict with comprehensive metrics
         """
-        logger.debug(f"Fetching DEEP metrics for {address[:10]}...")
+        logger.debug(f"Fetching DEEP metrics for {address}...")
 
         # Start with light metrics
         metrics = self.fetch_light_metrics(address)
@@ -512,7 +531,7 @@ class TraderMetricsManager:
             metrics["data"]["fills_count"] = len(fills) if fills else 0
         except Exception as e:
             metrics["data"]["fills_count"] = 0
-            logger.warning(f"Failed to get fills for {address[:10]}: {e}")
+            logger.warning(f"Failed to get fills for {address}: {e}")
 
         # 6. TWAP fills count (don't store details)
         try:
@@ -520,7 +539,7 @@ class TraderMetricsManager:
             metrics["data"]["twap_fills_count"] = len(twap_fills) if twap_fills else 0
         except Exception as e:
             metrics["data"]["twap_fills_count"] = 0
-            logger.warning(f"Failed to get TWAP fills for {address[:10]}: {e}")
+            logger.warning(f"Failed to get TWAP fills for {address}: {e}")
 
         # 7. Subaccounts
         try:
@@ -528,7 +547,7 @@ class TraderMetricsManager:
             metrics["data"]["subaccounts_count"] = len(subaccounts) if subaccounts else 0
         except Exception as e:
             metrics["data"]["subaccounts_count"] = 0
-            logger.warning(f"Failed to get subaccounts for {address[:10]}: {e}")
+            logger.warning(f"Failed to get subaccounts for {address}: {e}")
 
         return metrics
 
@@ -576,7 +595,7 @@ class TraderMetricsManager:
             cum_vol = data.get("cumulative_volume", 0)
 
             logger.debug(
-                f"Updated {address[:10]} ({update_type}): "
+                f"Updated {address} ({update_type}): "
                 f"Value=${float(acct_val):,.0f} "
                 f"Positions={num_pos} "
                 f"Leverage={leverage:.1f}x "
@@ -584,7 +603,7 @@ class TraderMetricsManager:
             )
 
         except Exception as e:
-            logger.error(f"Error updating {address[:10]}: {e}")
+            logger.error(f"Error updating {address}: {e}")
 
     def process_single_update(self) -> bool:
         """
@@ -598,7 +617,7 @@ class TraderMetricsManager:
             return False
 
         address, update_type, reason = update
-        logger.debug(f"Processing {update_type} update for {address[:10]} (reason: {reason})")
+        logger.debug(f"Processing {update_type} update for {address} (reason: {reason})")
 
         self.update_trader(address, update_type)
         return True

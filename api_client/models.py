@@ -69,9 +69,19 @@ class TWAPOrder:
         action = raw_order.get('action', {})
         twap_info = action.get('twap', {})
 
-        # All TWAPs are SPOT orders (validated via HypurrScan UI)
-        # Asset ID determines the market, but for HYPE all are SPOT
-        product_type = "SPOT"
+        # Get asset ID and determine market type (SPOT vs PERP)
+        asset_id = twap_info.get('a', 0)
+
+        # HYPE has two markets:
+        # - PERP: asset_id = 159
+        # - SPOT: asset_id = 10107
+        if asset_id == 159:
+            product_type = "PERP"
+        elif asset_id == 10107:
+            product_type = "SPOT"
+        else:
+            product_type = "UNKNOWN"
+            logger.warning(f"Unknown asset ID: {asset_id}")
 
         # Side detection (b field: true=buy, false=sell)
         is_buy = twap_info.get('b', True)
@@ -266,6 +276,54 @@ class TWAPSnapshot:
         """Calculate net flow (buy - sell volume)"""
         return self.buy_volume - self.sell_volume
 
+    # ========== SPOT MARKET PRESSURE ==========
+    @property
+    def spot_buy_pressure_per_min(self) -> float:
+        """Calculate SPOT market buy pressure per minute"""
+        return sum(
+            o.get_execution_rate()
+            for o in self.active_orders
+            if o.is_buy_side and o.product_type == 'SPOT'
+        )
+
+    @property
+    def spot_sell_pressure_per_min(self) -> float:
+        """Calculate SPOT market sell pressure per minute"""
+        return sum(
+            o.get_execution_rate()
+            for o in self.active_orders
+            if o.is_sell_side and o.product_type == 'SPOT'
+        )
+
+    @property
+    def spot_net_pressure_per_min(self) -> float:
+        """Calculate SPOT market net pressure per minute (buy - sell)"""
+        return self.spot_buy_pressure_per_min - self.spot_sell_pressure_per_min
+
+    # ========== PERP MARKET PRESSURE ==========
+    @property
+    def perp_buy_pressure_per_min(self) -> float:
+        """Calculate PERP market buy pressure per minute"""
+        return sum(
+            o.get_execution_rate()
+            for o in self.active_orders
+            if o.is_buy_side and o.product_type == 'PERP'
+        )
+
+    @property
+    def perp_sell_pressure_per_min(self) -> float:
+        """Calculate PERP market sell pressure per minute"""
+        return sum(
+            o.get_execution_rate()
+            for o in self.active_orders
+            if o.is_sell_side and o.product_type == 'PERP'
+        )
+
+    @property
+    def perp_net_pressure_per_min(self) -> float:
+        """Calculate PERP market net pressure per minute (buy - sell)"""
+        return self.perp_buy_pressure_per_min - self.perp_sell_pressure_per_min
+
     @property
     def buy_pressure_per_min(self) -> float:
         """Calculate active buy pressure per minute"""
@@ -300,9 +358,22 @@ class TWAPSnapshot:
             'buy_volume': self.buy_volume,
             'sell_volume': self.sell_volume,
             'net_flow': self.net_flow,
+
+            # TOTAL PRESSURE (SPOT + PERP combined)
             'buy_pressure_per_min': self.buy_pressure_per_min,
             'sell_pressure_per_min': self.sell_pressure_per_min,
             'net_pressure_per_min': self.net_pressure_per_min,
+
+            # SPOT MARKET PRESSURE (NEW!)
+            'spot_buy_pressure_per_min': self.spot_buy_pressure_per_min,
+            'spot_sell_pressure_per_min': self.spot_sell_pressure_per_min,
+            'spot_net_pressure_per_min': self.spot_net_pressure_per_min,
+
+            # PERP MARKET PRESSURE (NEW!)
+            'perp_buy_pressure_per_min': self.perp_buy_pressure_per_min,
+            'perp_sell_pressure_per_min': self.perp_sell_pressure_per_min,
+            'perp_net_pressure_per_min': self.perp_net_pressure_per_min,
+
             'whale_orders': len(self.whale_orders),
             'spot_orders': len([o for o in self.orders if o.product_type == 'SPOT']),
             'perp_orders': len([o for o in self.orders if o.product_type == 'PERP']),
