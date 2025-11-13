@@ -20,8 +20,18 @@
 
   "logging": {
     "root_level": "INFO",
-    "file": "twap_tracker.log",
     "console": true,
+    "console_modules": ["twap_state_tracker", "api_client.hyperliquid_client"],
+    "files": [
+      {
+        "path": "twap_tracker.log",
+        "modules": ["twap_state_tracker"]
+      },
+      {
+        "path": "main.log",
+        "modules": ["main", "__main__", "trader_metrics_manager"]
+      }
+    ],
     "modules": {
       "api_client.hypurrscan_client": "INFO",
       "api_client.hyperliquid_client": "INFO",
@@ -29,6 +39,7 @@
       "trader_metrics_manager": "INFO",
       "__main__": "INFO"
     }
+
   },
   "json_logging": {
     "enabled": true,

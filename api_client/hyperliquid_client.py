@@ -629,14 +629,14 @@ class HyperliquidClient:
         """
         # SANITY CHECK: Flag absurdly high prices
         if price > 50000:
-            logger.warning(
+            logger.debug(
                 f"⚠️  {token}: Suspicious high price ${price:,.2f} "
                 f"(>$50k threshold) - likely illiquid/stale data"
             )
 
         # SANITY CHECK: Flag suspiciously exact $1.00 for non-stablecoins
         if 0.9999 <= price <= 1.0001:
-            logger.warning(
+            logger.debug(
                 f"⚠️  {token}: Suspicious $1.00 price - likely stale/default data"
             )
 

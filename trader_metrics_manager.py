@@ -60,7 +60,9 @@ class TraderMetricsManager:
             "FUND",
             "STEEL",
             "HWTR",
-            "SWAP"
+            "SWAP",
+            "BERA",
+            "DEPIN"
             # Add more tokens here as needed
         })
 
@@ -75,7 +77,7 @@ class TraderMetricsManager:
         # Whitelist for trusted sub-$1 tokens
         self.whitelisted_sub_dollar_tokens = self.config.get('whitelisted_sub_dollar_tokens', {
             "UFART", "PURR", "UPUMP", "UXPL", "PUMP",
-            "kBONK", "BONK", "PEPE", "SHIB", "FLOKI", "WIF",
+            "kBONK", "BONK", "UBONK3", "PEPE", "SHIB", "FLOKI", "WIF",
         })
 
         # Price thresholds
@@ -315,7 +317,7 @@ class TraderMetricsManager:
                         token_value = 0
 
                         # Stablecoins are 1:1 USD (skip filtering)
-                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE"]:
+                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE","USDH"]:
                             token_value = total
                             if token_value > self.dust_threshold:
                                 spot_value += total
@@ -365,7 +367,7 @@ class TraderMetricsManager:
 
                                     if token_value > self.dust_threshold:
                                         # Significant value filtered - log as INFO
-                                        logger.info(
+                                        logger.debug(
                                             f"🚫 {coin}: Filtered - {reason} "
                                             f"(amount: {total:.6f}, value: ${token_value:.2f})"
                                         )
@@ -400,7 +402,7 @@ class TraderMetricsManager:
                     if filtered_tokens:
                         total_filtered_value = sum(t['value'] for t in filtered_tokens)
                         if total_filtered_value > 100:  # Only log if >$100 filtered
-                            logger.info(
+                            logger.debug(
                                 f"🔍 {address}: Filtered {len(filtered_tokens)} tokens "
                                 f"worth ${total_filtered_value:,.2f}"
                             )
