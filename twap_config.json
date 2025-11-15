@@ -18,14 +18,23 @@
     }
   },
 
+  "all_coins_tracking": {
+    "enabled": true,
+    "exclude_coins": []
+  },
+
   "logging": {
     "root_level": "INFO",
     "console": true,
-    "console_modules": ["twap_state_tracker", "api_client.hyperliquid_client"],
+    "console_modules": ["allcoins_state_tracker"],
     "files": [
       {
         "path": "twap_tracker.log",
         "modules": ["twap_state_tracker"]
+      },
+      {
+        "path": "allcoins_tracker.log",
+        "modules": ["allcoins_state_tracker"]
       },
       {
         "path": "main.log",
@@ -36,8 +45,9 @@
       "api_client.hypurrscan_client": "INFO",
       "api_client.hyperliquid_client": "INFO",
       "twap_state_tracker": "INFO",
+      "allcoins_state_tracker": "INFO",
       "trader_metrics_manager": "INFO",
-      "__main__": "INFO"
+      "__main__": "DEBUG"
     }
 
   },

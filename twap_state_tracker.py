@@ -34,7 +34,7 @@ class TWAPStateTracker:
 
         # History tracking
         self.all_addresses_seen: Set[str] = set()
-        self.address_history_file = Path(f'address_history_{symbol}.json')
+        self.address_history_file = Path(f'address_list.json')
         self._load_address_history()
 
         # Create output directory

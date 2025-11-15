@@ -62,7 +62,8 @@ class TraderMetricsManager:
             "HWTR",
             "SWAP",
             "BERA",
-            "DEPIN"
+            "DEPIN",
+            "GENESY",
             # Add more tokens here as needed
         })
 

@@ -1,0 +1,1143 @@
+{
+  "collection_info": {
+    "created": "2025-11-15T14:05:44.400579",
+    "last_updated": "2025-11-15T14:19:41.578632",
+    "total_addresses": 23,
+    "light_fetches": 23,
+    "deep_fetches": 0
+  },
+  "traders": {
+    "0x622fc18a3f1a616a331b96e4c17f1b457feb5c6f": {
+      "first_seen": "2025-11-15T14:06:47.606956",
+      "last_light_update": "2025-11-15T14:06:38.888833",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 198300.757874,
+          "spot_value": 2085.50113586,
+          "spot_balances_detail": [
+            {
+              "coin": "USDC",
+              "amount": 2085.50113586,
+              "value": 2085.50113586,
+              "price_source": "stablecoin_1:1"
+            }
+          ],
+          "dust_value": 3.8643500000000003e-07,
+          "dust_count": 3,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 200386.25900986,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 198300.757874,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 4930521.09,
+        "open_orders_count": 0
+      }
+    },
+    "0x7cf9f878942489b7a1725d628a9e59fb1b38ab27": {
+      "first_seen": "2025-11-15T14:06:57.499048",
+      "last_light_update": "2025-11-15T14:06:47.707699",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 0.002435,
+          "spot_value": 1246843.5253028264,
+          "spot_balances_detail": [
+            {
+              "coin": "USDC",
+              "amount": 461302.37620195,
+              "value": 461302.37620195,
+              "price_source": "stablecoin_1:1"
+            },
+            {
+              "coin": "HYPE",
+              "amount": 20322.11383153,
+              "value": 785541.1491008764,
+              "price": 38.6545,
+              "price_source": "all_mids"
+            }
+          ],
+          "dust_value": 1.031984457055,
+          "dust_count": 18,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 1246843.5277378263,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.002435,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 29510161.63,
+        "open_orders_count": 1
+      }
+    },
+    "0x39a8e0562af3fcf8f47783be252ac62877f9e96f": {
+      "first_seen": "2025-11-15T14:07:04.396374",
+      "last_light_update": "2025-11-15T14:06:57.708406",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 0.0,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.00694545,
+          "dust_count": 2,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 0.0,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.0,
+          "leverage_ratio": 0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 642844518.48,
+        "open_orders_count": 0
+      }
+    },
+    "0x408476d76ca3983b0bea76d7c983daa51857e679": {
+      "first_seen": "2025-11-15T14:07:15.930792",
+      "last_light_update": "2025-11-15T14:07:07.710615",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "subAccount",
+          "data": {
+            "master": "0xdb0cc1863116a959b0a980c0ed6ff25d57f9e6d4"
+          }
+        },
+        "account": {
+          "value": 0.001278,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 1.6911213824850002,
+          "dust_count": 3,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 0.001278,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.001278,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 15405.1,
+        "open_orders_count": 0
+      }
+    },
+    "0x2bda64d77652123b10625269279ec18adb730ecb": {
+      "first_seen": "2025-11-15T14:07:26.537263",
+      "last_light_update": "2025-11-15T14:07:17.711902",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 676.405781,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.00517751,
+          "dust_count": 1,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 676.405781,
+          "position_value": 16562.759744,
+          "margin_used": 467.871095,
+          "withdrawable": 0.0,
+          "leverage_ratio": 24.49,
+          "num_positions": 2
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": 0.17108,
+            "side": "LONG",
+            "entry_price": 95208.5,
+            "liquidation_price": 93173.9263354475,
+            "leverage": 40.0,
+            "margin_used": 409.706661,
+            "unrealized_pnl": 99.979863
+          },
+          {
+            "coin": "UMA",
+            "size": 185.3,
+            "side": "LONG",
+            "entry_price": 0.91566,
+            "liquidation_price": 0.0,
+            "leverage": 3.0,
+            "margin_used": 58.164434,
+            "unrealized_pnl": 4.821506
+          }
+        ],
+        "cumulative_volume": 1472256.42,
+        "open_orders_count": 2
+      }
+    },
+    "0x18263ea9aada7d91c26babcba7f33cdfb8abe050": {
+      "first_seen": "2025-11-15T14:07:36.445225",
+      "last_light_update": "2025-11-15T14:07:27.712800",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 0.0,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.147040386845,
+          "dust_count": 2,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 0.0,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.0,
+          "leverage_ratio": 0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 749882.3,
+        "open_orders_count": 0
+      }
+    },
+    "0xf22ac3c430c4d0ff0995dc0c9bccc6bb4a67d8b6": {
+      "first_seen": "2025-11-15T14:07:50.509446",
+      "last_light_update": "2025-11-15T14:07:41.731035",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 4515.397008,
+          "spot_value": 45178.31433881159,
+          "spot_balances_detail": [
+            {
+              "coin": "HYPE",
+              "amount": 1166.71997776,
+              "value": 45178.31433881159,
+              "price": 38.7225,
+              "price_source": "all_mids"
+            }
+          ],
+          "dust_value": 3.39058149,
+          "dust_count": 2,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 49693.71134681159,
+          "position_value": 26988.852423,
+          "margin_used": 5397.770484,
+          "withdrawable": 0.0,
+          "leverage_ratio": 0.54,
+          "num_positions": 2
+        },
+        "positions": [
+          {
+            "coin": "WLD",
+            "size": 12909.3,
+            "side": "LONG",
+            "entry_price": 0.83254,
+            "liquidation_price": 0.5227216621,
+            "leverage": 5.0,
+            "margin_used": 1828.240884,
+            "unrealized_pnl": -1606.316883
+          },
+          {
+            "coin": "ASTER",
+            "size": 15890.0,
+            "side": "LONG",
+            "entry_price": 1.096538,
+            "liquidation_price": 0.9642200694,
+            "leverage": 5.0,
+            "margin_used": 3569.5296,
+            "unrealized_pnl": 423.6456
+          }
+        ],
+        "cumulative_volume": 4405322.37,
+        "open_orders_count": 0
+      }
+    },
+    "0x85035c4657928c76a8514c0accd6aa24b340f963": {
+      "first_seen": "2025-11-15T14:07:57.423104",
+      "last_light_update": "2025-11-15T14:07:50.614113",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "subAccount",
+          "data": {
+            "master": "0xefcace57934a753d66c48a31b880ba806d4c0869"
+          }
+        },
+        "account": {
+          "value": 0.006726,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 1.401281658205,
+          "dust_count": 4,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 0.006726,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.006726,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 299969.69,
+        "open_orders_count": 0
+      }
+    },
+    "0x939f95036d2e7b6d7419ec072bf9d967352204d2": {
+      "first_seen": "2025-11-15T14:08:08.305568",
+      "last_light_update": "2025-11-15T14:08:00.614751",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 9182761.413194,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.00017232395000000002,
+          "dust_count": 2,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 9182761.413194,
+          "position_value": 45361877.6971,
+          "margin_used": 1491382.958409,
+          "withdrawable": 4646573.643484,
+          "leverage_ratio": 4.94,
+          "num_positions": 6
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": -422.00173,
+            "side": "SHORT",
+            "entry_price": 106277.8,
+            "liquidation_price": 115583.1479050812,
+            "leverage": 40.0,
+            "margin_used": 1011084.49495,
+            "unrealized_pnl": 4406067.231205
+          },
+          {
+            "coin": "BNB",
+            "size": -1550.036,
+            "side": "SHORT",
+            "entry_price": 997.851,
+            "liquidation_price": 5927.91904516,
+            "leverage": 10.0,
+            "margin_used": 144787.312724,
+            "unrealized_pnl": 98832.00526
+          },
+          {
+            "coin": "DOGE",
+            "size": -3064806.0,
+            "side": "SHORT",
+            "entry_price": 0.164649,
+            "liquidation_price": 2.784698802,
+            "leverage": 10.0,
+            "margin_used": 49925.68974,
+            "unrealized_pnl": 5361.7972
+          },
+          {
+            "coin": "XRP",
+            "size": -102030.0,
+            "side": "SHORT",
+            "entry_price": 2.351141,
+            "liquidation_price": 82.9394714249,
+            "leverage": 20.0,
+            "margin_used": 11551.32645,
+            "unrealized_pnl": 8860.4825
+          },
+          {
+            "coin": "ADA",
+            "size": -1086609.0,
+            "side": "SHORT",
+            "entry_price": 0.528701,
+            "liquidation_price": 7.9008346028,
+            "leverage": 10.0,
+            "margin_used": 54981.328791,
+            "unrealized_pnl": 24678.37877
+          },
+          {
+            "coin": "HYPE",
+            "size": -56564.79,
+            "side": "SHORT",
+            "entry_price": 45.36,
+            "liquidation_price": 180.7808843024,
+            "leverage": 10.0,
+            "margin_used": 219052.805754,
+            "unrealized_pnl": 375254.023204
+          }
+        ],
+        "cumulative_volume": 1368891159.74,
+        "open_orders_count": 0
+      }
+    },
+    "0xd8b07bc1bc3bae553bca5e94e99935dc12df24ff": {
+      "first_seen": "2025-11-15T14:08:18.531797",
+      "last_light_update": "2025-11-15T14:08:10.615944",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 430462.261447,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.35602165175562994,
+          "dust_count": 14,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 430462.261447,
+          "position_value": 1202726.11511,
+          "margin_used": 42176.58523,
+          "withdrawable": 310189.649936,
+          "leverage_ratio": 2.79,
+          "num_positions": 3
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": 6.23057,
+            "side": "LONG",
+            "entry_price": 100322.7,
+            "liquidation_price": 29321.2066770086,
+            "leverage": 40.0,
+            "margin_used": 14931.093712,
+            "unrealized_pnl": -27824.471113
+          },
+          {
+            "coin": "ETH",
+            "size": -95.6338,
+            "side": "SHORT",
+            "entry_price": 3162.07,
+            "liquidation_price": 7363.6068993,
+            "leverage": 25.0,
+            "margin_used": 12114.507248,
+            "unrealized_pnl": -461.248197
+          },
+          {
+            "coin": "SOL",
+            "size": -2144.11,
+            "side": "SHORT",
+            "entry_price": 140.5536,
+            "liquidation_price": 327.4127368861,
+            "leverage": 20.0,
+            "margin_used": 15130.98427,
+            "unrealized_pnl": -1257.119711
+          }
+        ],
+        "cumulative_volume": 582790208.09,
+        "open_orders_count": 3
+      }
+    },
+    "0xe6df4ed7a6ccb8426cbc87bdcdd3cc6d0e6c0690": {
+      "first_seen": "2025-11-15T14:08:30.437008",
+      "last_light_update": "2025-11-15T14:08:20.616979",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 74313.836564,
+          "spot_value": 797110.2620029622,
+          "spot_balances_detail": [
+            {
+              "coin": "USDC",
+              "amount": 118209.01545241,
+              "value": 118209.01545241,
+              "price_source": "stablecoin_1:1"
+            },
+            {
+              "coin": "HYPE",
+              "amount": 17475.19115033,
+              "value": 677242.295435464,
+              "price": 38.7545,
+              "price_source": "all_mids"
+            },
+            {
+              "coin": "USOL",
+              "amount": 3.08910782,
+              "value": 436.01212325390003,
+              "price": 141.145,
+              "price_source": "bridged_asset"
+            },
+            {
+              "coin": "UXPL",
+              "amount": 5214.980456,
+              "value": 1222.93899183428,
+              "price": 0.234505,
+              "price_source": "bridged_asset"
+            }
+          ],
+          "dust_value": 0.96023027721743,
+          "dust_count": 13,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 871424.0985669622,
+          "position_value": 287565.0,
+          "margin_used": 12233.96334,
+          "withdrawable": 62079.873224,
+          "leverage_ratio": 0.33,
+          "num_positions": 1
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": -3.0,
+            "side": "SHORT",
+            "entry_price": 96114.9,
+            "liquidation_price": 98699.2471901235,
+            "leverage": 25.0,
+            "margin_used": 12233.96334,
+            "unrealized_pnl": 779.92157
+          }
+        ],
+        "cumulative_volume": 78654765.58,
+        "open_orders_count": 0
+      }
+    },
+    "0x77375a8c9d13bf79afb2a87f1b0ac1dfd5f5bf66": {
+      "first_seen": "2025-11-15T14:08:43.248006",
+      "last_light_update": "2025-11-15T14:08:30.618114",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 295801.531414,
+          "spot_value": 1176846.355667885,
+          "spot_balances_detail": [
+            {
+              "coin": "USDC",
+              "amount": 490309.7251274,
+              "value": 490309.7251274,
+              "price_source": "stablecoin_1:1"
+            },
+            {
+              "coin": "PURR",
+              "amount": 1253.70702,
+              "value": 124.59591106164001,
+              "price": 0.099382,
+              "price_source": "all_mids"
+            },
+            {
+              "coin": "HYPE",
+              "amount": 17709.30462849,
+              "value": 686332.9555294442,
+              "price": 38.7555,
+              "price_source": "all_mids"
+            },
+            {
+              "coin": "UPUMP",
+              "amount": 22238.217092,
+              "value": 79.079099979152,
+              "price": 0.003556,
+              "price_source": "bridged_asset"
+            }
+          ],
+          "dust_value": 13.415721696693932,
+          "dust_count": 52,
+          "vault_value": 5.772461000000001,
+          "vault_details": [
+            {
+              "vault_address": "0x219d8e8cd429861de50629393bbcb5d1cbe54722",
+              "equity": 5.772452
+            },
+            {
+              "vault_address": "0xd4a9b67af98102821547f6a2417720098cd3202e",
+              "equity": 9e-06
+            }
+          ],
+          "total_portfolio_value": 1472653.659542885,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 295801.531414,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 498380066.2,
+        "open_orders_count": 0
+      }
+    },
+    "0x3bb32e260511874126a59785abf23df96a139c6b": {
+      "first_seen": "2025-11-15T14:08:58.195386",
+      "last_light_update": "2025-11-15T14:08:46.976010",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 31139.577883,
+          "spot_value": 227.56296586857502,
+          "spot_balances_detail": [
+            {
+              "coin": "HYPE",
+              "amount": 0.97000001,
+              "value": 37.614175387775006,
+              "price": 38.7775,
+              "price_source": "all_mids"
+            },
+            {
+              "coin": "UBTC",
+              "amount": 0.0019800048,
+              "value": 189.9487904808,
+              "price": 95933.5,
+              "price_source": "bridged_asset"
+            }
+          ],
+          "dust_value": 0.26212088,
+          "dust_count": 2,
+          "vault_value": 39910.528782,
+          "vault_details": [
+            {
+              "vault_address": "0x07fd993f0fa3a185f7207adccd29f7a87404689d",
+              "equity": 39910.528782
+            }
+          ],
+          "total_portfolio_value": 71277.66963086858,
+          "position_value": 23674.1459,
+          "margin_used": 2367.41459,
+          "withdrawable": 23841.911857,
+          "leverage_ratio": 0.33,
+          "num_positions": 2
+        },
+        "positions": [
+          {
+            "coin": "LTC",
+            "size": 50.0,
+            "side": "LONG",
+            "entry_price": 101.868,
+            "liquidation_price": 0.0,
+            "leverage": 10.0,
+            "margin_used": 538.75,
+            "unrealized_pnl": 294.1
+          },
+          {
+            "coin": "HYPE",
+            "size": 471.67,
+            "side": "LONG",
+            "entry_price": 38.8805,
+            "liquidation_price": 0.0,
+            "leverage": 10.0,
+            "margin_used": 1828.66459,
+            "unrealized_pnl": -52.12355
+          }
+        ],
+        "cumulative_volume": 77517854.45,
+        "open_orders_count": 23
+      }
+    },
+    "0x0ce048fe42c170e41740ee392e187f19515f339d": {
+      "first_seen": "2025-11-15T14:09:09.333002",
+      "last_light_update": "2025-11-15T14:08:58.296383",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 207965.661938,
+          "spot_value": 91431.57768031154,
+          "spot_balances_detail": [
+            {
+              "coin": "HYPE",
+              "amount": 2000.00373286,
+              "value": 77585.14480697154,
+              "price": 38.7925,
+              "price_source": "all_mids"
+            },
+            {
+              "coin": "USDH",
+              "amount": 13846.43287334,
+              "value": 13846.43287334,
+              "price_source": "stablecoin_1:1"
+            }
+          ],
+          "dust_value": 7.254590326661351,
+          "dust_count": 46,
+          "vault_value": 0.090727,
+          "vault_details": [
+            {
+              "vault_address": "0xbb2756f984e69828cd0f37fd2631493d9fb9dd53",
+              "equity": 0.090726
+            },
+            {
+              "vault_address": "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303",
+              "equity": 1e-06
+            }
+          ],
+          "total_portfolio_value": 299397.3303453115,
+          "position_value": 271856.036337,
+          "margin_used": 36030.380634,
+          "withdrawable": 116930.565132,
+          "leverage_ratio": 0.91,
+          "num_positions": 7
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": 1.0,
+            "side": "LONG",
+            "entry_price": 94665.0,
+            "liquidation_price": 0.0,
+            "leverage": 10.0,
+            "margin_used": 9595.6,
+            "unrealized_pnl": 1291.0
+          },
+          {
+            "coin": "ETH",
+            "size": -19.4279,
+            "side": "SHORT",
+            "entry_price": 3454.33,
+            "liquidation_price": 13237.6669565267,
+            "leverage": 20.0,
+            "margin_used": 3080.196405,
+            "unrealized_pnl": 5506.54288
+          },
+          {
+            "coin": "SOL",
+            "size": -241.4,
+            "side": "SHORT",
+            "entry_price": 165.1263,
+            "liquidation_price": 947.5525012225,
+            "leverage": 20.0,
+            "margin_used": 1705.8531,
+            "unrealized_pnl": 5744.4394
+          },
+          {
+            "coin": "kPEPE",
+            "size": -3505696.0,
+            "side": "SHORT",
+            "entry_price": 0.005702,
+            "liquidation_price": 0.0592411606,
+            "leverage": 10.0,
+            "margin_used": 1769.324771,
+            "unrealized_pnl": 2296.944542
+          },
+          {
+            "coin": "ZRO",
+            "size": 11353.6,
+            "side": "LONG",
+            "entry_price": 1.72018,
+            "liquidation_price": 0.0,
+            "leverage": 3.0,
+            "margin_used": 5524.283306,
+            "unrealized_pnl": -2957.49468
+          },
+          {
+            "coin": "HYPE",
+            "size": 1000.0,
+            "side": "LONG",
+            "entry_price": 37.2479,
+            "liquidation_price": 0.0,
+            "leverage": 3.0,
+            "margin_used": 12931.333333,
+            "unrealized_pnl": 1546.0291
+          },
+          {
+            "coin": "SPX",
+            "size": -13570.5,
+            "side": "SHORT",
+            "entry_price": 0.71921,
+            "liquidation_price": 13.8883144283,
+            "leverage": 5.0,
+            "margin_used": 1423.789719,
+            "unrealized_pnl": 2641.123807
+          }
+        ],
+        "cumulative_volume": 177873132.91,
+        "open_orders_count": 35
+      }
+    },
+    "0x8d644e141083bdbdc4d0d88301b2b5ee1427bee3": {
+      "first_seen": "2025-11-15T14:09:17.674532",
+      "last_light_update": "2025-11-15T14:09:09.434999",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 0.0,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 9.68358034378,
+          "dust_count": 5,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 0.0,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.0,
+          "leverage_ratio": 0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 8123310.23,
+        "open_orders_count": 0
+      }
+    },
+    "0xa80221510a86f2df6d1d221b87bc2c24050fe968": {
+      "first_seen": "2025-11-15T14:09:25.615062",
+      "last_light_update": "2025-11-15T14:09:19.436534",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 299625.3793,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.1450879278492,
+          "dust_count": 4,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 299625.3793,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 299625.3793,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 5983519.06,
+        "open_orders_count": 0
+      }
+    },
+    "0x23fa55eadbcebf20d860bccaf1a49ae9e93a2fe9": {
+      "first_seen": "2025-11-15T14:09:37.592346",
+      "last_light_update": "2025-11-15T14:09:29.437290",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "subAccount",
+          "data": {
+            "master": "0x1edd4709711156e2fd3856f96625dcc77485931f"
+          }
+        },
+        "account": {
+          "value": 0.005149,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 1.1666485774350002,
+          "dust_count": 3,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 0.005149,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.005149,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 78152.25,
+        "open_orders_count": 0
+      }
+    },
+    "0xdfeb6259e8bd788c0b9cda4aef95aa6f447f5940": {
+      "first_seen": "2025-11-15T14:09:45.187349",
+      "last_light_update": "2025-11-15T14:09:39.438355",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 407.976892,
+          "spot_value": 623.6840555781,
+          "spot_balances_detail": [
+            {
+              "coin": "UBTC",
+              "amount": 0.0064995186,
+              "value": 623.6840555781,
+              "price": 95958.5,
+              "price_source": "bridged_asset"
+            }
+          ],
+          "dust_value": 5.051331378535,
+          "dust_count": 2,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 1031.6609475781001,
+          "position_value": 623.727,
+          "margin_used": 405.619202,
+          "withdrawable": 2.35769,
+          "leverage_ratio": 0.6,
+          "num_positions": 1
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": -0.0065,
+            "side": "SHORT",
+            "entry_price": 105312.2,
+            "liquidation_price": 156405.880645774,
+            "leverage": 2.0,
+            "margin_used": 405.619202,
+            "unrealized_pnl": 60.80292
+          }
+        ],
+        "cumulative_volume": 13751.51,
+        "open_orders_count": 0
+      }
+    },
+    "0x295f6f481a82b63963cd5c0f00813fb51111ac62": {
+      "first_seen": "2025-11-15T14:14:32.039095",
+      "last_light_update": "2025-11-15T14:14:24.377772",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 0.0,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 1.81479132905661,
+          "dust_count": 4,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 0.0,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 0.0,
+          "leverage_ratio": 0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 11864220.73,
+        "open_orders_count": 0
+      }
+    },
+    "0xe316f7b2d17476c585098e11ca4c1f106d8e6351": {
+      "first_seen": "2025-11-15T14:19:07.737187",
+      "last_light_update": "2025-11-15T14:19:02.165925",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "subAccount",
+          "data": {
+            "master": "0x95c345f6c911e10ceaa107cab01b99640ae3c521"
+          }
+        },
+        "account": {
+          "value": 30318.488816,
+          "spot_value": 28535.088346017415,
+          "spot_balances_detail": [
+            {
+              "coin": "USDC",
+              "amount": 7.84276408,
+              "value": 7.84276408,
+              "price_source": "stablecoin_1:1"
+            },
+            {
+              "coin": "HYPE",
+              "amount": 395.55698803,
+              "value": 15379.453473100415,
+              "price": 38.8805,
+              "price_source": "all_mids"
+            },
+            {
+              "coin": "UBTC",
+              "amount": 0.1369169468,
+              "value": 13147.792108837,
+              "price": 96027.5,
+              "price_source": "bridged_asset"
+            }
+          ],
+          "dust_value": 1.338146130275,
+          "dust_count": 2,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 58853.57716201742,
+          "position_value": 28515.57796,
+          "margin_used": 30313.876622,
+          "withdrawable": 4.612194,
+          "leverage_ratio": 0.48,
+          "num_positions": 2
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": -0.1368,
+            "side": "SHORT",
+            "entry_price": 107448.2,
+            "liquidation_price": 212466.4771713234,
+            "leverage": 1.0,
+            "margin_used": 16292.922153,
+            "unrealized_pnl": 1563.110431
+          },
+          {
+            "coin": "HYPE",
+            "size": -395.56,
+            "side": "SHORT",
+            "entry_price": 37.1567,
+            "liquidation_price": 70.7874618479,
+            "leverage": 1.0,
+            "margin_used": 14020.954469,
+            "unrealized_pnl": -682.03817
+          }
+        ],
+        "cumulative_volume": 380287.23,
+        "open_orders_count": 0
+      }
+    },
+    "0x44f672f3fb7270f1d9862d357fe427f8b97151f2": {
+      "first_seen": "2025-11-15T14:19:14.154466",
+      "last_light_update": "2025-11-15T14:19:08.465895",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "subAccount",
+          "data": {
+            "master": "0x1d9ee618909076032856a121eb49596d6d967182"
+          }
+        },
+        "account": {
+          "value": 292.615103,
+          "spot_value": 455.7448993152,
+          "spot_balances_detail": [
+            {
+              "coin": "UBTC",
+              "amount": 0.0047466752,
+              "value": 455.7448993152,
+              "price": 96013.5,
+              "price_source": "bridged_asset"
+            }
+          ],
+          "dust_value": 2.054290484095,
+          "dust_count": 3,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 748.3600023152,
+          "position_value": 456.05225,
+          "margin_used": 291.713932,
+          "withdrawable": 0.901171,
+          "leverage_ratio": 0.61,
+          "num_positions": 1
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": -0.00475,
+            "side": "SHORT",
+            "entry_price": 104924.2,
+            "liquidation_price": 155480.9475243665,
+            "leverage": 2.0,
+            "margin_used": 291.713932,
+            "unrealized_pnl": 42.33771
+          }
+        ],
+        "cumulative_volume": 7857.92,
+        "open_orders_count": 0
+      }
+    },
+    "0x45089135b2066750d109f2d0ec30bb86f5453661": {
+      "first_seen": "2025-11-15T14:19:26.632722",
+      "last_light_update": "2025-11-15T14:19:18.466529",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 74124.997641,
+          "spot_value": 8779.51393603386,
+          "spot_balances_detail": [
+            {
+              "coin": "USDC",
+              "amount": 6837.87334277,
+              "value": 6837.87334277,
+              "price_source": "stablecoin_1:1"
+            },
+            {
+              "coin": "HYPE",
+              "amount": 49.96951844,
+              "value": 1941.64059326386,
+              "price": 38.8565,
+              "price_source": "all_mids"
+            }
+          ],
+          "dust_value": 0.34338578695370997,
+          "dust_count": 8,
+          "vault_value": 1e-06,
+          "vault_details": [
+            {
+              "vault_address": "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303",
+              "equity": 1e-06
+            }
+          ],
+          "total_portfolio_value": 82904.51157803385,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 74124.997641,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 7820379.11,
+        "open_orders_count": 0
+      }
+    },
+    "0x13fa88e535d5ea07f3a56935b5805b98205beeaa": {
+      "first_seen": "2025-11-15T14:19:35.554266",
+      "last_light_update": "2025-11-15T14:19:28.467330",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 100000.006846,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.71521173956,
+          "dust_count": 8,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 100000.006846,
+          "position_value": 0.0,
+          "margin_used": 0.0,
+          "withdrawable": 100000.006846,
+          "leverage_ratio": 0.0,
+          "num_positions": 0
+        },
+        "positions": [],
+        "cumulative_volume": 1026363327.05,
+        "open_orders_count": 0
+      }
+    }
+  }
+}

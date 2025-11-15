@@ -6,6 +6,8 @@ TWAP Order Models for HypurrScan Data
 Lightweight data models for handling TWAP orders from HypurrScan API.
 Provides standardized structure and helper methods for TWAP analysis.
 
+NOW WITH COIN REGISTRY SUPPORT FOR ALL COINS!
+
 Classes:
     TWAPOrder: Individual TWAP order with parsing and analysis methods
     TWAPSnapshot: Collection of orders at a point in time
@@ -15,6 +17,9 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import logging
+
+# Import coin registry for multi-coin support
+from coin_registry import get_market_type, get_coin_name
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +32,7 @@ class TWAPOrder:
     Attributes:
         address: Shortened address (first 10 chars)
         full_address: Complete wallet address
-        symbol: Trading symbol (e.g., 'HYPE')
+        symbol: Trading symbol (e.g., 'HYPE', 'BTC', 'ETH')
         size: Order size in tokens
         side: Direction ('BUY', 'SELL')
         product_type: 'SPOT' or 'PERP'
@@ -69,19 +74,16 @@ class TWAPOrder:
         action = raw_order.get('action', {})
         twap_info = action.get('twap', {})
 
-        # Get asset ID and determine market type (SPOT vs PERP)
+        # Get asset ID and determine market type using coin registry
         asset_id = twap_info.get('a', 0)
 
-        # HYPE has two markets:
-        # - PERP: asset_id = 159
-        # - SPOT: asset_id = 10107
-        if asset_id == 159:
-            product_type = "PERP"
-        elif asset_id == 10107:
-            product_type = "SPOT"
-        else:
-            product_type = "UNKNOWN"
-            logger.warning(f"Unknown asset ID: {asset_id}")
+        # Use coin registry for market type detection (works for ALL coins!)
+        product_type = get_market_type(asset_id)
+
+        # Verify symbol matches (optional validation)
+        registry_symbol = get_coin_name(asset_id)
+        if registry_symbol != symbol and not registry_symbol.startswith('UNKNOWN'):
+            logger.debug(f"Symbol mismatch: expected {symbol}, registry says {registry_symbol}")
 
         # Side detection (b field: true=buy, false=sell)
         is_buy = twap_info.get('b', True)
@@ -364,12 +366,12 @@ class TWAPSnapshot:
             'sell_pressure_per_min': self.sell_pressure_per_min,
             'net_pressure_per_min': self.net_pressure_per_min,
 
-            # SPOT MARKET PRESSURE (NEW!)
+            # SPOT MARKET PRESSURE
             'spot_buy_pressure_per_min': self.spot_buy_pressure_per_min,
             'spot_sell_pressure_per_min': self.spot_sell_pressure_per_min,
             'spot_net_pressure_per_min': self.spot_net_pressure_per_min,
 
-            # PERP MARKET PRESSURE (NEW!)
+            # PERP MARKET PRESSURE
             'perp_buy_pressure_per_min': self.perp_buy_pressure_per_min,
             'perp_sell_pressure_per_min': self.perp_sell_pressure_per_min,
             'perp_net_pressure_per_min': self.perp_net_pressure_per_min,
@@ -409,7 +411,7 @@ class TWAPSnapshot:
         """Compare this snapshot with a previous one to detect changes."""
 
         def order_key(order):
-            """Create unique key: (address, size, duration) tuple"""
+            """Create unique key: order hash"""
             return order.order_hash
 
         current_order_keys = {order_key(o): o for o in self.orders}
