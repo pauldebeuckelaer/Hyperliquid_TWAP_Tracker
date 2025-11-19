@@ -421,6 +421,17 @@ class TWAPSnapshot:
         gone_order_keys = set(previous_order_keys.keys()) - set(current_order_keys.keys())
         existing_order_keys = set(current_order_keys.keys()) & set(previous_order_keys.keys())
 
+        # Separate gone orders by their status
+        completed_orders = []
+        canceled_orders = []
+
+        for key in gone_order_keys:
+            order = previous_order_keys[key]
+            if order.status == 'canceled':
+                canceled_orders.append(order)
+            else:
+                completed_orders.append(order)
+
         status_changes = []
         for key in existing_order_keys:
             current_order = current_order_keys[key]
@@ -438,7 +449,8 @@ class TWAPSnapshot:
 
         return {
             'new_orders': [current_order_keys[key] for key in new_order_keys],
-            'completed_orders': [previous_order_keys[key] for key in gone_order_keys],
+            'completed_orders': completed_orders,  # Already filtered
+            'canceled_orders': canceled_orders,  # Already filtered
             'status_changes': status_changes,
             'volume_change': self.total_volume - previous.total_volume,
             'net_flow_change': self.net_flow - previous.net_flow,

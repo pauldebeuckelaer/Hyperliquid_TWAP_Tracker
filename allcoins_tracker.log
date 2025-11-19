@@ -1,0 +1,5 @@
+2025-11-19 19:43:43 | INFO | allcoins_state_tracker | Loaded 1169 addresses from history
+2025-11-19 19:43:43 | INFO | allcoins_state_tracker | Created new daily JSON file: twap_snapshots\all_coins_2025-11-19.jsonl
+2025-11-19 19:43:43 | INFO | allcoins_state_tracker | ======================================================================
+2025-11-19 19:43:43 | INFO | allcoins_state_tracker | All Coins TWAP State Tracker Initialized
+2025-11-19 19:43:43 | INFO | allcoins_state_tracker | ======================================================================
