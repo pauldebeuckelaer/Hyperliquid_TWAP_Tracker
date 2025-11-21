@@ -408,49 +408,89 @@ class TWAPSnapshot:
         return address_data
 
     def compare_with(self, previous: 'TWAPSnapshot') -> Dict[str, Any]:
-        """Compare this snapshot with a previous one to detect changes."""
+        """
+        Compare this snapshot with a previous one to detect changes.
+
+        FIXED LOGIC:
+        - Completions/cancellations are detected from STATUS CHANGES
+        - Not from orders disappearing from the orderbook
+        """
 
         def order_key(order):
             """Create unique key: order hash"""
             return order.order_hash
 
+        # Build lookup dictionaries
         current_order_keys = {order_key(o): o for o in self.orders}
         previous_order_keys = {order_key(o): o for o in previous.orders}
 
+        # Find new, gone, and existing orders
         new_order_keys = set(current_order_keys.keys()) - set(previous_order_keys.keys())
         gone_order_keys = set(previous_order_keys.keys()) - set(current_order_keys.keys())
         existing_order_keys = set(current_order_keys.keys()) & set(previous_order_keys.keys())
 
-        # Separate gone orders by their status
+        # Initialize arrays
         completed_orders = []
         canceled_orders = []
-
-        for key in gone_order_keys:
-            order = previous_order_keys[key]
-            if order.status == 'canceled':
-                canceled_orders.append(order)
-            else:
-                completed_orders.append(order)
-
         status_changes = []
+
+        # === CORE FIX: Detect completions/cancellations from STATUS CHANGES ===
         for key in existing_order_keys:
             current_order = current_order_keys[key]
             previous_order = previous_order_keys[key]
 
+            # Status changed in THIS snapshot
             if current_order.status != previous_order.status:
+
+                # Order just got canceled
+                if current_order.status == 'canceled' and previous_order.status == 'active':
+                    canceled_orders.append(current_order)
+
+                # Order just completed (rare - usually orders disappear when they fill)
+                elif current_order.status == 'completed' and previous_order.status == 'active':
+                    completed_orders.append(current_order)
+
+                # Track all status changes
                 status_changes.append({
                     'address': current_order.display_address,
                     'full_address': current_order.full_address,
                     'old_status': previous_order.status,
                     'new_status': current_order.status,
                     'size': current_order.size,
-                    'side': current_order.side
+                    'side': current_order.side,
+                    'duration_hours': current_order.duration_hours
                 })
+
+        # === Handle orders that DISAPPEARED from orderbook ===
+        # When an order disappears while still 'active', it likely filled
+        # When an order disappears with status 'canceled', it was already counted above
+        for key in gone_order_keys:
+            order = previous_order_keys[key]
+
+            # Only count as completion if it disappeared while ACTIVE
+            # (Orders with status='canceled' linger, then disappear - already counted)
+            if order.status == 'active':
+                # Active order disappeared = most likely filled
+                completed_orders.append(order)
+
+                # Also add to status_changes for tracking
+                status_changes.append({
+                    'address': order.display_address,
+                    'full_address': order.full_address,
+                    'old_status': 'active',
+                    'new_status': 'completed',  # Inferred
+                    'size': order.size,
+                    'side': order.side,
+                    'duration_hours': order.duration_hours
+                })
+
+            # If order disappeared with status='canceled' or 'error', ignore it
+            # It was already counted when status changed in a previous snapshot
 
         return {
             'new_orders': [current_order_keys[key] for key in new_order_keys],
-            'completed_orders': completed_orders,  # Already filtered
-            'canceled_orders': canceled_orders,  # Already filtered
+            'completed_orders': completed_orders,
+            'canceled_orders': canceled_orders,
             'status_changes': status_changes,
             'volume_change': self.total_volume - previous.total_volume,
             'net_flow_change': self.net_flow - previous.net_flow,
