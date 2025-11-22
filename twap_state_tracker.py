@@ -144,60 +144,98 @@ class TWAPStateTracker:
             self._save_to_json(new_snapshot, changes)
 
     def _log_snapshot_summary(self):
-        """Log snapshot with order details - separated by SPOT and PERP markets"""
+        """
+        Log snapshot with order details - separated by SPOT and PERP markets.
+
+        IMPORTANT: Only shows truly active orders (status='active').
+        Canceled/completed orders that linger in API response are logged at DEBUG level.
+        """
         snapshot = self.current_snapshot
         stats = snapshot.get_stats()
 
-        # INFO: High-level summary
+        # ========== SEPARATE TRULY ACTIVE FROM LINGERING ORDERS ==========
+        # Truly active = status is 'active'
+        truly_active = [o for o in snapshot.orders if o.status == 'active']
+
+        # Lingering = status is 'canceled', 'completed', or 'error' but still in API response
+        lingering = [o for o in snapshot.orders if o.status in ['canceled', 'completed', 'error']]
+
+        # ========== HIGH-LEVEL SUMMARY ==========
         logger.info(f"[{self.symbol}] UPDATE #{self.update_count}")
         logger.info(f"=" * 70)
         logger.info(
-            f"Total Orders: {stats['total_orders']} | "
-            f"Active: {stats['active_orders']} ({stats['spot_orders']} SPOT, {stats['perp_orders']} PERP)"
+            f"Total Orders in API: {stats['total_orders']} | "
+            f"Truly Active: {len(truly_active)} | "
+            f"Lingering (ignore): {len(lingering)}"
         )
 
-        # SHOW PRESSURE FOR EACH MARKET SEPARATELY
+        # If there are lingering orders, log them at DEBUG level for visibility
+        if lingering:
+            logger.debug(f"🗑️  Lingering orders (already canceled/completed, waiting to disappear):")
+            for order in lingering:
+                logger.debug(
+                    f"    {order.full_address} {order.side:4s} {order.size:>10,.0f} "
+                    f"{order.product_type} status={order.status}"
+                )
+
+        # ========== MARKET PRESSURE (based on ACTIVE orders only) ==========
+        # Recalculate pressure using only truly active orders
+        active_spot_buy = sum(
+            o.get_execution_rate()
+            for o in truly_active
+            if o.is_buy_side and o.product_type == 'SPOT'
+        )
+        active_spot_sell = sum(
+            o.get_execution_rate()
+            for o in truly_active
+            if o.is_sell_side and o.product_type == 'SPOT'
+        )
+        active_perp_buy = sum(
+            o.get_execution_rate()
+            for o in truly_active
+            if o.is_buy_side and o.product_type == 'PERP'
+        )
+        active_perp_sell = sum(
+            o.get_execution_rate()
+            for o in truly_active
+            if o.is_sell_side and o.product_type == 'PERP'
+        )
+
         logger.info(
             f"💵 SPOT Pressure/min: "
-            f"Buy {stats['spot_buy_pressure_per_min']:.1f} | "
-            f"Sell {stats['spot_sell_pressure_per_min']:.1f} | "
-            f"Net {stats['spot_net_pressure_per_min']:+.1f}"
+            f"Buy {active_spot_buy:.1f} | "
+            f"Sell {active_spot_sell:.1f} | "
+            f"Net {active_spot_buy - active_spot_sell:+.1f}"
         )
         logger.info(
             f"⚡ PERP Pressure/min: "
-            f"Buy {stats['perp_buy_pressure_per_min']:.1f} | "
-            f"Sell {stats['perp_sell_pressure_per_min']:.1f} | "
-            f"Net {stats['perp_net_pressure_per_min']:+.1f}"
+            f"Buy {active_perp_buy:.1f} | "
+            f"Sell {active_perp_sell:.1f} | "
+            f"Net {active_perp_buy - active_perp_sell:+.1f}"
         )
         logger.info(
             f"📊 TOTAL Pressure/min: "
-            f"Buy {stats['buy_pressure_per_min']:.1f} | "
-            f"Sell {stats['sell_pressure_per_min']:.1f} | "
-            f"Net {stats['net_pressure_per_min']:+.1f}"
+            f"Buy {active_spot_buy + active_perp_buy:.1f} | "
+            f"Sell {active_spot_sell + active_perp_sell:.1f} | "
+            f"Net {(active_spot_buy + active_perp_buy) - (active_spot_sell + active_perp_sell):+.1f}"
         )
 
-        # Separate orders by market
-        spot_orders = [o for o in snapshot.orders if o.product_type == 'SPOT']
-        perp_orders = [o for o in snapshot.orders if o.product_type == 'PERP']
+        # ========== SEPARATE ORDERS BY MARKET TYPE ==========
+        spot_orders = [o for o in truly_active if o.product_type == 'SPOT']
+        perp_orders = [o for o in truly_active if o.product_type == 'PERP']
 
         # Sort each by size (largest first)
         spot_orders.sort(key=lambda o: o.size, reverse=True)
         perp_orders.sort(key=lambda o: o.size, reverse=True)
 
-        # Count active orders
-        active_spot = sum(1 for o in spot_orders if o.is_active)
-        active_perp = sum(1 for o in perp_orders if o.is_active)
-
-        # ========== SPOT MARKET ==========
+        # ========== SPOT MARKET ORDERS ==========
         logger.info(f"=" * 70)
-        if active_spot > 0:
-            logger.info(f"💵 SPOT MARKET - {active_spot} Active Orders")
+        if spot_orders:
+            logger.info(f"💵 SPOT MARKET - {len(spot_orders)} Active Orders")
             logger.info(f"-" * 70)
-            for order in spot_orders:
-                if not order.is_active:
-                    continue
 
-                addr = f"{order.full_address}"
+            for order in spot_orders:
+                addr = order.full_address
                 side_emoji = "🟢" if order.is_buy_side else "🔴"
 
                 logger.info(
@@ -207,16 +245,14 @@ class TWAPStateTracker:
         else:
             logger.info(f"💵 SPOT MARKET - No Active Orders")
 
-        # ========== PERP MARKET ==========
+        # ========== PERP MARKET ORDERS ==========
         logger.info(f"=" * 70)
-        if active_perp > 0:
-            logger.info(f"⚡ PERP MARKET - {active_perp} Active Orders")
+        if perp_orders:
+            logger.info(f"⚡ PERP MARKET - {len(perp_orders)} Active Orders")
             logger.info(f"-" * 70)
-            for order in perp_orders:
-                if not order.is_active:
-                    continue
 
-                addr = f"{order.full_address}"
+            for order in perp_orders:
+                addr = order.full_address
                 side_emoji = "🟢" if order.is_buy_side else "🔴"
 
                 logger.info(
@@ -299,7 +335,8 @@ class TWAPStateTracker:
                 'duration_hours': order.duration_hours,
                 'status': order.status,
                 'product_type': order.product_type,
-                'is_active': order.is_active
+                'is_active': order.is_active,
+                'order_hash': order.order_hash
             }
 
         # Create dict versions

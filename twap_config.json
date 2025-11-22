@@ -26,11 +26,11 @@
   "logging": {
     "root_level": "INFO",
     "console": true,
-    "console_modules": ["allcoins_state_tracker"],
+    "console_modules": ["twap_state_tracker", "api_client.hypurrscan_client"],
     "files": [
       {
         "path": "twap_tracker.log",
-        "modules": ["twap_state_tracker"]
+        "modules": ["twap_state_tracker", "hypurrscan_client"]
       },
       {
         "path": "allcoins_tracker.log",
@@ -42,7 +42,7 @@
       }
     ],
     "modules": {
-      "api_client.hypurrscan_client": "INFO",
+      "api_client.hypurrscan_client": "DEBUG",
       "api_client.hyperliquid_client": "INFO",
       "twap_state_tracker": "INFO",
       "allcoins_state_tracker": "INFO",

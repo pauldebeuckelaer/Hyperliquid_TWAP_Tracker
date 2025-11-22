@@ -15,6 +15,7 @@ Usage:
 import requests
 import logging
 import time
+import json
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
@@ -304,6 +305,20 @@ class HypurrScanClient:
         Returns:
             Enriched order dict
         """
+
+        # ========== ADD THIS LOGGING BLOCK ==========
+        logger.debug("=" * 80)
+        logger.debug(f"RAW ORDER FROM API for {coin}:")
+        logger.debug(json.dumps(order, indent=2))
+
+        # Check what hash fields exist
+        hash_fields = ['hash', 'order_hash', 'id', 'txHash', 'tx']
+        logger.debug("Hash fields in raw order:")
+        for field in hash_fields:
+            if field in order:
+                logger.debug(f"  ✓ {field}: {order.get(field)}")
+            else:
+                logger.debug(f"  ✗ {field}: NOT PRESENT")
         try:
             enriched_order = order.copy()
 
@@ -359,6 +374,20 @@ class HypurrScanClient:
 
         for order in orders:
             try:
+                # ========== ADD THIS LOGGING BLOCK ==========
+                logger.debug("=" * 80)
+                logger.debug(f"RAW ORDER FROM API for {symbol}:")
+                logger.debug(json.dumps(order, indent=2))
+
+                # Check what hash fields exist
+                hash_fields = ['hash', 'order_hash', 'id', 'txHash', 'tx']
+                logger.debug("Hash fields in raw order:")
+                for field in hash_fields:
+                    if field in order:
+                        logger.debug(f"  ✓ {field}: {order.get(field)}")
+                    else:
+                        logger.debug(f"  ✗ {field}: NOT PRESENT")
+                # ========== END LOGGING BLOCK ==========
                 enriched_order = order.copy()
 
                 # Extract TWAP info
