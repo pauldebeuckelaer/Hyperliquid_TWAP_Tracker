@@ -133,7 +133,7 @@ class TWAPStateTracker:
             changes = self._detect_changes()
         else:
             changes = {
-                'new_orders': new_snapshot.orders,
+                'new_orders': new_snapshot.active_orders,
                 'completed_orders': [],
                 'canceled_orders': [],
                 'status_changes': []
@@ -340,7 +340,7 @@ class TWAPStateTracker:
             }
 
         # Create dict versions
-        orders_dict = [order_to_dict(o) for o in snapshot.orders]
+        orders_dict = [order_to_dict(o) for o in snapshot.active_orders]
         new_orders_dict = [order_to_dict(o) for o in changes.get('new_orders', [])]
         completed_orders_dict = [order_to_dict(o) for o in changes.get('completed_orders', [])]
         canceled_orders_dict = [order_to_dict(o) for o in changes.get('canceled_orders', [])]

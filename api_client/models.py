@@ -273,13 +273,13 @@ class TWAPSnapshot:
 
     @property
     def buy_volume(self) -> float:
-        """Calculate total buy-side volume"""
-        return sum(o.size for o in self.orders if o.is_buy_side)
+        """Calculate total buy-side volume (ACTIVE orders only)"""
+        return sum(o.size for o in self.active_orders if o.is_buy_side)
 
     @property
     def sell_volume(self) -> float:
-        """Calculate total sell-side volume"""
-        return sum(o.size for o in self.orders if o.is_sell_side)
+        """Calculate total sell-side volume (ACTIVE orders only)"""
+        return sum(o.size for o in self.active_orders if o.is_sell_side)
 
     @property
     def net_flow(self) -> float:
@@ -420,9 +420,11 @@ class TWAPSnapshot:
         Compare this snapshot with a previous one to detect changes.
 
         FIXED LOGIC:
-        - Only track status changes on orders that exist in BOTH snapshots
-        - Ignore canceled orders that linger then disappear (they were already counted)
-        - Only count disappearances as completions if order was ACTIVE when it vanished
+        - Only track ACTIVE orders in new_orders
+        - Detect status changes IN THIS SNAPSHOT (active → canceled/completed/error)
+        - Add orders to completed_orders/canceled_orders when status CHANGES
+        - Handle orders that were already canceled/error in previous snapshot
+        - Ignore orders that disappear if they were already non-active
         """
 
         def order_key(order):
@@ -443,7 +445,15 @@ class TWAPSnapshot:
         canceled_orders = []
         status_changes = []
 
-        # === PROCESS EXISTING ORDERS (status changes) ===
+        # ========== FIX: Only add ACTIVE new orders ==========
+        new_orders = [
+            current_order_keys[key]
+            for key in new_order_keys
+            if current_order_keys[key].is_active  # ← CRITICAL: Only active orders!
+        ]
+        # ====================================================
+
+        # === PROCESS EXISTING ORDERS (detect status changes) ===
         for key in existing_order_keys:
             current_order = current_order_keys[key]
             previous_order = previous_order_keys[key]
@@ -451,12 +461,12 @@ class TWAPSnapshot:
             # Status changed in THIS snapshot
             if current_order.status != previous_order.status:
 
-                # Order just got canceled
+                # Order just got canceled (active → canceled)
                 if current_order.status == 'canceled' and previous_order.status == 'active':
                     canceled_orders.append(current_order)
                     status_changes.append({
-                        'address': current_order.display_address,
-                        'full_address': current_order.full_address,
+                        'address': current_order.full_address,
+                        'order_hash': current_order.order_hash,
                         'old_status': previous_order.status,
                         'new_status': current_order.status,
                         'size': current_order.size,
@@ -465,12 +475,12 @@ class TWAPSnapshot:
                         'duration_hours': current_order.duration_hours
                     })
 
-                # Order just completed (rare - usually orders disappear when filled)
+                # Order just completed (active → completed)
                 elif current_order.status == 'completed' and previous_order.status == 'active':
                     completed_orders.append(current_order)
                     status_changes.append({
-                        'address': current_order.display_address,
-                        'full_address': current_order.full_address,
+                        'address': current_order.full_address,
+                        'order_hash': current_order.order_hash,
                         'old_status': previous_order.status,
                         'new_status': current_order.status,
                         'size': current_order.size,
@@ -479,11 +489,26 @@ class TWAPSnapshot:
                         'duration_hours': current_order.duration_hours
                     })
 
-                # Track any other status changes
-                elif current_order.status != previous_order.status:
+                # Order went to error state (active → error)
+                elif current_order.status == 'error' and previous_order.status == 'active':
+                    # Treat errors as cancellations for volume tracking
+                    canceled_orders.append(current_order)
                     status_changes.append({
-                        'address': current_order.display_address,
-                        'full_address': current_order.full_address,
+                        'address': current_order.full_address,
+                        'order_hash': current_order.order_hash,
+                        'old_status': previous_order.status,
+                        'new_status': current_order.status,
+                        'size': current_order.size,
+                        'side': current_order.side,
+                        'product_type': current_order.product_type,
+                        'duration_hours': current_order.duration_hours
+                    })
+
+                # Track any other status changes (for debugging)
+                else:
+                    status_changes.append({
+                        'address': current_order.full_address,
+                        'order_hash': current_order.order_hash,
                         'old_status': previous_order.status,
                         'new_status': current_order.status,
                         'size': current_order.size,
@@ -493,21 +518,16 @@ class TWAPSnapshot:
                     })
 
         # === PROCESS DISAPPEARED ORDERS ===
-        # Only count as completion if it disappeared while ACTIVE
+        # An order disappeared - what to do depends on its last status
         for key in gone_order_keys:
             order = previous_order_keys[key]
 
-            # CRITICAL FIX: Only count active orders that disappear as completed
-            # Canceled orders that linger and then disappear should be IGNORED
-            # (they were already counted when status changed to canceled)
             if order.status == 'active':
-                # Active order disappeared = most likely filled
+                # Active order disappeared without changing status first = completed/filled
                 completed_orders.append(order)
-
-                # Also add to status_changes for tracking
                 status_changes.append({
-                    'address': order.display_address,
-                    'full_address': order.full_address,
+                    'address': order.full_address,
+                    'order_hash': order.order_hash,
                     'old_status': 'active',
                     'new_status': 'completed',  # Inferred
                     'size': order.size,
@@ -516,11 +536,42 @@ class TWAPSnapshot:
                     'duration_hours': order.duration_hours
                 })
 
-            # ELSE: Order disappeared with status='canceled' or 'error'
-            # → IGNORE IT, it was already counted when status changed
+            elif order.status == 'canceled':
+                # Canceled order finally disappeared - add to canceled_orders
+                # This handles orders that were already canceled when tracking started
+                canceled_orders.append(order)
+                status_changes.append({
+                    'address': order.full_address,
+                    'order_hash': order.order_hash,
+                    'old_status': 'canceled',
+                    'new_status': 'removed',  # Inferred
+                    'size': order.size,
+                    'side': order.side,
+                    'product_type': order.product_type,
+                    'duration_hours': order.duration_hours
+                })
+
+            elif order.status == 'error':
+                # Error order finally disappeared - add to canceled_orders
+                # This handles orders that were already in error state when tracking started
+                canceled_orders.append(order)
+                status_changes.append({
+                    'address': order.full_address,
+                    'order_hash': order.order_hash,
+                    'old_status': 'error',
+                    'new_status': 'removed',  # Inferred
+                    'size': order.size,
+                    'side': order.side,
+                    'product_type': order.product_type,
+                    'duration_hours': order.duration_hours
+                })
+
+            elif order.status == 'completed':
+                # Completed order finally disappeared - already counted, ignore
+                pass
 
         return {
-            'new_orders': [current_order_keys[key] for key in new_order_keys],
+            'new_orders': new_orders,  # ← Now only contains active orders!
             'completed_orders': completed_orders,
             'canceled_orders': canceled_orders,
             'status_changes': status_changes,
