@@ -104,6 +104,7 @@ class SimpleJsonLogger:
                         "size": round(o['size'], 2),
                         "duration_hours": round(o['duration_hours'], 1),
                         "status": o['status'],
+                        "product_type": o['product_type'],
                         "order_hash": o['order_hash']
                     }
                     for o in data['completed_orders']
