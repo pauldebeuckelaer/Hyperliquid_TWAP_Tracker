@@ -108,7 +108,14 @@ class SimpleTWAPBot:
             for symbol in self.symbols:
                 twap_orders = twap_data.get(symbol, [])
                 if twap_orders:
-                    self.trackers[symbol].update(twap_orders)
+                    # Fetch current price if client available
+                    current_price = None
+                    if self.hyperliquid_client:
+                        current_price = self.hyperliquid_client.get_token_price(symbol)
+                        if current_price:
+                            logger.info(f" {symbol} price: ${current_price:,.4f}")
+
+                    self.trackers[symbol].update(twap_orders, current_price=current_price)
                 else:
                     logger.warning(f"No TWAP orders found for {symbol}")
 

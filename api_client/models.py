@@ -110,6 +110,20 @@ class TWAPOrder:
         full_address = raw_order.get('user', raw_order.get('full_address', 'unknown'))
         short_address = full_address[:10] + '...' if len(full_address) > 10 else full_address
 
+        # Calculate elapsed time and progress
+        start_time_ms = raw_order.get('time')
+        elapsed_minutes = None
+        progress_percent = None
+
+        if start_time_ms:
+            start_time = datetime.fromtimestamp(start_time_ms / 1000)
+            now = datetime.now()
+            elapsed_minutes = int((now - start_time).total_seconds() / 60)
+
+            duration_minutes = twap_info.get('m', 0)
+            if duration_minutes > 0:
+                progress_percent = round((elapsed_minutes / duration_minutes) * 100, 1)
+
         return cls(
             address=short_address,
             full_address=full_address,
@@ -119,10 +133,20 @@ class TWAPOrder:
             product_type=product_type,
             status=status,
             duration_minutes=twap_info.get('m', 0),
+            elapsed_minutes=elapsed_minutes,
+            progress_percent=progress_percent,
             order_hash=raw_order.get('order_hash', raw_order.get('hash', '')),
             timestamp=datetime.now(),
             raw_data=raw_order
         )
+
+    @property
+    def time_remaining_minutes(self) -> Optional[int]:
+        """Calculate minutes remaining until order completes"""
+        if self.elapsed_minutes is not None and self.duration_minutes > 0:
+            remaining = self.duration_minutes - self.elapsed_minutes
+            return max(0, remaining)  # Don't go negative
+        return None
 
     @property
     def display_address(self) -> str:
@@ -221,16 +245,18 @@ class TWAPSnapshot:
     symbol: str
     timestamp: datetime
     update_number: int = 0
+    current_price: Optional[float] = None
 
     @classmethod
-    def from_hypurr_data(cls, raw_orders: List[Dict], symbol: str, update_number: int = 0) -> 'TWAPSnapshot':
+    def from_hypurr_data(cls, raw_orders: List[Dict], symbol: str, update_number: int = 0, current_price: Optional[float] = None) -> 'TWAPSnapshot':
         """Create snapshot from raw HypurrScan data"""
         orders = [TWAPOrder.from_hypurr_data(order, symbol) for order in raw_orders]
         return cls(
             orders=orders,
             symbol=symbol,
             timestamp=datetime.now(),
-            update_number=update_number
+            update_number=update_number,
+            current_price=current_price
         )
 
     @property
