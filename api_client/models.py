@@ -493,12 +493,15 @@ class TWAPSnapshot:
                     status_changes.append({
                         'address': current_order.full_address,
                         'order_hash': current_order.order_hash,
+                        'side': current_order.side,
+                        'size': current_order.size,
+                        'product_type': current_order.product_type,
+                        'duration_hours': round(current_order.duration_hours, 2),
                         'old_status': previous_order.status,
                         'new_status': current_order.status,
-                        'size': current_order.size,
-                        'side': current_order.side,
-                        'product_type': current_order.product_type,
-                        'duration_hours': current_order.duration_hours
+                        'elapsed_minutes': current_order.elapsed_minutes,
+                        'progress_percent': current_order.progress_percent,
+                        'time_remaining_minutes': current_order.time_remaining_minutes
                     })
 
                 # Order just completed (active → completed)
@@ -507,12 +510,15 @@ class TWAPSnapshot:
                     status_changes.append({
                         'address': current_order.full_address,
                         'order_hash': current_order.order_hash,
+                        'side': current_order.side,
+                        'size': current_order.size,
+                        'product_type': current_order.product_type,
+                        'duration_hours': round(current_order.duration_hours, 2),
                         'old_status': previous_order.status,
                         'new_status': current_order.status,
-                        'size': current_order.size,
-                        'side': current_order.side,
-                        'product_type': current_order.product_type,
-                        'duration_hours': current_order.duration_hours
+                        'elapsed_minutes': current_order.elapsed_minutes,
+                        'progress_percent': current_order.progress_percent,
+                        'time_remaining_minutes': current_order.time_remaining_minutes
                     })
 
                 # Order went to error state (active → error)
@@ -522,12 +528,15 @@ class TWAPSnapshot:
                     status_changes.append({
                         'address': current_order.full_address,
                         'order_hash': current_order.order_hash,
+                        'side': current_order.side,
+                        'size': current_order.size,
+                        'product_type': current_order.product_type,
+                        'duration_hours': round(current_order.duration_hours, 2),
                         'old_status': previous_order.status,
                         'new_status': current_order.status,
-                        'size': current_order.size,
-                        'side': current_order.side,
-                        'product_type': current_order.product_type,
-                        'duration_hours': current_order.duration_hours
+                        'elapsed_minutes': current_order.elapsed_minutes,
+                        'progress_percent': current_order.progress_percent,
+                        'time_remaining_minutes': current_order.time_remaining_minutes
                     })
 
                 # Track any other status changes (for debugging)
@@ -535,12 +544,15 @@ class TWAPSnapshot:
                     status_changes.append({
                         'address': current_order.full_address,
                         'order_hash': current_order.order_hash,
+                        'side': current_order.side,
+                        'size': current_order.size,
+                        'product_type': current_order.product_type,
+                        'duration_hours': round(current_order.duration_hours, 2),
                         'old_status': previous_order.status,
                         'new_status': current_order.status,
-                        'size': current_order.size,
-                        'side': current_order.side,
-                        'product_type': current_order.product_type,
-                        'duration_hours': current_order.duration_hours
+                        'elapsed_minutes': current_order.elapsed_minutes,
+                        'progress_percent': current_order.progress_percent,
+                        'time_remaining_minutes': current_order.time_remaining_minutes
                     })
 
         # === PROCESS DISAPPEARED ORDERS ===
@@ -554,42 +566,49 @@ class TWAPSnapshot:
                 status_changes.append({
                     'address': order.full_address,
                     'order_hash': order.order_hash,
-                    'old_status': 'active',
-                    'new_status': 'completed',  # Inferred
-                    'size': order.size,
                     'side': order.side,
+                    'size': order.size,
                     'product_type': order.product_type,
-                    'duration_hours': order.duration_hours
+                    'duration_hours': round(order.duration_hours, 2),
+                    'old_status': 'active',
+                    'new_status': 'completed',
+                    'elapsed_minutes': order.elapsed_minutes,
+                    'progress_percent': order.progress_percent,
+                    'time_remaining_minutes': order.time_remaining_minutes
                 })
 
             elif order.status == 'canceled':
                 # Canceled order finally disappeared - add to canceled_orders
-                # This handles orders that were already canceled when tracking started
                 canceled_orders.append(order)
                 status_changes.append({
                     'address': order.full_address,
                     'order_hash': order.order_hash,
-                    'old_status': 'canceled',
-                    'new_status': 'removed',  # Inferred
-                    'size': order.size,
                     'side': order.side,
+                    'size': order.size,
                     'product_type': order.product_type,
-                    'duration_hours': order.duration_hours
+                    'duration_hours': round(order.duration_hours, 2),
+                    'old_status': 'canceled',
+                    'new_status': 'removed',
+                    'elapsed_minutes': order.elapsed_minutes,
+                    'progress_percent': order.progress_percent,
+                    'time_remaining_minutes': order.time_remaining_minutes
                 })
 
             elif order.status == 'error':
                 # Error order finally disappeared - add to canceled_orders
-                # This handles orders that were already in error state when tracking started
                 canceled_orders.append(order)
                 status_changes.append({
                     'address': order.full_address,
                     'order_hash': order.order_hash,
-                    'old_status': 'error',
-                    'new_status': 'removed',  # Inferred
-                    'size': order.size,
                     'side': order.side,
+                    'size': order.size,
                     'product_type': order.product_type,
-                    'duration_hours': order.duration_hours
+                    'duration_hours': round(order.duration_hours, 2),
+                    'old_status': 'error',
+                    'new_status': 'removed',
+                    'elapsed_minutes': order.elapsed_minutes,
+                    'progress_percent': order.progress_percent,
+                    'time_remaining_minutes': order.time_remaining_minutes
                 })
 
             elif order.status == 'completed':
@@ -597,7 +616,7 @@ class TWAPSnapshot:
                 pass
 
         return {
-            'new_orders': new_orders,  # ← Now only contains active orders!
+            'new_orders': new_orders,
             'completed_orders': completed_orders,
             'canceled_orders': canceled_orders,
             'status_changes': status_changes,

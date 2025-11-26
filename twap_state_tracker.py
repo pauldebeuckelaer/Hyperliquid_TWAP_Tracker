@@ -415,14 +415,14 @@ class TWAPStateTracker:
 
         # From orders that disappeared from API
         for order in changes.get('completed_orders', []):
-            if order.status == 'canceled':
+            if order.status in ['canceled', 'error']:
                 canceled_orders.append(order)
             else:
                 completed_orders.append(order)
 
         # From status changes (orders still in API but status changed)
         for change in changes.get('status_changes', []):
-            if change.get('new_status') == 'canceled':
+            if change.get('new_status') in ['canceled', 'error']:
                 # Create a dict matching order_to_dict format
                 canceled_orders.append({
                     'full_address': change['address'],
@@ -431,7 +431,10 @@ class TWAPStateTracker:
                     'product_type': change['product_type'],
                     'duration_hours': change['duration_hours'],
                     'order_hash': change['order_hash'],
-                    'status': 'canceled'
+                    'status': change['new_status'],  # ← Use actual status, not hardcoded
+                    'elapsed_minutes': change.get('elapsed_minutes'),
+                    'progress_percent': change.get('progress_percent'),
+                    'time_remaining_minutes': change.get('time_remaining_minutes')
                 })
         # =====================================================
 
@@ -453,7 +456,6 @@ class TWAPStateTracker:
                         f"{order['duration_hours']:.1f}h (status: {order['status']})"
                     )
 
-        # WARNING: Canceled orders (unusual, potentially important)
         if canceled_orders:
             logger.warning(f"❌ Canceled orders: {len(canceled_orders)}")
             for order in canceled_orders:
@@ -462,13 +464,13 @@ class TWAPStateTracker:
                     addr = order.full_address
                     logger.warning(
                         f"  CANCELED: {addr} {order.side:4s} {order.size:>10,.0f} "
-                        f"{order.duration_hours:.1f}h"
+                        f"{order.product_type} {order.duration_hours:.1f}h"
                     )
                 else:
                     addr = order['full_address']
                     logger.warning(
                         f"  CANCELED: {addr} {order['side']:4s} {order['size']:>10,.0f} "
-                        f"{order['duration_hours']:.1f}h"
+                        f"{order['product_type']} {order['duration_hours']:.1f}h"
                     )
 
         # WARNING: Status changes (unusual, potentially important)

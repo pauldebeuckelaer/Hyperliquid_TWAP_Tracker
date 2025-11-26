@@ -284,10 +284,10 @@ ASSET_ID_TO_NAME = {
     10235: 'UETH',
     10243: 'UMON',
     10244: 'USDXL',
-    110000: 'xyz:XYZ100',
-    110001: 'xyz:TSLA',
-    110002: 'xyz:NVDA',
-    130000: 'vntl:SPACEX',
+    110000: 'xyz_XYZ100',
+    110001: 'xyz_TSLA',
+    110002: 'xyz_NVDA',
+    130000: 'vntl_SPACEX',
 }
 
 

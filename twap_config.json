@@ -26,7 +26,7 @@
   "logging": {
     "root_level": "INFO",
     "console": true,
-    "console_modules": ["twap_state_tracker"],
+    "console_modules": ["allcoins_state_tracker"],
     "files": [
       {
         "path": "twap_tracker.log",

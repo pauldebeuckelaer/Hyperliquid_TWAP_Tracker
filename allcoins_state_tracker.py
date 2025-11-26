@@ -67,9 +67,6 @@ class AllCoinsStateTracker:
         # Create output directory
         Path('twap_snapshots').mkdir(exist_ok=True)
 
-        # Daily JSON file path
-        self.current_json_file: Optional[Path] = None
-        self._update_json_file_path()
 
         logger.info("=" * 70)
         logger.info("All Coins TWAP State Tracker Initialized")
@@ -77,15 +74,6 @@ class AllCoinsStateTracker:
             logger.info(f"Excluding coins: {', '.join(sorted(self.exclude_coins))}")
         logger.info("=" * 70)
 
-    def _update_json_file_path(self):
-        """Update the JSON file path for the current date"""
-        today = date.today()
-        self.current_json_file = Path(f'twap_snapshots/all_coins_{today.strftime("%Y-%m-%d")}.jsonl')
-
-        # Create empty file if it doesn't exist (no initial content needed for NDJSON)
-        if not self.current_json_file.exists():
-            self.current_json_file.touch()  # Just create empty file
-            logger.info(f"Created new daily JSON file: {self.current_json_file}")
 
     def _load_address_history(self):
         """Load existing address history"""
@@ -132,6 +120,49 @@ class AllCoinsStateTracker:
             logger.error(f"Error saving address history: {e}")
             logger.exception(e)
 
+    def _detect_changes(self, symbol: str, raw_changes: Dict) -> Dict:
+        """
+        Process raw changes to properly separate completed/canceled orders.
+
+        Handles:
+        - Separating completed vs canceled from disappeared orders
+        - Adding orders from status_changes to canceled_orders when status is 'canceled' or 'error'
+        """
+        # Start with raw changes
+        completed_orders = []
+        canceled_orders = []
+
+        # From orders that disappeared from API
+        for order in raw_changes.get('completed_orders', []):
+            if order.status in ['canceled', 'error']:
+                canceled_orders.append(order)
+            else:
+                completed_orders.append(order)
+
+        # From status changes (orders still in API but status changed)
+        for change in raw_changes.get('status_changes', []):
+            if change.get('new_status') in ['canceled', 'error']:
+                # Create a dict matching order format
+                canceled_orders.append({
+                    'full_address': change['address'],
+                    'order_hash': change['order_hash'],
+                    'side': change['side'],
+                    'size': change['size'],
+                    'product_type': change['product_type'],
+                    'duration_hours': change['duration_hours'],
+                    'status': change['new_status'],
+                    'elapsed_minutes': change.get('elapsed_minutes'),
+                    'progress_percent': change.get('progress_percent'),
+                    'time_remaining_minutes': change.get('time_remaining_minutes')
+                })
+
+        return {
+            'new_orders': raw_changes.get('new_orders', []),
+            'completed_orders': completed_orders,
+            'canceled_orders': canceled_orders,
+            'status_changes': raw_changes.get('status_changes', [])
+        }
+
     def update(self, all_coins_data: Dict[str, List[Dict]]):
         """
         Update with new TWAP data for all coins.
@@ -146,8 +177,6 @@ class AllCoinsStateTracker:
         """
         self.global_update_count += 1
 
-        # Check if we need to rotate to a new daily file
-        self._update_json_file_path()
 
         logger.info("\n" + "=" * 70)
         logger.info(f"ALL COINS UPDATE #{self.global_update_count}")
@@ -215,10 +244,11 @@ class AllCoinsStateTracker:
 
             # Detect changes
             if coin_state.previous_snapshot:
-                changes = new_snapshot.compare_with(coin_state.previous_snapshot)
+                raw_changes = new_snapshot.compare_with(coin_state.previous_snapshot)
+                changes = self._detect_changes(symbol, raw_changes)
             else:
                 changes = {
-                    'new_orders': new_snapshot.orders,
+                    'new_orders': new_snapshot.active_orders,
                     'completed_orders': [],
                     'canceled_orders': [],
                     'status_changes': []
@@ -312,128 +342,194 @@ class AllCoinsStateTracker:
                     f"{order.product_type} {order.duration_hours:.1f}h"
                 )
 
-        # Separate completed and canceled
-        completed_orders = []
-        canceled_orders = []
-
-        for order in changes.get('completed_orders', []):
-            if order.status == 'canceled':
-                canceled_orders.append(order)
-            else:
-                completed_orders.append(order)
-
         # INFO: Completed orders
+        completed_orders = changes.get('completed_orders', [])
         if completed_orders:
             logger.info(f"  ✅ [{symbol}] Completed: {len(completed_orders)}")
             for order in completed_orders:
                 logger.info(
                     f"    COMPLETED: {order.full_address} {order.side:4s} {order.size:>10,.0f} "
-                    f"{order.duration_hours:.1f}h (status: {order.status})"
+                    f"{order.product_type} {order.duration_hours:.1f}h"
                 )
 
-        # WARNING: Canceled orders
+        # WARNING: Canceled orders (now comes directly from changes)
+        canceled_orders = changes.get('canceled_orders', [])
         if canceled_orders:
             logger.warning(f"  ❌ [{symbol}] Canceled: {len(canceled_orders)}")
             for order in canceled_orders:
-                logger.warning(
-                    f"    CANCELED: {order.full_address} {order.side:4s} {order.size:>10,.0f} "
-                    f"{order.duration_hours:.1f}h"
-                )
+                if hasattr(order, 'full_address'):
+                    logger.warning(
+                        f"    CANCELED: {order.full_address} {order.side:4s} {order.size:>10,.0f} "
+                        f"{order.product_type} {order.duration_hours:.1f}h"
+                    )
+                else:
+                    logger.warning(
+                        f"    CANCELED: {order['full_address']} {order['side']:4s} {order['size']:>10,.0f} "
+                        f"{order['product_type']} {order['duration_hours']:.1f}h"
+                    )
 
         # WARNING: Status changes
         if changes['status_changes']:
             logger.warning(f"  🔄 [{symbol}] Status changes: {len(changes['status_changes'])}")
             for change in changes['status_changes']:
                 logger.warning(
-                    f"    STATUS: {change['full_address']} {change['side']:4s} {change['size']:>10,.0f} "
-                    f"{change['old_status']} → {change['new_status']}"
+                    f"    STATUS: {change['address']} {change['side']:4s} {change['size']:>10,.0f} "
+                    f"{change['product_type']} {change['old_status']} → {change['new_status']}"
                 )
 
     def _save_all_to_json(self):
-        """Save all coin data to daily JSON file (append mode, one line per update)"""
+        """Save each coin's data to its own daily JSON file"""
         try:
-            # Build data structure for this update
+            # Ensure json_logs directory exists
+            base_dir = Path('allcoins_json_logs')
+            base_dir.mkdir(exist_ok=True)
+
             for symbol, coin_state in self.coin_states.items():
                 if not coin_state.current_snapshot:
                     continue
 
                 snapshot = coin_state.current_snapshot
-
-                # Convert orders to dicts
-                def order_to_dict(order):
-                    return {
-                        'address': order.full_address,
-                        'side': order.side,
-                        'size': order.size,
-                        'duration_hours': order.duration_hours,
-                        'status': order.status,
-                        'product_type': order.product_type,
-                        'is_active': order.is_active
-                    }
-
-                orders_dict = [order_to_dict(o) for o in snapshot.orders]
+                # Create per-coin subdirectory
+                coin_dir = base_dir / symbol
+                coin_dir.mkdir(exist_ok=True)
 
                 # Detect changes
                 if coin_state.previous_snapshot:
-                    changes = snapshot.compare_with(coin_state.previous_snapshot)
+                    raw_changes = snapshot.compare_with(coin_state.previous_snapshot)
+                    changes = self._detect_changes(symbol, raw_changes)
                 else:
                     changes = {
-                        'new_orders': snapshot.orders,
+                        'new_orders': snapshot.active_orders,
                         'completed_orders': [],
                         'canceled_orders': [],
                         'status_changes': []
                     }
 
-                # Convert change orders to dicts
-                new_orders_dict = [order_to_dict(o) for o in changes.get('new_orders', [])]
-                completed_orders_dict = [order_to_dict(o) for o in changes.get('completed_orders', [])]
-
-                # Separate canceled orders
-                canceled_orders = [
-                    o for o in changes.get('completed_orders', [])
-                    if o.status == 'canceled'
-                ]
-                canceled_orders_dict = [order_to_dict(o) for o in canceled_orders]
+                # Convert orders to dicts - consistent field ordering
+                def order_to_dict(order):
+                    if isinstance(order, dict):
+                        return {
+                            'address': order.get('full_address', order.get('address', '')),
+                            'order_hash': order['order_hash'],
+                            'side': order['side'],
+                            'size': round(order['size'], 2),
+                            'product_type': order['product_type'],
+                            'duration_hours': round(order['duration_hours'], 2),
+                            'status': order.get('status', 'unknown'),
+                            'is_active': order.get('is_active', False),
+                            'elapsed_minutes': order.get('elapsed_minutes'),
+                            'progress_percent': order.get('progress_percent'),
+                            'time_remaining_minutes': order.get('time_remaining_minutes')
+                        }
+                    return {
+                        'address': order.full_address,
+                        'order_hash': order.order_hash,
+                        'side': order.side,
+                        'size': round(order.size, 2),
+                        'product_type': order.product_type,
+                        'duration_hours': round(order.duration_hours, 2),
+                        'status': order.status,
+                        'is_active': order.is_active,
+                        'elapsed_minutes': order.elapsed_minutes,
+                        'progress_percent': order.progress_percent,
+                        'time_remaining_minutes': order.time_remaining_minutes
+                    }
 
                 # Get stats
                 stats = snapshot.get_stats()
+                active = snapshot.active_orders
 
-                # Build update data in the new format (matching document 2)
+                # Build update data - matching HYPE tracker format
                 update_data = {
                     'timestamp': datetime.now().isoformat(),
                     'symbol': symbol,
                     'update_number': coin_state.update_count,
+                    'current_price': snapshot.current_price,
                     'summary': {
                         'total_orders': stats['total_orders'],
                         'active_orders': stats['active_orders'],
-                        'buy_volume': stats['buy_volume'],
-                        'sell_volume': stats['sell_volume'],
-                        'net_flow': stats['net_flow'],
-                        'buy_pressure_per_min': stats['buy_pressure_per_min'],
-                        'sell_pressure_per_min': stats['sell_pressure_per_min'],
-                        'net_pressure_per_min': stats['net_pressure_per_min'],
+                        'buy_volume': round(stats['buy_volume'], 2),
+                        'sell_volume': round(stats['sell_volume'], 2),
+                        'net_flow': round(stats['net_flow'], 2),
+                        'spot_buy_volume': round(sum(o.size for o in active if o.is_buy_side and o.product_type == 'SPOT'), 2),
+                        'spot_sell_volume': round(sum(o.size for o in active if o.is_sell_side and o.product_type == 'SPOT'), 2),
+                        'spot_buy_pressure': round(sum(o.get_execution_rate() for o in active if o.is_buy_side and o.product_type == 'SPOT'),2),
+                        'spot_sell_pressure': round(sum(o.get_execution_rate() for o in active if o.is_sell_side and o.product_type == 'SPOT'),2),
+                        'perp_buy_volume': round(sum(o.size for o in active if o.is_buy_side and o.product_type == 'PERP'), 2),
+                        'perp_sell_volume': round(sum(o.size for o in active if o.is_sell_side and o.product_type == 'PERP'), 2),
+                        'perp_buy_pressure': round(sum(o.get_execution_rate() for o in active if o.is_buy_side and o.product_type == 'PERP'),2),
+                        'perp_sell_pressure': round(sum(o.get_execution_rate() for o in active if o.is_sell_side and o.product_type == 'PERP'),2),
+                        'buy_pressure_per_min': round(stats['buy_pressure_per_min'], 2),
+                        'sell_pressure_per_min': round(stats['sell_pressure_per_min'], 2),
+                        'net_pressure_per_min': round(stats['net_pressure_per_min'], 2),
                         'whale_orders': stats['whale_orders'],
                         'unique_addresses': stats['unique_addresses']
                     },
                     'events': {
-                        'new_orders': len(new_orders_dict),
-                        'completed_orders': len(completed_orders_dict),
-                        'canceled_orders': len(canceled_orders_dict),
+                        'new_orders': len(changes.get('new_orders', [])),
+                        'completed_orders': len(changes.get('completed_orders', [])),
+                        'canceled_orders': len(changes.get('canceled_orders', [])),
                         'status_changes': len(changes.get('status_changes', []))
                     },
-                    'active_orders': [order_to_dict(o) for o in snapshot.orders if o.is_active],
-                    'new_orders': new_orders_dict,
-                    'completed_orders': completed_orders_dict,
-                    'canceled_orders': canceled_orders_dict,
+                    'active_orders': [order_to_dict(o) for o in snapshot.active_orders],
+                    'new_orders': [
+                        {
+                            'address': o.full_address,
+                            'order_hash': o.order_hash,
+                            'side': o.side,
+                            'size': round(o.size, 2),
+                            'product_type': o.product_type,
+                            'duration_hours': round(o.duration_hours, 2)
+                        }
+                        for o in changes.get('new_orders', [])
+                    ],
+                    'completed_orders': [
+                        {
+                            'address': o.full_address,
+                            'order_hash': o.order_hash,
+                            'side': o.side,
+                            'size': round(o.size, 2),
+                            'product_type': o.product_type,
+                            'duration_hours': round(o.duration_hours, 2),
+                            'status': 'completed',
+                            'elapsed_minutes': o.elapsed_minutes,
+                            'progress_percent': o.progress_percent,
+                            'time_remaining_minutes': o.time_remaining_minutes
+                        }
+                        for o in changes.get('completed_orders', [])
+                    ],
+                    'canceled_orders': [
+                        {
+                            'address': o.full_address if hasattr(o, 'full_address') else o.get('full_address',
+                                                                                               o.get('address', '')),
+                            'order_hash': o.order_hash if hasattr(o, 'order_hash') else o.get('order_hash', ''),
+                            'side': o.side if hasattr(o, 'side') else o.get('side', ''),
+                            'size': round(o.size if hasattr(o, 'size') else o.get('size', 0), 2),
+                            'product_type': o.product_type if hasattr(o, 'product_type') else o.get('product_type', ''),
+                            'duration_hours': round(
+                                o.duration_hours if hasattr(o, 'duration_hours') else o.get('duration_hours', 0), 2),
+                            'elapsed_minutes': o.elapsed_minutes if hasattr(o, 'elapsed_minutes') else o.get(
+                                'elapsed_minutes'),
+                            'progress_percent': o.progress_percent if hasattr(o, 'progress_percent') else o.get(
+                                'progress_percent'),
+                            'time_remaining_minutes': o.time_remaining_minutes if hasattr(o,
+                                                                                          'time_remaining_minutes') else o.get(
+                                'time_remaining_minutes')
+                        }
+                        for o in changes.get('canceled_orders', [])
+                    ],
                     'status_changes': changes.get('status_changes', [])
                 }
 
-                # Append as single line (NDJSON format)
-                with open(self.current_json_file, 'a') as f:
+                # Per-coin daily file in coin's folder
+                today = datetime.now().strftime('%Y%m%d')
+                filename = coin_dir / f"{symbol}_{today}.jsonl"
+
+                with open(filename, 'a', encoding='utf-8') as f:
                     json.dump(update_data, f, separators=(',', ':'))
                     f.write('\n')
 
-            logger.debug(f"Appended update #{self.global_update_count} to {self.current_json_file}")
+                logger.debug(f"Saved {symbol} snapshot #{coin_state.update_count} to {filename}")
 
         except Exception as e:
             logger.error(f"Error saving to JSON: {e}")

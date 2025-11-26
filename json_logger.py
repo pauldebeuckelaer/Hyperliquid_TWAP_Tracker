@@ -91,17 +91,16 @@ class SimpleJsonLogger:
                 "active_orders": [
                     {
                         "address": o['full_address'],
+                        "order_hash": o['order_hash'],
                         "side": o['side'],
                         "size": round(o['size'], 2),
-                        "duration_hours": round(o['duration_hours'], 1),
+                        "product_type": o['product_type'],
+                        "duration_hours": round(o['duration_hours'], 2),
+                        "status": o['status'],
+                        "is_active": o['is_active'],
                         "elapsed_minutes": o.get('elapsed_minutes'),
                         "progress_percent": o.get('progress_percent'),
-                        "time_remaining_minutes": o.get('time_remaining_minutes'),
-                        "status": o['status'],
-                        "product_type": o['product_type'],
-                        "is_active": o['is_active'],
-                        "order_hash": o['order_hash'],
-
+                        "time_remaining_minutes": o.get('time_remaining_minutes')
                     }
                     for o in data['orders']
                 ],
@@ -110,11 +109,11 @@ class SimpleJsonLogger:
                 "new_orders": [
                     {
                         "address": o['full_address'],
+                        "order_hash": o['order_hash'],
                         "side": o['side'],
                         "size": round(o['size'], 2),
-                        "duration_hours": round(o['duration_hours'], 1),
                         "product_type": o['product_type'],
-                        "order_hash": o['order_hash']
+                        "duration_hours": round(o['duration_hours'], 2)
                     }
                     for o in data['new_orders']
                 ],
@@ -123,12 +122,12 @@ class SimpleJsonLogger:
                 "completed_orders": [
                     {
                         "address": o['full_address'],
+                        "order_hash": o['order_hash'],
                         "side": o['side'],
                         "size": round(o['size'], 2),
-                        "duration_hours": round(o['duration_hours'], 1),
-                        "status": o['status'],
                         "product_type": o['product_type'],
-                        "order_hash": o['order_hash']
+                        "duration_hours": round(o['duration_hours'], 2),
+                        "status": o['status']
                     }
                     for o in data['completed_orders']
                 ],
@@ -137,13 +136,14 @@ class SimpleJsonLogger:
                 "canceled_orders": [
                     {
                         "address": o['full_address'],
+                        "order_hash": o['order_hash'],
                         "side": o['side'],
                         "size": round(o['size'], 2),
-                        "duration_hours": round(o['duration_hours'], 1),
+                        "product_type": o['product_type'],
+                        "duration_hours": round(o['duration_hours'], 2),
                         "elapsed_minutes": o.get('elapsed_minutes'),
                         "progress_percent": o.get('progress_percent'),
-                        "time_remaining_minutes": o.get('time_remaining_minutes'),
-                        "order_hash": o['order_hash']
+                        "time_remaining_minutes": o.get('time_remaining_minutes')
                     }
                     for o in data.get('canceled_orders', [])
                 ],

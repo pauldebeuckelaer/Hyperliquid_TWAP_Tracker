@@ -28,8 +28,8 @@ logger = get_module_logger(__name__)
 
 # Timing constants (all in seconds)
 LOOP_CYCLE_TIME = 10  # Base cycle: 10 seconds
-HYPE_FETCH_INTERVAL = 60  # Fetch individual symbol data every 60 seconds (1 minute)
-ALL_COINS_FETCH_INTERVAL = 180 # Fetch all coins data every 120 seconds (2 minutes)
+HYPE_FETCH_INTERVAL = 500  # Fetch individual symbol data every 60 seconds (1 minute)
+ALL_COINS_FETCH_INTERVAL = 120 # Fetch all coins data every 120 seconds (2 minutes)
 
 
 class SimpleTWAPBot:
