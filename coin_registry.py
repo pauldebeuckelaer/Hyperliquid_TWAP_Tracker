@@ -5,18 +5,40 @@ Coin Registry - Asset ID Mappings for Hyperliquid
 Central registry for all asset IDs and their mappings to coin symbols.
 Provides helper functions for coin name resolution and market type detection.
 
+NOW WITH DYNAMIC SPOT TOKEN RESOLUTION + HIP-3 MARKETS!
+- Static mappings for known perps and common spots
+- Dynamic resolution via Hyperliquid spotMeta API for unknown tokens
+- HIP-3 market resolution (xyz, flx, vntl) via perpDexs API
+- Call init_dynamic_registry(hl_client) at startup to enable
+
 Market Types:
-- PERP: Perpetual futures (asset_id < 10000)
-- SPOT: Spot markets (asset_id >= 10000)
+- PERP: Perpetual futures (asset_id < 10000 OR asset_id >= 110000 for HIP-3)
+- SPOT: Spot markets (10000 <= asset_id < 110000)
+
+Asset ID Ranges:
+- 0-9999: Standard perp markets
+- 10000-109999: Standard spot markets (10000 + market_index)
+- 110000-119999: xyz: HIP-3 perps (tokenized equities)
+- 120000-129999: flx: HIP-3 perps (tokenized equities)
+- 130000-139999: vntl: HIP-3 perps (venture tokens)
 
 Usage:
-    from coin_registry import get_coin_name, get_market_type, HYPE_PERP_ID
+    from coin_registry import get_coin_name, get_market_type, init_dynamic_registry
 
-    coin = get_coin_name(159)  # 'HYPE'
+    # At startup (once)
+    init_dynamic_registry(hyperliquid_client)
+
+    # Then use as normal
+    coin = get_coin_name(159)      # 'HYPE'
+    coin = get_coin_name(120002)   # 'flx:TSLA'
     market = get_market_type(159)  # 'PERP'
+    market = get_market_type(110005) # 'PERP' (HIP-3)
 """
 
-from typing import Optional
+import logging
+from typing import Optional, Dict, List
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # HYPE CONSTANTS
@@ -25,7 +47,14 @@ HYPE_PERP_ID = 159
 HYPE_SPOT_ID = 10107
 
 # ============================================================================
-# COMPLETE ASSET ID MAPPINGS
+# HIP-3 RANGE CONSTANTS
+# ============================================================================
+HIP3_START = 110000  # First HIP-3 asset ID
+SPOT_START = 10000  # First spot asset ID
+SPOT_END = 110000  # End of spot range (exclusive)
+
+# ============================================================================
+# COMPLETE ASSET ID MAPPINGS (STATIC)
 # ============================================================================
 # PERP assets use index-based IDs (0-999)
 # SPOT assets use higher IDs (10000+)
@@ -284,20 +313,397 @@ ASSET_ID_TO_NAME = {
     10235: 'UETH',
     10243: 'UMON',
     10244: 'USDXL',
-    110000: 'xyz_XYZ100',
-    110001: 'xyz_TSLA',
-    110002: 'xyz_NVDA',
-    130000: 'vntl_SPACEX',
+}
+
+# ============================================================================
+# HIP-3 MARKET MAPPINGS (xyz, flx, vntl)
+# ============================================================================
+# These are tokenized equity markets with separate asset ID ranges
+# Populated at runtime by init_hip3_registry()
+
+_hip3_market_map: Dict[str, Dict[int, str]] = {}
+
+# Range configuration for HIP-3 markets
+HIP3_RANGES = {
+    "xyz": (110000, 120000),  # 110000 + index
+    "flx": (120000, 130000),  # 120000 + index
+    "vntl": (130000, 140000),  # 130000 + index
 }
 
 
 # ============================================================================
-# HELPER FUNCTIONS
+# DYNAMIC REGISTRY CLASS
+# ============================================================================
+
+class DynamicCoinRegistry:
+    """
+    Coin registry with dynamic spot token resolution.
+
+    Falls back to static ASSET_ID_TO_NAME when dynamic data unavailable.
+    Resolves unknown spot tokens by fetching spotMeta from Hyperliquid API.
+
+    IMPORTANT: Uses TWO mappings:
+    - _spot_token_map: token index -> token name (for individual tokens)
+    - _spot_market_map: market/universe index -> market name (for trading pairs)
+
+    Asset IDs in TWAP data use MARKET indices, not token indices!
+    """
+
+    def __init__(self):
+        # Token index -> name mapping (from "tokens" array)
+        self._spot_token_map: Dict[int, str] = {}
+
+        # Market/Universe index -> name mapping (from "universe" array)
+        # This is what we need for resolving TWAP asset IDs!
+        self._spot_market_map: Dict[int, str] = {}
+
+        self._initialized = False
+        self._token_count = 0
+        self._market_count = 0
+
+    def update_from_spot_meta(self, spot_meta: Dict) -> int:
+        """
+        Update registry with fresh data from Hyperliquid spotMeta API.
+
+        Args:
+            spot_meta: Response from hl_client._make_request("spotMeta", {})
+                       Contains {"tokens": [...], "universe": [...]}
+
+        Returns:
+            Number of markets loaded
+        """
+        try:
+            # Parse tokens (individual tokens like USDC, HYPE, etc.)
+            tokens = spot_meta.get("tokens", [])
+            for token in tokens:
+                index = token.get("index")
+                name = token.get("name")
+                if index is not None and name:
+                    self._spot_token_map[index] = name
+
+            self._token_count = len(self._spot_token_map)
+
+            # Parse universe (trading pairs/markets - THIS IS WHAT WE NEED!)
+            # Universe entries have "name" like "PURR/USDC", "xyz:MSFT", etc.
+            # and "index" which corresponds to the market index used in TWAP data
+            universe = spot_meta.get("universe", [])
+
+            for i, market in enumerate(universe):
+                # The market index is its position in the universe array
+                market_index = i
+
+                # Get market name - format varies:
+                # - Regular spot: "PURR/USDC" -> we want "PURR"
+                # - xyz synthetics: "xyz:MSFT" -> we want "xyz:MSFT"
+                # - Unnamed markets: "@123" -> resolve from tokens array
+                # - Other formats: keep as-is
+                market_name = market.get("name", "")
+
+                if market_name:
+                    # BUGFIX: Some HIP-1 markets have "@index" as name instead of real name
+                    # Resolve these from the tokens array (first token is the base asset)
+                    if market_name.startswith("@"):
+                        token_indices = market.get("tokens", [])
+                        if token_indices:
+                            base_token_idx = token_indices[0]
+                            resolved_name = self._spot_token_map.get(base_token_idx)
+                            if resolved_name:
+                                self._spot_market_map[market_index] = resolved_name
+                                logger.debug(f"Resolved {market_name} -> {resolved_name} (token idx {base_token_idx})")
+                                continue
+                        # Fallback: keep the @name if we can't resolve
+                        self._spot_market_map[market_index] = market_name
+                    # For regular spot pairs like "PURR/USDC", extract base token
+                    elif "/" in market_name and not market_name.startswith("xyz:"):
+                        base_token = market_name.split("/")[0]
+                        self._spot_market_map[market_index] = base_token
+                    else:
+                        # For xyz:MSFT, vntl:SPACEX, etc. - keep full name
+                        self._spot_market_map[market_index] = market_name
+
+            self._market_count = len(self._spot_market_map)
+            self._initialized = True
+
+            logger.info(f"Dynamic registry loaded {self._token_count} tokens, {self._market_count} markets")
+
+            # Log some samples for verification
+            if logger.isEnabledFor(logging.DEBUG):
+                token_samples = list(self._spot_token_map.items())[:5]
+                market_samples = list(self._spot_market_map.items())[:10]
+                logger.debug(f"Sample tokens: {token_samples}")
+                logger.debug(f"Sample markets: {market_samples}")
+
+            return self._market_count
+
+        except Exception as e:
+            logger.error(f"Error updating dynamic registry: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return 0
+
+    def get_coin_name(self, asset_id: int) -> str:
+        """
+        Get coin symbol from asset ID with dynamic resolution.
+
+        Resolution priority:
+        1. Static registry (ASSET_ID_TO_NAME) - for known perps and common spots
+        2. HIP-3 market map (xyz, flx, vntl) - for tokenized equities
+        3. Dynamic spot token map - for newer/unknown spot tokens
+        4. UNKNOWN_{asset_id} fallback
+
+        Args:
+            asset_id: Asset identifier from API
+
+        Returns:
+            Coin symbol (e.g., 'BTC', 'HYPE', 'flx:TSLA') or 'UNKNOWN_{asset_id}'
+        """
+        # 1. Try static registry first (fastest, most reliable)
+        if asset_id in ASSET_ID_TO_NAME:
+            return ASSET_ID_TO_NAME[asset_id]
+
+        # 2. Try dynamic resolution for spot tokens (asset_id >= 10000)
+        if asset_id >= 10000 and self._initialized:
+            resolved = self._resolve_spot_token(asset_id)
+            if resolved:
+                logger.debug(f"Resolved asset_id {asset_id} -> '{resolved}'")
+                return resolved
+
+        # 3. Fallback
+        return f'UNKNOWN_{asset_id}'
+
+    def _resolve_spot_token(self, asset_id: int) -> Optional[str]:
+        """
+        Resolve a spot token asset_id to its name using dynamic data.
+
+        Asset ID ranges and their meaning:
+        - 10000-109999: Standard spot markets (10000 + market_index)
+        - 110000-119999: xyz: synthetic stocks (110000 + market_index)
+        - 120000-129999: flx: synthetic stocks (120000 + market_index)
+        - 130000-139999: vntl: venture tokens (130000 + market_index)
+
+        Args:
+            asset_id: Spot market asset ID (>= 10000)
+
+        Returns:
+            Token/market name or None if not found
+        """
+        # Check HIP-3 ranges first (xyz, flx, vntl)
+        if 130000 <= asset_id < 140000:
+            # vntl: range (venture tokens)
+            market_index = asset_id - 130000
+            prefix = "vntl"
+        elif 120000 <= asset_id < 130000:
+            # flx: range (synthetic stocks)
+            market_index = asset_id - 120000
+            prefix = "flx"
+        elif 110000 <= asset_id < 120000:
+            # xyz: range (synthetic stocks)
+            market_index = asset_id - 110000
+            prefix = "xyz"
+        elif 10000 <= asset_id < 110000:
+            # Standard spot range - no prefix
+            market_index = asset_id - 10000
+            prefix = None
+        else:
+            return None
+
+        # For HIP-3 markets (xyz, flx, vntl), try the HIP-3 map first
+        if prefix and prefix in _hip3_market_map:
+            if market_index in _hip3_market_map[prefix]:
+                symbol = _hip3_market_map[prefix][market_index]
+                result = f"{prefix}:{symbol}"
+                logger.debug(f"HIP-3 resolved: asset_id {asset_id} -> {prefix} index {market_index} -> {result}")
+                return result
+            else:
+                # HIP-3 market not in our map - return with prefix and index
+                logger.debug(f"HIP-3 market not found: {prefix} index {market_index}")
+                return f"{prefix}_{market_index}"
+
+        # For standard spot markets, look up in the market map
+        if market_index in self._spot_market_map:
+            name = self._spot_market_map[market_index]
+            logger.debug(f"Resolved asset_id {asset_id} -> market_index {market_index} -> {name}")
+            return name
+
+        # Fallback: try token map (less accurate but might work for some)
+        if market_index in self._spot_token_map:
+            name = self._spot_token_map[market_index]
+            logger.debug(f"Resolved asset_id {asset_id} via token map -> {name}")
+            return name
+
+        logger.debug(f"Could not resolve asset_id {asset_id} (market_index={market_index})")
+        return None
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if dynamic registry has been initialized"""
+        return self._initialized
+
+    @property
+    def token_count(self) -> int:
+        """Get number of dynamically loaded tokens"""
+        return self._token_count
+
+    @property
+    def market_count(self) -> int:
+        """Get number of dynamically loaded markets"""
+        return self._market_count
+
+    def get_stats(self) -> Dict:
+        """Get registry statistics"""
+        return {
+            "initialized": self._initialized,
+            "dynamic_tokens": self._token_count,
+            "dynamic_markets": self._market_count,
+            "static_tokens": len(ASSET_ID_TO_NAME),
+            "total_coverage": self._market_count + len(ASSET_ID_TO_NAME),
+            "hip3_markets": {k: len(v) for k, v in _hip3_market_map.items()}
+        }
+
+
+# ============================================================================
+# GLOBAL INSTANCE & INITIALIZATION
+# ============================================================================
+
+# Global instance for module-level functions
+_registry = DynamicCoinRegistry()
+
+
+def init_hip3_registry(hl_client) -> bool:
+    """
+    Initialize HIP-3 market mappings from perpDexs endpoint.
+
+    This loads the tokenized equity markets (xyz, flx, vntl) mappings
+    so we can resolve asset IDs like 120002 -> "flx:TSLA"
+
+    Args:
+        hl_client: HyperliquidClient instance with get_perp_dexs() method
+
+    Returns:
+        True if initialization succeeded, False otherwise
+    """
+    global _hip3_market_map
+
+    try:
+        perp_dexs = hl_client.get_perp_dexs()
+
+        if not perp_dexs:
+            logger.warning("Failed to fetch perpDexs - HIP-3 resolution disabled")
+            return False
+
+        loaded_count = 0
+
+        for dex in perp_dexs:
+            if dex is None:
+                continue
+
+            name = dex.get("name")  # "xyz", "flx", "vntl"
+            assets = dex.get("assetToStreamingOiCap", [])
+
+            if name and assets:
+                _hip3_market_map[name] = {}
+
+                for i, asset_entry in enumerate(assets):
+                    if isinstance(asset_entry, list) and len(asset_entry) >= 1:
+                        asset_name = asset_entry[0]  # "flx:TSLA"
+                        # Extract symbol after the colon
+                        if ":" in asset_name:
+                            symbol = asset_name.split(":")[-1]
+                        else:
+                            symbol = asset_name
+                        _hip3_market_map[name][i] = symbol
+
+                loaded_count += len(_hip3_market_map[name])
+                logger.info(
+                    f"Loaded {len(_hip3_market_map[name])} {name} markets: {list(_hip3_market_map[name].values())}")
+
+        if loaded_count > 0:
+            logger.info(f"✅ HIP-3 registry initialized with {loaded_count} total markets")
+            return True
+        else:
+            logger.warning("perpDexs returned no markets")
+            return False
+
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize HIP-3 registry: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        return False
+
+
+def init_dynamic_registry(hl_client) -> bool:
+    """
+    Initialize the dynamic registry with fresh data from Hyperliquid API.
+
+    Call this ONCE at application startup:
+
+        from coin_registry import init_dynamic_registry
+        from api_client.hyperliquid_client import HyperliquidClient
+
+        hl_client = HyperliquidClient()
+        init_dynamic_registry(hl_client)
+
+    Args:
+        hl_client: HyperliquidClient instance with get_spot_meta() method
+
+    Returns:
+        True if initialization succeeded, False otherwise
+    """
+    success = True
+
+    # Initialize spot token registry
+    try:
+        spot_meta = hl_client.get_spot_meta()
+
+        if not spot_meta:
+            logger.warning("Failed to fetch spotMeta - dynamic resolution disabled")
+            success = False
+        else:
+            count = _registry.update_from_spot_meta(spot_meta)
+            if count > 0:
+                logger.info(f"✅ Dynamic coin registry initialized with {count} spot tokens")
+            else:
+                logger.warning("spotMeta returned no tokens")
+                success = False
+
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize dynamic registry: {e}")
+        success = False
+
+    # Initialize HIP-3 registry (xyz, flx, vntl)
+    try:
+        if hasattr(hl_client, 'get_perp_dexs'):
+            init_hip3_registry(hl_client)
+        else:
+            logger.warning("HyperliquidClient missing get_perp_dexs() - HIP-3 resolution disabled")
+    except Exception as e:
+        logger.warning(f"Failed to initialize HIP-3 registry: {e}")
+
+    return success
+
+
+def get_registry_status() -> Dict:
+    """Get current status of the dynamic registry"""
+    stats = _registry.get_stats()
+    stats["hip3_loaded"] = len(_hip3_market_map) > 0
+    stats["hip3_markets"] = {k: list(v.values()) for k, v in _hip3_market_map.items()}
+    return stats
+
+
+# ============================================================================
+# HELPER FUNCTIONS (use dynamic resolution)
 # ============================================================================
 
 def get_market_type(asset_id: int) -> str:
     """
     Determine if asset is SPOT or PERP based on ID range.
+
+    IMPORTANT: HIP-3 markets (xyz, flx, vntl) are PERP markets, not SPOT!
+
+    Ranges:
+        - 0-9999: Standard perps
+        - 10000-109999: Spot markets
+        - 110000+: HIP-3 builder-deployed perps (xyz, flx, vntl)
 
     Args:
         asset_id: Asset identifier from API
@@ -305,10 +711,12 @@ def get_market_type(asset_id: int) -> str:
     Returns:
         'SPOT', 'PERP', or 'UNKNOWN'
     """
-    if asset_id >= 10000:
-        return 'SPOT'
+    if asset_id >= HIP3_START:
+        return 'PERP'  # HIP-3 builder-deployed perps (xyz, flx, vntl)
+    elif asset_id >= SPOT_START:
+        return 'SPOT'  # Standard spot markets (10000-109999)
     elif asset_id >= 0:
-        return 'PERP'
+        return 'PERP'  # Standard perps (0-9999)
     else:
         return 'UNKNOWN'
 
@@ -317,23 +725,56 @@ def get_coin_name(asset_id: int) -> str:
     """
     Get coin symbol from asset ID.
 
+    Uses dynamic resolution if initialized, otherwise falls back to static.
+
     Args:
         asset_id: Asset identifier from API
 
     Returns:
-        Coin symbol (e.g., 'BTC', 'HYPE') or 'UNKNOWN_{asset_id}' if not found
+        Coin symbol (e.g., 'BTC', 'HYPE', 'flx:TSLA') or 'UNKNOWN_{asset_id}' if not found
     """
-    return ASSET_ID_TO_NAME.get(asset_id, f'UNKNOWN_{asset_id}')
+    return _registry.get_coin_name(asset_id)
 
 
 def is_spot(asset_id: int) -> bool:
-    """Check if asset_id represents a SPOT market"""
-    return asset_id >= 10000
+    """
+    Check if asset_id represents a SPOT market.
+
+    Note: HIP-3 markets (110000+) are NOT spot, they are perps!
+    """
+    return SPOT_START <= asset_id < SPOT_END
 
 
 def is_perp(asset_id: int) -> bool:
-    """Check if asset_id represents a PERP market"""
-    return 0 <= asset_id < 10000
+    """
+    Check if asset_id represents a PERP market (including HIP-3).
+
+    Includes:
+        - Standard perps (0-9999)
+        - HIP-3 perps (110000+): xyz, flx, vntl
+    """
+    return (0 <= asset_id < SPOT_START) or (asset_id >= HIP3_START)
+
+
+def is_hip3(asset_id: int) -> bool:
+    """Check if asset_id represents a HIP-3 market (xyz, flx, vntl)"""
+    return asset_id >= HIP3_START
+
+
+def get_hip3_type(asset_id: int) -> Optional[str]:
+    """
+    Get the HIP-3 market type for an asset ID.
+
+    Returns:
+        'xyz', 'flx', 'vntl', or None if not a HIP-3 market
+    """
+    if 110000 <= asset_id < 120000:
+        return "xyz"
+    elif 120000 <= asset_id < 130000:
+        return "flx"
+    elif 130000 <= asset_id < 140000:
+        return "vntl"
+    return None
 
 
 def is_hype(asset_id: int) -> bool:
@@ -383,21 +824,28 @@ def get_asset_ids_for_coin(coin_symbol: str) -> list:
 
 
 def get_registry_stats() -> dict:
-    """Get statistics about the registry"""
+    """Get statistics about the registry (static + dynamic)"""
     perp_count = sum(1 for aid in ASSET_ID_TO_NAME.keys() if is_perp(aid))
     spot_count = sum(1 for aid in ASSET_ID_TO_NAME.keys() if is_spot(aid))
     unique_coins = len(set(ASSET_ID_TO_NAME.values()))
 
-    return {
-        'total_assets': len(ASSET_ID_TO_NAME),
-        'perp_markets': perp_count,
-        'spot_markets': spot_count,
-        'unique_coins': unique_coins
+    stats = {
+        'static_assets': len(ASSET_ID_TO_NAME),
+        'static_perp_markets': perp_count,
+        'static_spot_markets': spot_count,
+        'static_unique_coins': unique_coins,
+        'dynamic_initialized': _registry.is_initialized,
+        'dynamic_tokens': _registry.token_count,
+        'dynamic_markets': _registry.market_count,
+        'hip3_initialized': len(_hip3_market_map) > 0,
+        'hip3_markets': {k: len(v) for k, v in _hip3_market_map.items()}
     }
+
+    return stats
 
 
 # ============================================================================
-# VALIDATION
+# VALIDATION / TEST
 # ============================================================================
 
 if __name__ == "__main__":
@@ -423,9 +871,13 @@ if __name__ == "__main__":
     for aid in spot_ids:
         print(f"  ID {aid}: {get_coin_name(aid):10s} ({get_market_type(aid)})")
 
-    # Test unknown
-    print("\n🔍 Unknown Asset:")
-    print(f"  ID 99999: {get_coin_name(99999)} ({get_market_type(99999)})")
+    # Test HIP-3 markets (without dynamic init)
+    print("\n🔍 HIP-3 Markets (market type detection):")
+    hip3_ids = [110000, 110005, 120002, 130000]
+    for aid in hip3_ids:
+        hip3_type = get_hip3_type(aid)
+        market_type = get_market_type(aid)
+        print(f"  ID {aid}: type={hip3_type}, market={market_type}, is_perp={is_perp(aid)}, is_spot={is_spot(aid)}")
 
     # Registry stats
     print("\n📊 Registry Statistics:")
@@ -433,10 +885,26 @@ if __name__ == "__main__":
     for key, value in stats.items():
         print(f"  {key}: {value}")
 
-    # Test get_asset_ids_for_coin
-    print("\n🔍 Asset IDs for HYPE:")
-    hype_ids = get_asset_ids_for_coin('HYPE')
-    print(f"  Found {len(hype_ids)} markets: {hype_ids}")
+    # Verify the fix
+    print("\n" + "=" * 70)
+    print("VERIFICATION: HIP-3 Market Type Fix")
+    print("=" * 70)
+    print(f"  is_spot(110000) = {is_spot(110000)} (should be False)")
+    print(f"  is_perp(110000) = {is_perp(110000)} (should be True)")
+    print(f"  get_market_type(110000) = {get_market_type(110000)} (should be PERP)")
+    print(f"  get_market_type(10107) = {get_market_type(10107)} (should be SPOT)")
+
+    # Dynamic init test
+    print("\n" + "=" * 70)
+    print("DYNAMIC REGISTRY TEST")
+    print("=" * 70)
+    print("\nTo test dynamic resolution, run:")
+    print("  from api_client.hyperliquid_client import HyperliquidClient")
+    print("  from coin_registry import init_dynamic_registry, get_coin_name")
+    print("  ")
+    print("  hl = HyperliquidClient()")
+    print("  init_dynamic_registry(hl)")
+    print("  print(get_coin_name(120002))  # Should show 'flx:TSLA'")
 
     print("\n✅ Registry tests complete!")
     print("=" * 70)

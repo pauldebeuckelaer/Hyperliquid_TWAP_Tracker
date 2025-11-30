@@ -1,0 +1,158 @@
+{
+  "collection_info": {
+    "created": "2025-11-28T23:14:44.033582",
+    "last_updated": "2025-11-29T14:28:13.923035",
+    "total_addresses": 3,
+    "light_fetches": 3,
+    "deep_fetches": 0
+  },
+  "traders": {
+    "0xa4047eb14ba43a6c2168323f81bbfabcb5998c2f": {
+      "first_seen": "2025-11-28T23:16:08.689075",
+      "last_light_update": "2025-11-28T23:16:04.224114",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 42061.227086,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.33870875098000003,
+          "dust_count": 2,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 42061.227086,
+          "position_value": 149131.374464,
+          "margin_used": 12057.285646,
+          "withdrawable": 27148.08964,
+          "leverage_ratio": 3.55,
+          "num_positions": 3
+        },
+        "positions": [
+          {
+            "coin": "BTC",
+            "size": 0.4908,
+            "side": "LONG",
+            "entry_price": 93586.1,
+            "liquidation_price": 14494.9974456583,
+            "leverage": 15.0,
+            "margin_used": 2969.5036,
+            "unrealized_pnl": -1389.520918
+          },
+          {
+            "coin": "SOL",
+            "size": 200.0,
+            "side": "LONG",
+            "entry_price": 143.8544,
+            "liquidation_price": 0.0,
+            "leverage": 20.0,
+            "margin_used": 1371.1,
+            "unrealized_pnl": -1348.8954
+          },
+          {
+            "coin": "FARTCOIN",
+            "size": -225594.4,
+            "side": "SHORT",
+            "entry_price": 0.32428,
+            "liquidation_price": 0.4980945813,
+            "leverage": 10.0,
+            "margin_used": 7716.682046,
+            "unrealized_pnl": -4010.324495
+          }
+        ],
+        "cumulative_volume": 203069616.59,
+        "open_orders_count": 1
+      }
+    },
+    "0xdb5f56c0566e5517f265358039e5b00a8ad5c594": {
+      "first_seen": "2025-11-28T23:16:19.174335",
+      "last_light_update": "2025-11-28T23:16:12.724303",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 207831.149752,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0,
+          "dust_count": 0,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 207831.149752,
+          "position_value": 529344.64212,
+          "margin_used": 105868.928424,
+          "withdrawable": 101962.221328,
+          "leverage_ratio": 2.55,
+          "num_positions": 1
+        },
+        "positions": [
+          {
+            "coin": "ETH",
+            "size": 174.8859,
+            "side": "LONG",
+            "entry_price": 3009.76,
+            "liquidation_price": 1875.9373523666,
+            "leverage": 5.0,
+            "margin_used": 105868.928424,
+            "unrealized_pnl": 2979.77117
+          }
+        ],
+        "cumulative_volume": 26668247.98,
+        "open_orders_count": 0
+      }
+    },
+    "0x3c0e813045a321155e9baf4d39ef35c881eced75": {
+      "first_seen": "2025-11-28T23:16:27.360273",
+      "last_light_update": "2025-11-28T23:16:22.725017",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 26926.420609,
+          "spot_value": 0,
+          "spot_balances_detail": [],
+          "dust_value": 0.00944103,
+          "dust_count": 1,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 26926.420609,
+          "position_value": 33163.5,
+          "margin_used": 3526.708333,
+          "withdrawable": 22542.337276,
+          "leverage_ratio": 1.23,
+          "num_positions": 2
+        },
+        "positions": [
+          {
+            "coin": "SOL",
+            "size": 125.0,
+            "side": "LONG",
+            "entry_price": 141.1679,
+            "liquidation_price": 0.0,
+            "leverage": 20.0,
+            "margin_used": 857.375,
+            "unrealized_pnl": -498.4892
+          },
+          {
+            "coin": "ZEC",
+            "size": 35.0,
+            "side": "LONG",
+            "entry_price": 471.1136,
+            "liquidation_price": 0.0,
+            "leverage": 6.0,
+            "margin_used": 2669.333333,
+            "unrealized_pnl": -472.9785
+          }
+        ],
+        "cumulative_volume": 7422866.92,
+        "open_orders_count": 0
+      }
+    }
+  }
+}

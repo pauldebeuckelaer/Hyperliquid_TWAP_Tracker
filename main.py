@@ -19,7 +19,7 @@ from api_client.hypurrscan_client import HypurrScanClient
 from api_client.hyperliquid_client import HyperliquidClient
 from twap_state_tracker import TWAPStateTracker
 from allcoins_state_tracker import AllCoinsStateTracker
-
+from coin_registry import init_dynamic_registry
 from trader_metrics_manager import TraderMetricsManager
 from json_logger import SimpleJsonLogger
 
@@ -28,8 +28,8 @@ logger = get_module_logger(__name__)
 
 # Timing constants (all in seconds)
 LOOP_CYCLE_TIME = 10  # Base cycle: 10 seconds
-HYPE_FETCH_INTERVAL = 500  # Fetch individual symbol data every 60 seconds (1 minute)
-ALL_COINS_FETCH_INTERVAL = 120 # Fetch all coins data every 120 seconds (2 minutes)
+HYPE_FETCH_INTERVAL = 180  # Fetch individual symbol data every 60 seconds (1 minute)
+ALL_COINS_FETCH_INTERVAL = 60 # Fetch all coins data every 120 seconds (2 minutes)
 
 
 class SimpleTWAPBot:
@@ -78,7 +78,7 @@ class SimpleTWAPBot:
 
         if self.hyperliquid_enabled:
             self.hyperliquid_client = HyperliquidClient(hyperliquid_config)
-
+            init_dynamic_registry(self.hyperliquid_client)
             metrics_config = hyperliquid_config.get('metrics_collection', {})
             self.metrics_manager = TraderMetricsManager(
                 self.hyperliquid_client,
@@ -89,6 +89,7 @@ class SimpleTWAPBot:
             self.hyperliquid_client = None
             self.metrics_manager = None
             logger.info("Hyperliquid client disabled")
+
 
         # Setup shutdown handler
         signal.signal(signal.SIGINT, self._shutdown_handler)
@@ -134,7 +135,20 @@ class SimpleTWAPBot:
 
             if all_coins_twap_data:
                 logger.debug(f"Received data for {len(all_coins_twap_data)} coins")
-                self.all_coins_tracker.update(all_coins_twap_data)
+                # Fetch all prices in one API call
+                prices = {}
+                if self.hyperliquid_client:
+                    all_mids = self.hyperliquid_client.get_all_mids()
+                    if all_mids:
+                        # Filter out spot indices (@123) and convert to float
+                        prices = {k: float(v) for k, v in all_mids.items() if not k.startswith('@')}
+                        # DEBUG: Check for HIP-3 tokens
+                        hip3_keys = [k for k in all_mids.keys() if ':' in k]
+                        logger.info(f"HIP-3 tokens in allMids: {hip3_keys}")
+
+                        logger.debug(f"Fetched prices for {len(prices)} perp assets")
+                        logger.debug(f"Fetched prices for {len(prices)} perp assets")
+                self.all_coins_tracker.update(all_coins_twap_data, prices=prices)
             else:
                 logger.warning("No ALL COINS data received from wildcard fetch")
 

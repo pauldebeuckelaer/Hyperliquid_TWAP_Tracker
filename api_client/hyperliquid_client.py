@@ -16,6 +16,10 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+UNDERLYING_NAME_OVERRIDES = {
+    "FART": "FARTCOIN",
+}
+
 
 class HyperliquidClient:
     """Client for Hyperliquid Info API"""
@@ -697,12 +701,16 @@ class HyperliquidClient:
                 # -----------------------------------------------------------------
                 logger.debug(f"   Strategy 1: Exact perp match '{underlying}'")
 
-                if underlying in all_mids:
-                    price = all_mids[underlying]
+                underlying_lookup = UNDERLYING_NAME_OVERRIDES.get(underlying, underlying)
+                logger.debug(f"   Strategy 1: Exact perp match '{underlying_lookup}'")
+
+                if underlying_lookup in all_mids:
+                    price = all_mids[underlying_lookup]
                     price_float = float(price)
-                    # DEBUG for individual price lookups
-                    logger.debug(f"💱 {token}: Strategy 1 SUCCESS - '{underlying}' perp = ${price_float:,.6f}")
+                    logger.debug(f"💱 {token}: Strategy 1 SUCCESS - '{underlying_lookup}' perp = ${price_float:,.6f}")
                     return self._validate_price(token, price_float)
+                elif underlying != underlying_lookup:
+                    logger.debug(f"   ❌ '{underlying_lookup}' (override) not in perps")
                 else:
                     logger.debug(f"   ❌ '{underlying}' not in perps")
 
@@ -1042,6 +1050,14 @@ class HyperliquidClient:
         except Exception as e:
             logger.warning(f"❌ Failed to get orderbook price for {token}: {e}")
             return None
+
+    def get_perp_dexs(self) -> Optional[List]:
+        """
+        Get HIP-3 perp dex metadata (xyz, flx, vntl)
+
+        Returns list of dex info with asset mappings for tokenized equities
+        """
+        return self._make_request("perpDexs", {})
 
     # =============================================================================
     # Convenience Methods

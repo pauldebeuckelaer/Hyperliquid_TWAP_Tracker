@@ -10,6 +10,7 @@ Single tracker instance managing multiple coins with:
 - Daily JSON files (all coins, append mode)
 - Unified address history (all coins, one file)
 - Full depth tracking (new/completed/canceled orders, state changes)
+- Progress tracking (elapsed time, progress %, time remaining)
 
 LOGGING STRATEGY:
 - DEBUG: Individual order tracking, address discoveries, file operations
@@ -27,6 +28,65 @@ from pathlib import Path
 from api_client.models import TWAPOrder, TWAPSnapshot
 
 logger = logging.getLogger(__name__)
+
+
+def format_size(size: float) -> str:
+    """Format size with appropriate precision based on magnitude"""
+    if size < 1:
+        return f"{size:>10.4f}"
+    elif size < 10:
+        return f"{size:>10.2f}"
+    else:
+        return f"{size:>10,.0f}"
+
+
+def format_usd_pressure(size: float, duration_hours: float, price: float) -> str:
+    """Calculate and format USD pressure per minute"""
+    if duration_hours <= 0 or price is None:
+        return ""
+
+    duration_minutes = duration_hours * 60
+    usd_per_min = (size / duration_minutes) * price
+
+    if usd_per_min >= 1000:
+        return f"${usd_per_min:>8,.0f}/min"
+    else:
+        return f"${usd_per_min:>8.2f}/min"
+
+
+def format_progress(order) -> str:
+    """
+    Format elapsed/progress/remaining for an order.
+
+    Handles both TWAPOrder objects and dicts.
+
+    Returns formats like:
+    - "45m/210m (21%)" - full info
+    - "21%" - progress only
+    - "45m elapsed" - elapsed only
+    - "" - no progress info available
+    """
+    # Handle both TWAPOrder objects and dicts
+    if isinstance(order, dict):
+        elapsed = order.get('elapsed_minutes')
+        remaining = order.get('time_remaining_minutes')
+        progress = order.get('progress_percent')
+        duration = order.get('duration_minutes', int(order.get('duration_hours', 0) * 60))
+    else:
+        elapsed = order.elapsed_minutes
+        remaining = order.time_remaining_minutes
+        progress = order.progress_percent
+        duration = order.duration_minutes
+
+    if elapsed is None:
+        return ""
+
+    if remaining is not None and progress is not None:
+        return f"{elapsed}m/{duration}m ({progress:.0f}%)"
+    elif progress is not None:
+        return f"{progress:.0f}%"
+    else:
+        return f"{elapsed}m elapsed"
 
 
 class CoinState:
@@ -67,13 +127,34 @@ class AllCoinsStateTracker:
         # Create output directory
         Path('twap_snapshots').mkdir(exist_ok=True)
 
-
         logger.info("=" * 70)
         logger.info("All Coins TWAP State Tracker Initialized")
         if self.exclude_coins:
             logger.info(f"Excluding coins: {', '.join(sorted(self.exclude_coins))}")
         logger.info("=" * 70)
 
+    # U-prefix tokens that are NOT spot derivatives
+    U_PREFIX_EXCEPTIONS = {'USDC', 'USDT', 'USUAL', 'UNI', 'UMA', 'USTC', 'UP'}
+
+    def _get_price(self, symbol: str, prices: Dict[str, float]) -> Optional[float]:
+        """
+        Get price for symbol, resolving U-prefix spot derivatives to underlying.
+
+        UBTC -> looks up BTC price
+        USOL -> looks up SOL price
+        USDC -> looks up USDC (not a derivative)
+        """
+        # Direct lookup first
+        if symbol in prices:
+            return prices[symbol]
+
+        # Try U-prefix resolution
+        if symbol.startswith('U') and len(symbol) > 1 and symbol not in self.U_PREFIX_EXCEPTIONS:
+            underlying = symbol[1:]  # UBTC -> BTC
+            if underlying in prices:
+                return prices[underlying]
+
+        return None
 
     def _load_address_history(self):
         """Load existing address history"""
@@ -124,46 +205,72 @@ class AllCoinsStateTracker:
         """
         Process raw changes to properly separate completed/canceled orders.
 
-        Handles:
-        - Separating completed vs canceled from disappeared orders
-        - Adding orders from status_changes to canceled_orders when status is 'canceled' or 'error'
+        API behavior:
+        - Completed orders disappear instantly from API
+        - Canceled orders linger in API with status='canceled' then eventually disappear
+
+        Detection logic:
+        - Order disappeared + was active/running → completed (just finished)
+        - Order disappeared + was canceled/error → ignore (already reported, just cleanup)
+        - Status changed to canceled/error → canceled (first time seeing cancellation)
+        - Status changed FROM canceled/error → ignore (cleanup transition like canceled→removed)
+
+        Returns all orders as TWAPOrder objects (not dicts) for consistency.
         """
-        # Start with raw changes
         completed_orders = []
         canceled_orders = []
 
-        # From orders that disappeared from API
+        # Track order hashes to filter from status_changes
+        handled_hashes = set()
+
+        # From orders that disappeared from API (these are TWAPOrder objects from PREVIOUS snapshot)
         for order in raw_changes.get('completed_orders', []):
             if order.status in ['canceled', 'error']:
-                canceled_orders.append(order)
+                # Already-canceled order finally cleaned up from API - ignore, we already reported it
+                handled_hashes.add(order.order_hash)
+                continue
             else:
+                # Active order disappeared = completed
+                handled_hashes.add(order.order_hash)
                 completed_orders.append(order)
 
         # From status changes (orders still in API but status changed)
+        # Status change to canceled/error = first time we see cancellation
         for change in raw_changes.get('status_changes', []):
             if change.get('new_status') in ['canceled', 'error']:
-                # Create a dict matching order format
-                canceled_orders.append({
-                    'full_address': change['address'],
-                    'order_hash': change['order_hash'],
-                    'side': change['side'],
-                    'size': change['size'],
-                    'product_type': change['product_type'],
-                    'duration_hours': change['duration_hours'],
-                    'status': change['new_status'],
-                    'elapsed_minutes': change.get('elapsed_minutes'),
-                    'progress_percent': change.get('progress_percent'),
-                    'time_remaining_minutes': change.get('time_remaining_minutes')
-                })
+                if change['order_hash'] not in handled_hashes:
+                    handled_hashes.add(change['order_hash'])
+                    canceled_orders.append({
+                        'full_address': change['address'],
+                        'order_hash': change['order_hash'],
+                        'side': change['side'],
+                        'size': change['size'],
+                        'product_type': change['product_type'],
+                        'duration_hours': change['duration_hours'],
+                        'duration_minutes': int(change['duration_hours'] * 60),
+                        'status': change['new_status'],
+                        'elapsed_minutes': change.get('elapsed_minutes'),
+                        'progress_percent': change.get('progress_percent'),
+                        'time_remaining_minutes': change.get('time_remaining_minutes')
+                    })
+
+        # Filter status_changes to exclude:
+        # 1. Orders already handled (moved to completed/canceled)
+        # 2. Cleanup transitions (old_status was already canceled/error)
+        filtered_status_changes = [
+            change for change in raw_changes.get('status_changes', [])
+            if change['order_hash'] not in handled_hashes
+               and change.get('old_status') not in ['canceled', 'error']
+        ]
 
         return {
             'new_orders': raw_changes.get('new_orders', []),
             'completed_orders': completed_orders,
             'canceled_orders': canceled_orders,
-            'status_changes': raw_changes.get('status_changes', [])
+            'status_changes': filtered_status_changes
         }
 
-    def update(self, all_coins_data: Dict[str, List[Dict]]):
+    def update(self, all_coins_data: Dict[str, List[Dict]], prices: Dict[str, float] = None):
         """
         Update with new TWAP data for all coins.
 
@@ -174,9 +281,11 @@ class AllCoinsStateTracker:
                     'ETH': [{order3}],
                     'HYPE': [{order4}, {order5}]
                 }
+            prices: Optional dict mapping coin_symbol -> current USD price
+                Example: {'BTC': 97234.5, 'ETH': 3521.2, 'HYPE': 33.8}
         """
+        prices = prices or {}
         self.global_update_count += 1
-
 
         logger.info("\n" + "=" * 70)
         logger.info(f"ALL COINS UPDATE #{self.global_update_count}")
@@ -210,7 +319,8 @@ class AllCoinsStateTracker:
             new_snapshot = TWAPSnapshot.from_hypurr_data(
                 raw_orders,
                 symbol,
-                coin_state.update_count
+                coin_state.update_count,
+                current_price=self._get_price(symbol, prices)
             )
 
             # DEBUG: Individual order tracking
@@ -284,10 +394,6 @@ class AllCoinsStateTracker:
         logger.info(f"\n{'─' * 70}")
         logger.info(f"💰 {symbol}")
         logger.info(f"{'─' * 70}")
-        logger.info(
-            f"Orders: {stats['total_orders']} total | "
-            f"Active: {stats['active_orders']} ({stats['spot_orders']} SPOT, {stats['perp_orders']} PERP)"
-        )
 
         # Separate orders by market
         spot_orders = [o for o in snapshot.orders if o.product_type == 'SPOT']
@@ -297,9 +403,82 @@ class AllCoinsStateTracker:
         spot_orders.sort(key=lambda o: o.size, reverse=True)
         perp_orders.sort(key=lambda o: o.size, reverse=True)
 
-        # Count active
+        # Count active (once, used for both summary and sections)
         active_spot = sum(1 for o in spot_orders if o.is_active)
         active_perp = sum(1 for o in perp_orders if o.is_active)
+
+        if snapshot.current_price:
+            # Build market breakdown string - only show markets that have orders
+            if active_spot > 0 and active_perp > 0:
+                market_breakdown = f"({active_spot} SPOT, {active_perp} PERP)"
+            elif active_spot > 0:
+                market_breakdown = "SPOT"
+            elif active_perp > 0:
+                market_breakdown = "PERP"
+            else:
+                market_breakdown = ""
+
+            logger.info(
+                f"Price: ${snapshot.current_price:,.4f} | "
+                f"Orders: {stats['total_orders']} total | "
+                f"Active: {stats['active_orders']} {market_breakdown}"
+            )
+
+            # Calculate USD pressure per minute
+            price = snapshot.current_price
+
+            spot_buy_usd = sum(
+                (o.size / (o.duration_hours * 60)) * price
+                for o in spot_orders if o.is_active and o.is_buy_side and o.duration_hours > 0
+            )
+            spot_sell_usd = sum(
+                (o.size / (o.duration_hours * 60)) * price
+                for o in spot_orders if o.is_active and o.is_sell_side and o.duration_hours > 0
+            )
+            perp_buy_usd = sum(
+                (o.size / (o.duration_hours * 60)) * price
+                for o in perp_orders if o.is_active and o.is_buy_side and o.duration_hours > 0
+            )
+            perp_sell_usd = sum(
+                (o.size / (o.duration_hours * 60)) * price
+                for o in perp_orders if o.is_active and o.is_sell_side and o.duration_hours > 0
+            )
+
+            total_buy_usd = spot_buy_usd + perp_buy_usd
+            total_sell_usd = spot_sell_usd + perp_sell_usd
+
+            # Only show pressure lines for markets with active orders
+            if active_spot > 0:
+                logger.info(
+                    f"💵 SPOT Pressure: Buy ${spot_buy_usd:,.0f}/min | "
+                    f"Sell ${spot_sell_usd:,.0f}/min | Net ${spot_buy_usd - spot_sell_usd:+,.0f}/min"
+                )
+            if active_perp > 0:
+                logger.info(
+                    f"⚡ PERP Pressure: Buy ${perp_buy_usd:,.0f}/min | "
+                    f"Sell ${perp_sell_usd:,.0f}/min | Net ${perp_buy_usd - perp_sell_usd:+,.0f}/min"
+                )
+            # Only show TOTAL if both markets have activity
+            if active_spot > 0 and active_perp > 0:
+                logger.info(
+                    f"📊 TOTAL Pressure: Buy ${total_buy_usd:,.0f}/min | "
+                    f"Sell ${total_sell_usd:,.0f}/min | Net ${total_buy_usd - total_sell_usd:+,.0f}/min"
+                )
+        else:
+            # Build market breakdown string - only show markets that have orders
+            if active_spot > 0 and active_perp > 0:
+                market_breakdown = f"({active_spot} SPOT, {active_perp} PERP)"
+            elif active_spot > 0:
+                market_breakdown = "SPOT"
+            elif active_perp > 0:
+                market_breakdown = "PERP"
+            else:
+                market_breakdown = ""
+
+            logger.info(
+                f"Orders: {stats['total_orders']} total | "
+                f"Active: {stats['active_orders']} {market_breakdown}"
+            )
 
         # SPOT MARKET
         if active_spot > 0:
@@ -309,10 +488,23 @@ class AllCoinsStateTracker:
                     continue
 
                 side_emoji = "🟢" if order.is_buy_side else "🔴"
-                logger.info(
-                    f"    {side_emoji} {order.full_address} | {order.side:4s} | "
-                    f"{order.size:>10,.0f} | {order.duration_hours:>5.1f}h"
-                )
+
+                # Build progress string
+                progress_str = format_progress(order)
+                if progress_str:
+                    progress_str = f" | {progress_str}"
+
+                if snapshot.current_price:
+                    usd_pressure = format_usd_pressure(order.size, order.duration_hours, snapshot.current_price)
+                    logger.info(
+                        f"    {side_emoji} {order.full_address} | {order.side:4s} | "
+                        f"{format_size(order.size)} | {order.duration_hours:>5.1f}h{progress_str} | {usd_pressure}"
+                    )
+                else:
+                    logger.info(
+                        f"    {side_emoji} {order.full_address} | {order.side:4s} | "
+                        f"{format_size(order.size)} | {order.duration_hours:>5.1f}h{progress_str}"
+                    )
 
         # PERP MARKET
         if active_perp > 0:
@@ -322,12 +514,25 @@ class AllCoinsStateTracker:
                     continue
 
                 side_emoji = "🟢" if order.is_buy_side else "🔴"
-                logger.info(
-                    f"    {side_emoji} {order.full_address} | {order.side:4s} | "
-                    f"{order.size:>10,.0f} | {order.duration_hours:>5.1f}h"
-                )
 
-        # Log changes
+                # Build progress string
+                progress_str = format_progress(order)
+                if progress_str:
+                    progress_str = f" | {progress_str}"
+
+                if snapshot.current_price:
+                    usd_pressure = format_usd_pressure(order.size, order.duration_hours, snapshot.current_price)
+                    logger.info(
+                        f"    {side_emoji} {order.full_address} | {order.side:4s} | "
+                        f"{format_size(order.size)} | {order.duration_hours:>5.1f}h{progress_str} | {usd_pressure}"
+                    )
+                else:
+                    logger.info(
+                        f"    {side_emoji} {order.full_address} | {order.side:4s} | "
+                        f"{format_size(order.size)} | {order.duration_hours:>5.1f}h{progress_str}"
+                    )
+
+        # Log any changes (new/completed/canceled orders)
         self._log_coin_changes(symbol, changes)
 
     def _log_coin_changes(self, symbol: str, changes: Dict):
@@ -337,9 +542,12 @@ class AllCoinsStateTracker:
         if changes['new_orders']:
             logger.info(f"  🆕 [{symbol}] New orders: {len(changes['new_orders'])}")
             for order in changes['new_orders']:
+                progress_str = format_progress(order)
+                if progress_str:
+                    progress_str = f" | {progress_str}"
                 logger.info(
-                    f"    NEW: {order.full_address} {order.side:4s} {order.size:>10,.0f} "
-                    f"{order.product_type} {order.duration_hours:.1f}h"
+                    f"    NEW: {order.full_address} {order.side:4s} {format_size(order.size)} "
+                    f"{order.product_type} {order.duration_hours:.1f}h{progress_str}"
                 )
 
         # INFO: Completed orders
@@ -347,34 +555,55 @@ class AllCoinsStateTracker:
         if completed_orders:
             logger.info(f"  ✅ [{symbol}] Completed: {len(completed_orders)}")
             for order in completed_orders:
+                progress_str = format_progress(order)
+                if progress_str:
+                    progress_str = f" | {progress_str}"
                 logger.info(
-                    f"    COMPLETED: {order.full_address} {order.side:4s} {order.size:>10,.0f} "
-                    f"{order.product_type} {order.duration_hours:.1f}h"
+                    f"    COMPLETED: {order.full_address} {order.side:4s} {format_size(order.size)} "
+                    f"{order.product_type} {order.duration_hours:.1f}h{progress_str}"
                 )
 
-        # WARNING: Canceled orders (now comes directly from changes)
+        # WARNING: Canceled orders
         canceled_orders = changes.get('canceled_orders', [])
         if canceled_orders:
             logger.warning(f"  ❌ [{symbol}] Canceled: {len(canceled_orders)}")
             for order in canceled_orders:
-                if hasattr(order, 'full_address'):
-                    logger.warning(
-                        f"    CANCELED: {order.full_address} {order.side:4s} {order.size:>10,.0f} "
-                        f"{order.product_type} {order.duration_hours:.1f}h"
-                    )
+                progress_str = format_progress(order)
+                if progress_str:
+                    progress_str = f" | {progress_str}"
+
+                # Handle both TWAPOrder objects and dicts
+                if isinstance(order, dict):
+                    addr = order['full_address']
+                    side = order['side']
+                    size = order['size']
+                    ptype = order['product_type']
+                    dur = order['duration_hours']
                 else:
-                    logger.warning(
-                        f"    CANCELED: {order['full_address']} {order['side']:4s} {order['size']:>10,.0f} "
-                        f"{order['product_type']} {order['duration_hours']:.1f}h"
-                    )
+                    addr = order.full_address
+                    side = order.side
+                    size = order.size
+                    ptype = order.product_type
+                    dur = order.duration_hours
+
+                logger.warning(
+                    f"    CANCELED: {addr} {side:4s} {format_size(size)} "
+                    f"{ptype} {dur:.1f}h{progress_str}"
+                )
 
         # WARNING: Status changes
         if changes['status_changes']:
             logger.warning(f"  🔄 [{symbol}] Status changes: {len(changes['status_changes'])}")
             for change in changes['status_changes']:
+                elapsed = change.get('elapsed_minutes')
+                progress = change.get('progress_percent')
+                if elapsed is not None and progress is not None:
+                    progress_str = f" | {elapsed}m ({progress:.0f}%)"
+                else:
+                    progress_str = ""
                 logger.warning(
-                    f"    STATUS: {change['address']} {change['side']:4s} {change['size']:>10,.0f} "
-                    f"{change['product_type']} {change['old_status']} → {change['new_status']}"
+                    f"    STATUS: {change['address']} {change['side']:4s} {format_size(change['size'])} "
+                    f"{change['product_type']} {change['old_status']} → {change['new_status']}{progress_str}"
                 )
 
     def _save_all_to_json(self):
@@ -390,7 +619,8 @@ class AllCoinsStateTracker:
 
                 snapshot = coin_state.current_snapshot
                 # Create per-coin subdirectory
-                coin_dir = base_dir / symbol
+                safe_coin = symbol.replace(":", "_")  # xyz:TSLA -> xyz_TSLA for filesystem
+                coin_dir = base_dir / safe_coin
                 coin_dir.mkdir(exist_ok=True)
 
                 # Detect changes
@@ -405,22 +635,25 @@ class AllCoinsStateTracker:
                         'status_changes': []
                     }
 
-                # Convert orders to dicts - consistent field ordering
+                # Convert orders to dicts - consistent field ordering with progress tracking
                 def order_to_dict(order):
                     if isinstance(order, dict):
                         return {
                             'address': order.get('full_address', order.get('address', '')),
-                            'order_hash': order['order_hash'],
-                            'side': order['side'],
-                            'size': round(order['size'], 2),
-                            'product_type': order['product_type'],
-                            'duration_hours': round(order['duration_hours'], 2),
+                            'order_hash': order.get('order_hash', ''),
+                            'side': order.get('side', ''),
+                            'size': round(order.get('size', 0), 2),
+                            'product_type': order.get('product_type', ''),
+                            'duration_hours': round(order.get('duration_hours', 0), 2),
+                            'duration_minutes': order.get('duration_minutes', int(order.get('duration_hours', 0) * 60)),
                             'status': order.get('status', 'unknown'),
                             'is_active': order.get('is_active', False),
                             'elapsed_minutes': order.get('elapsed_minutes'),
-                            'progress_percent': order.get('progress_percent'),
+                            'progress_percent': round(order.get('progress_percent'), 1) if order.get(
+                                'progress_percent') is not None else None,
                             'time_remaining_minutes': order.get('time_remaining_minutes')
                         }
+                    # TWAPOrder object
                     return {
                         'address': order.full_address,
                         'order_hash': order.order_hash,
@@ -428,10 +661,12 @@ class AllCoinsStateTracker:
                         'size': round(order.size, 2),
                         'product_type': order.product_type,
                         'duration_hours': round(order.duration_hours, 2),
+                        'duration_minutes': order.duration_minutes,
                         'status': order.status,
                         'is_active': order.is_active,
                         'elapsed_minutes': order.elapsed_minutes,
-                        'progress_percent': order.progress_percent,
+                        'progress_percent': round(order.progress_percent,
+                                                  1) if order.progress_percent is not None else None,
                         'time_remaining_minutes': order.time_remaining_minutes
                     }
 
@@ -439,7 +674,7 @@ class AllCoinsStateTracker:
                 stats = snapshot.get_stats()
                 active = snapshot.active_orders
 
-                # Build update data - matching HYPE tracker format
+                # Build update data - matching HYPE tracker format with progress tracking
                 update_data = {
                     'timestamp': datetime.now().isoformat(),
                     'symbol': symbol,
@@ -451,14 +686,26 @@ class AllCoinsStateTracker:
                         'buy_volume': round(stats['buy_volume'], 2),
                         'sell_volume': round(stats['sell_volume'], 2),
                         'net_flow': round(stats['net_flow'], 2),
-                        'spot_buy_volume': round(sum(o.size for o in active if o.is_buy_side and o.product_type == 'SPOT'), 2),
-                        'spot_sell_volume': round(sum(o.size for o in active if o.is_sell_side and o.product_type == 'SPOT'), 2),
-                        'spot_buy_pressure': round(sum(o.get_execution_rate() for o in active if o.is_buy_side and o.product_type == 'SPOT'),2),
-                        'spot_sell_pressure': round(sum(o.get_execution_rate() for o in active if o.is_sell_side and o.product_type == 'SPOT'),2),
-                        'perp_buy_volume': round(sum(o.size for o in active if o.is_buy_side and o.product_type == 'PERP'), 2),
-                        'perp_sell_volume': round(sum(o.size for o in active if o.is_sell_side and o.product_type == 'PERP'), 2),
-                        'perp_buy_pressure': round(sum(o.get_execution_rate() for o in active if o.is_buy_side and o.product_type == 'PERP'),2),
-                        'perp_sell_pressure': round(sum(o.get_execution_rate() for o in active if o.is_sell_side and o.product_type == 'PERP'),2),
+                        'spot_buy_volume': round(
+                            sum(o.size for o in active if o.is_buy_side and o.product_type == 'SPOT'), 2),
+                        'spot_sell_volume': round(
+                            sum(o.size for o in active if o.is_sell_side and o.product_type == 'SPOT'), 2),
+                        'spot_buy_pressure': round(
+                            sum(o.get_execution_rate() for o in active if o.is_buy_side and o.product_type == 'SPOT'),
+                            2),
+                        'spot_sell_pressure': round(
+                            sum(o.get_execution_rate() for o in active if o.is_sell_side and o.product_type == 'SPOT'),
+                            2),
+                        'perp_buy_volume': round(
+                            sum(o.size for o in active if o.is_buy_side and o.product_type == 'PERP'), 2),
+                        'perp_sell_volume': round(
+                            sum(o.size for o in active if o.is_sell_side and o.product_type == 'PERP'), 2),
+                        'perp_buy_pressure': round(
+                            sum(o.get_execution_rate() for o in active if o.is_buy_side and o.product_type == 'PERP'),
+                            2),
+                        'perp_sell_pressure': round(
+                            sum(o.get_execution_rate() for o in active if o.is_sell_side and o.product_type == 'PERP'),
+                            2),
                         'buy_pressure_per_min': round(stats['buy_pressure_per_min'], 2),
                         'sell_pressure_per_min': round(stats['sell_pressure_per_min'], 2),
                         'net_pressure_per_min': round(stats['net_pressure_per_min'], 2),
@@ -479,7 +726,12 @@ class AllCoinsStateTracker:
                             'side': o.side,
                             'size': round(o.size, 2),
                             'product_type': o.product_type,
-                            'duration_hours': round(o.duration_hours, 2)
+                            'duration_hours': round(o.duration_hours, 2),
+                            'duration_minutes': o.duration_minutes,
+                            'elapsed_minutes': o.elapsed_minutes,
+                            'progress_percent': round(o.progress_percent,
+                                                      1) if o.progress_percent is not None else None,
+                            'time_remaining_minutes': o.time_remaining_minutes
                         }
                         for o in changes.get('new_orders', [])
                     ],
@@ -491,39 +743,32 @@ class AllCoinsStateTracker:
                             'size': round(o.size, 2),
                             'product_type': o.product_type,
                             'duration_hours': round(o.duration_hours, 2),
+                            'duration_minutes': o.duration_minutes,
                             'status': 'completed',
                             'elapsed_minutes': o.elapsed_minutes,
-                            'progress_percent': o.progress_percent,
+                            'progress_percent': round(o.progress_percent,
+                                                      1) if o.progress_percent is not None else None,
                             'time_remaining_minutes': o.time_remaining_minutes
                         }
                         for o in changes.get('completed_orders', [])
                     ],
                     'canceled_orders': [
-                        {
-                            'address': o.full_address if hasattr(o, 'full_address') else o.get('full_address',
-                                                                                               o.get('address', '')),
-                            'order_hash': o.order_hash if hasattr(o, 'order_hash') else o.get('order_hash', ''),
-                            'side': o.side if hasattr(o, 'side') else o.get('side', ''),
-                            'size': round(o.size if hasattr(o, 'size') else o.get('size', 0), 2),
-                            'product_type': o.product_type if hasattr(o, 'product_type') else o.get('product_type', ''),
-                            'duration_hours': round(
-                                o.duration_hours if hasattr(o, 'duration_hours') else o.get('duration_hours', 0), 2),
-                            'elapsed_minutes': o.elapsed_minutes if hasattr(o, 'elapsed_minutes') else o.get(
-                                'elapsed_minutes'),
-                            'progress_percent': o.progress_percent if hasattr(o, 'progress_percent') else o.get(
-                                'progress_percent'),
-                            'time_remaining_minutes': o.time_remaining_minutes if hasattr(o,
-                                                                                          'time_remaining_minutes') else o.get(
-                                'time_remaining_minutes')
-                        }
-                        for o in changes.get('canceled_orders', [])
+                        order_to_dict(o) for o in changes.get('canceled_orders', [])
                     ],
-                    'status_changes': changes.get('status_changes', [])
+                    'status_changes': [
+                        {
+                            **sc,
+                            'size': round(sc['size'], 2),
+                            'progress_percent': round(sc['progress_percent'], 1) if sc.get(
+                                'progress_percent') is not None else None
+                        }
+                        for sc in changes.get('status_changes', [])
+                    ]
                 }
 
                 # Per-coin daily file in coin's folder
                 today = datetime.now().strftime('%Y%m%d')
-                filename = coin_dir / f"{symbol}_{today}.jsonl"
+                filename = coin_dir / f"{safe_coin}_{today}.jsonl"
 
                 with open(filename, 'a', encoding='utf-8') as f:
                     json.dump(update_data, f, separators=(',', ':'))
