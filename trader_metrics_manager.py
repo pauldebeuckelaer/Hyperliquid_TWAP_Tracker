@@ -4,6 +4,7 @@ Trader Metrics Manager
 Manages collection and storage of trader metrics with two-tier system
 UPDATED: Now tracks spot balances and total portfolio value
 UPDATED: Enhanced filtering with blacklist and price sanity checks
+UPDATED: Daily portfolio snapshots
 """
 import logging
 import json
@@ -34,9 +35,9 @@ class TraderMetricsManager:
         self.config = config or {}
 
         # File paths
-        self.metrics_file = Path('trader_metrics.json')
-        self.history_dir = Path('trader_metrics_history')
-        self.history_dir.mkdir(exist_ok=True)
+        self.metrics_file = Path('data/trader_metrics.json')
+        self.history_dir = Path('data/metrics_history')
+        self.history_dir.mkdir(parents=True, exist_ok=True)
 
         # Update intervals
         self.light_interval_hours = self.config.get('light_interval_hours', 6)
@@ -49,6 +50,7 @@ class TraderMetricsManager:
         # Tracking
         self.addresses_seen: Set[str] = set()
         self.last_save_time = datetime.now()
+        self.last_snapshot_date: Optional[str] = None  # Track last snapshot date
 
         self.dust_threshold = self.config.get('dust_threshold', 5.0)
 
@@ -132,6 +134,78 @@ class TraderMetricsManager:
 
         except Exception as e:
             logger.error(f"Error saving metrics: {e}")
+
+    def _save_daily_portfolio_snapshot(self):
+        """
+        Save daily portfolio snapshot (once per day)
+        Creates a small JSON file with just portfolio values for each trader
+        """
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        # Skip if already saved today
+        if self.last_snapshot_date == today:
+            return
+
+        snapshot_file = self.history_dir / f"portfolios_{today}.json"
+
+        # Skip if file already exists (e.g., bot restarted)
+        if snapshot_file.exists():
+            self.last_snapshot_date = today
+            logger.debug(f"Daily snapshot already exists: {snapshot_file}")
+            return
+
+        # Need at least some data
+        if not self.metrics_data["traders"]:
+            logger.debug("No traders to snapshot yet")
+            return
+
+        # Build portfolio summary for each trader
+        portfolios = {}
+        for address, trader_data in self.metrics_data["traders"].items():
+            data = trader_data.get("data", {})
+            account = data.get("account", {})
+
+            # Skip if no account data
+            if not account or "error" in account:
+                continue
+
+            portfolios[address] = {
+                "perp_value": account.get("value", 0),
+                "spot_value": account.get("spot_value", 0),
+                "vault_value": account.get("vault_value", 0),
+                "total_portfolio_value": account.get("total_portfolio_value", 0),
+                "num_positions": account.get("num_positions", 0),
+                "leverage_ratio": account.get("leverage_ratio", 0),
+                "cumulative_volume": data.get("cumulative_volume", 0)
+            }
+
+        # Calculate totals
+        total_value = sum(p.get("total_portfolio_value", 0) for p in portfolios.values())
+        total_volume = sum(p.get("cumulative_volume", 0) for p in portfolios.values())
+
+        snapshot = {
+            "date": today,
+            "timestamp": datetime.now().isoformat(),
+            "summary": {
+                "trader_count": len(portfolios),
+                "total_portfolio_value": round(total_value, 2),
+                "total_cumulative_volume": round(total_volume, 2),
+                "avg_portfolio_value": round(total_value / len(portfolios), 2) if portfolios else 0
+            },
+            "portfolios": portfolios
+        }
+
+        try:
+            with open(snapshot_file, 'w') as f:
+                json.dump(snapshot, f, indent=2)
+
+            self.last_snapshot_date = today
+            logger.info(
+                f"📸 Daily portfolio snapshot saved: {snapshot_file} "
+                f"({len(portfolios)} traders, ${total_value:,.0f} total)"
+            )
+        except Exception as e:
+            logger.error(f"Error saving daily snapshot: {e}")
 
     def _archive_to_history(self):
         """Archive current metrics to history folder"""
@@ -318,7 +392,7 @@ class TraderMetricsManager:
                         token_value = 0
 
                         # Stablecoins are 1:1 USD (skip filtering)
-                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE","USDH"]:
+                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE", "USDH"]:
                             token_value = total
                             if token_value > self.dust_threshold:
                                 spot_value += total
@@ -635,6 +709,7 @@ class TraderMetricsManager:
         """Save metrics if needed"""
         if self.should_save():
             self._save_metrics()
+            self._save_daily_portfolio_snapshot()
 
     def get_summary(self) -> Dict:
         """Get summary statistics - uses total portfolio value"""

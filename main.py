@@ -1,84 +1,54 @@
 #!/usr/bin/env python3
 """
-TWAP State Tracker with Order-Size Classification + ALL COINS TRACKING
-=======================================================================
-Tracks TWAP orders for:
-1. Individual coins (HYPE) - using TWAPStateTracker
-2. ALL other coins - using AllCoinsStateTracker
+TWAP State Tracker - All Coins
+==============================
+Tracks TWAP orders for ALL coins on Hyperliquid
+Single fetch, single tracker, 1-minute snapshots
+NOW WITH SQLITE STORAGE
 """
 import time
 import signal
 import sys
 import json
 
-# Import logging configuration FIRST
 from logging_config import setup_logging, get_module_logger
-
-# Import components
 from api_client.hypurrscan_client import HypurrScanClient
 from api_client.hyperliquid_client import HyperliquidClient
-from twap_state_tracker import TWAPStateTracker
-from allcoins_state_tracker import AllCoinsStateTracker
+from trackers.state_tracker import AllCoinsStateTracker
 from coin_registry import init_dynamic_registry
 from trader_metrics_manager import TraderMetricsManager
-from json_logger import SimpleJsonLogger
 
-# Get logger for this module
 logger = get_module_logger(__name__)
 
-# Timing constants (all in seconds)
-LOOP_CYCLE_TIME = 10  # Base cycle: 10 seconds
-HYPE_FETCH_INTERVAL = 180  # Fetch individual symbol data every 60 seconds (1 minute)
-ALL_COINS_FETCH_INTERVAL = 60 # Fetch all coins data every 120 seconds (2 minutes)
+# Timing - single interval for everything
+FETCH_INTERVAL = 60  # All coins every 60 seconds
 
 
-class SimpleTWAPBot:
-    """TWAP tracker with order-size based classification + ALL COINS tracking"""
+class TWAPBot:
+    """TWAP tracker for all coins on Hyperliquid"""
 
     def __init__(self, config: dict):
-        logger.info("Initializing TWAP Tracker with All Coins Support")
+        logger.info("Initializing TWAP Tracker")
 
         self.config = config
         self.running = False
-        self.symbols = config.get('symbols', ['HYPE'])
 
-        # Core components
+        # HypurrScan client for TWAP data
         self.hypurr_client = HypurrScanClient(config.get('hypurr_data', {}))
-        self.json_logger = SimpleJsonLogger(config.get('json_logging', {}))
 
-        # One TWAP tracker per symbol (for individual tracking like HYPE)
-        self.trackers = {}
-        for symbol in self.symbols:
-            self.trackers[symbol] = TWAPStateTracker(
-                symbol,
-                json_logger=self.json_logger,
-            )
+        # All Coins Tracker (now with SQLite storage)
+        self.tracker = AllCoinsStateTracker(
+            exclude_coins=config.get('exclude_coins', [])
+        )
 
-        # NEW: All Coins Tracker
-        all_coins_config = config.get('all_coins_tracking', {})
-        self.all_coins_enabled = all_coins_config.get('enabled', True)
-
-        if self.all_coins_enabled:
-            # Exclude individually tracked symbols to avoid duplication
-            # (Though for validation, you might want to include HYPE in both)
-            exclude_coins = all_coins_config.get('exclude_coins', [])
-
-            self.all_coins_tracker = AllCoinsStateTracker(
-                json_logger=self.json_logger,
-                exclude_coins=exclude_coins
-            )
-            logger.info(f"All Coins Tracker enabled (excluding: {exclude_coins})")
-        else:
-            self.all_coins_tracker = None
-            logger.info("All Coins Tracker disabled")
-
-        # Hyperliquid client
+        # Hyperliquid client for prices + trader metrics
         hyperliquid_config = config.get('hyperliquid', {})
         self.hyperliquid_enabled = hyperliquid_config.get('enabled', False)
 
         if self.hyperliquid_enabled:
             self.hyperliquid_client = HyperliquidClient(hyperliquid_config)
             init_dynamic_registry(self.hyperliquid_client)
+
             metrics_config = hyperliquid_config.get('metrics_collection', {})
             self.metrics_manager = TraderMetricsManager(
                 self.hyperliquid_client,
@@ -90,148 +60,91 @@ class SimpleTWAPBot:
             self.metrics_manager = None
             logger.info("Hyperliquid client disabled")
 
-
-        # Setup shutdown handler
+        # Shutdown handler
         signal.signal(signal.SIGINT, self._shutdown_handler)
         signal.signal(signal.SIGTERM, self._shutdown_handler)
 
-        logger.info(f"TWAP Tracker initialized")
-        logger.info(f"Individual tracking: {', '.join(self.symbols)}")
-        logger.info(f"All coins tracking: {'enabled' if self.all_coins_enabled else 'disabled'}")
-
-    def _fetch_individual_symbols(self):
-        """Fetch and process TWAP data for individual symbols (e.g., HYPE)"""
-        try:
-            logger.debug("Fetching individual symbol data...")
-            data = self.hypurr_client.fetch_all_data(self.symbols)
-            twap_data = data.whale_activity_data.get('twap_data', {})
-
-            for symbol in self.symbols:
-                twap_orders = twap_data.get(symbol, [])
-                if twap_orders:
-                    # Fetch current price if client available
-                    current_price = None
-                    if self.hyperliquid_client:
-                        current_price = self.hyperliquid_client.get_token_price(symbol)
-                        if current_price:
-                            logger.info(f" {symbol} price: ${current_price:,.4f}")
-
-                    self.trackers[symbol].update(twap_orders, current_price=current_price)
-                else:
-                    logger.warning(f"No TWAP orders found for {symbol}")
-
-        except Exception as e:
-            logger.error(f"Error fetching individual symbol data: {e}")
-            logger.exception(e)
+        logger.info("TWAP Tracker initialized")
 
     def _fetch_all_coins(self):
-        """Fetch and process TWAP data for ALL COINS"""
+        """Fetch and process TWAP data for ALL coins - single API call"""
         try:
-            logger.debug("Fetching ALL coins data via wildcard...")
+            logger.debug("Fetching all coins data...")
 
-            # Use wildcard to get ALL coins
-            all_coins_whale_data = self.hypurr_client.get_whale_activity(['*'])
-            all_coins_twap_data = all_coins_whale_data.get('twap_data', {})
+            # Single fetch for everything via twap/*
+            whale_data = self.hypurr_client.get_whale_activity(['*'])
+            twap_data = whale_data.get('twap_data', {})
 
-            if all_coins_twap_data:
-                logger.debug(f"Received data for {len(all_coins_twap_data)} coins")
-                # Fetch all prices in one API call
+            if twap_data:
+                logger.debug(f"Received data for {len(twap_data)} coins")
+
+                # Fetch prices (single API call)
                 prices = {}
                 if self.hyperliquid_client:
                     all_mids = self.hyperliquid_client.get_all_mids()
                     if all_mids:
-                        # Filter out spot indices (@123) and convert to float
                         prices = {k: float(v) for k, v in all_mids.items() if not k.startswith('@')}
-                        # DEBUG: Check for HIP-3 tokens
-                        hip3_keys = [k for k in all_mids.keys() if ':' in k]
-                        logger.info(f"HIP-3 tokens in allMids: {hip3_keys}")
+                        logger.debug(f"Fetched prices for {len(prices)} assets")
 
-                        logger.debug(f"Fetched prices for {len(prices)} perp assets")
-                        logger.debug(f"Fetched prices for {len(prices)} perp assets")
-                self.all_coins_tracker.update(all_coins_twap_data, prices=prices)
+                # Update tracker
+                self.tracker.update(twap_data, prices=prices)
             else:
-                logger.warning("No ALL COINS data received from wildcard fetch")
+                logger.warning("No TWAP data received")
 
         except Exception as e:
-            logger.error(f"Error fetching ALL COINS data: {e}")
+            logger.error(f"Error fetching data: {e}")
             logger.exception(e)
 
     def _register_addresses_with_metrics(self):
-        """Register all tracked addresses with metrics manager"""
-        if not self.hyperliquid_enabled:
+        """Register tracked addresses with metrics manager"""
+        if not self.hyperliquid_enabled or not self.metrics_manager:
             return
 
-        # Collect addresses from individual trackers
-        all_addresses = set()
-        for symbol, tracker in self.trackers.items():
-            all_addresses.update(tracker.all_addresses_seen)
-
-        # Collect addresses from all coins tracker
-        if self.all_coins_enabled and self.all_coins_tracker:
-            all_addresses.update(self.all_coins_tracker.all_addresses_seen)
-
-        # Register with metrics manager
-        self.metrics_manager.register_addresses(all_addresses)
+        self.metrics_manager.register_addresses(self.tracker.all_addresses_seen)
 
     def start(self):
-        """
-        Start the main tracking loop.
-
-        Loop structure (10-second base cycle):
-        - Every 60s: Fetch individual symbol TWAP data (HYPE)
-        - Every 120s: Fetch ALL COINS TWAP data
-        """
-        logger.info("Starting TWAP tracking loop")
-        logger.info(f"Base cycle: {LOOP_CYCLE_TIME}s")
-        logger.info(f"Individual symbols fetch interval: {HYPE_FETCH_INTERVAL}s")
-        logger.info(f"All coins fetch interval: {ALL_COINS_FETCH_INTERVAL}s")
+        """Start the tracking loop"""
+        logger.info(f"Starting TWAP tracking loop (interval: {FETCH_INTERVAL}s)")
 
         self.running = True
         loop_count = 0
 
-        # Calculate how many base cycles fit into each fetch interval
-        hype_fetch_cycles = int(HYPE_FETCH_INTERVAL / LOOP_CYCLE_TIME)  # 60/10 = 6
-        all_coins_fetch_cycles = int(ALL_COINS_FETCH_INTERVAL / LOOP_CYCLE_TIME)  # 120/10 = 12
-        metrics_check_cycles = int(3600 / LOOP_CYCLE_TIME) if self.hyperliquid_enabled else 0
+        # Metrics check every hour
+        metrics_check_cycles = int(3600 / FETCH_INTERVAL) if self.hyperliquid_enabled else 0
 
         while self.running:
             try:
                 loop_start = time.time()
                 loop_count += 1
 
-                logger.debug(f"Loop cycle #{loop_count}")
+                # Fetch all coins (single API call)
+                self._fetch_all_coins()
 
-                # Fetch individual symbol data (HYPE) every 60 seconds
-                if loop_count % hype_fetch_cycles == 0:
-                    self._fetch_individual_symbols()
-
-                # Fetch ALL COINS data every 120 seconds
-                if self.all_coins_enabled and loop_count % all_coins_fetch_cycles == 0:
-                    self._fetch_all_coins()
-
-                # Register addresses after any fetch
+                # Register addresses with metrics manager
                 if self.hyperliquid_enabled:
-                    if (loop_count % hype_fetch_cycles == 0) or (loop_count % all_coins_fetch_cycles == 0):
-                        self._register_addresses_with_metrics()
+                    self._register_addresses_with_metrics()
 
-                if self.hyperliquid_enabled and loop_count % metrics_check_cycles == 0:
-                    self.metrics_manager.check_for_updates()
-                    pending = len(self.metrics_manager.update_queue)
-                    if pending > 0:
-                        logger.info(f"Scheduled metrics check - {pending} pending updates")
+                # Periodic metrics check (hourly)
+                if self.hyperliquid_enabled and metrics_check_cycles > 0:
+                    if loop_count % metrics_check_cycles == 0:
+                        self.metrics_manager.check_for_updates()
+                        pending = len(self.metrics_manager.update_queue)
+                        if pending > 0:
+                            logger.info(f"Scheduled metrics check - {pending} pending updates")
 
+                # Process pending metrics updates
                 if self.hyperliquid_enabled and self.metrics_manager.has_pending_updates():
                     self.metrics_manager.process_single_update()
                     self.metrics_manager.save_if_needed()
 
-                # Maintain consistent base cycle
+                # Maintain consistent interval
                 elapsed = time.time() - loop_start
-                sleep_time = max(0.1, LOOP_CYCLE_TIME - elapsed)
+                sleep_time = max(0.1, FETCH_INTERVAL - elapsed)
 
-                if elapsed > LOOP_CYCLE_TIME:
+                if elapsed > FETCH_INTERVAL:
                     logger.warning(
                         f"Cycle {loop_count} took {elapsed:.1f}s, "
-                        f"exceeded {LOOP_CYCLE_TIME}s target"
+                        f"exceeded {FETCH_INTERVAL}s target"
                     )
 
                 time.sleep(sleep_time)
@@ -241,39 +154,44 @@ class SimpleTWAPBot:
             except Exception as e:
                 logger.error(f"Loop error: {e}")
                 logger.exception(e)
-                time.sleep(LOOP_CYCLE_TIME)
+                time.sleep(FETCH_INTERVAL)
 
         logger.info("Tracking stopped")
 
     def _shutdown_handler(self, signum, frame):
-        """Handle shutdown"""
+        """Handle shutdown gracefully"""
         logger.info("Shutdown signal received")
         self.running = False
 
+        # Save metrics if enabled
         if self.hyperliquid_enabled and self.metrics_manager:
             logger.info("Saving trader metrics...")
             self.metrics_manager._save_metrics()
             self.metrics_manager._archive_to_history()
+            logger.info(f"Metrics summary: {self.metrics_manager.get_summary()}")
 
-            summary = self.metrics_manager.get_summary()
-            logger.info(f"Metrics summary: {summary}")
+        # Close database connection
+        logger.info("Closing database connection...")
+        self.tracker.close()
 
         # Log final stats
-        if self.all_coins_enabled and self.all_coins_tracker:
-            stats = self.all_coins_tracker.get_current_stats()
-            logger.info("=" * 70)
-            logger.info("ALL COINS TRACKER - FINAL STATS")
-            logger.info("=" * 70)
-            logger.info(f"Total coins tracked: {stats['total_coins_tracked']}")
-            logger.info(f"Coins with activity: {stats['coins_with_activity']}")
-            logger.info(f"Total orders: {stats['total_orders']}")
-            logger.info(f"Active orders: {stats['total_active_orders']}")
-            logger.info(f"Addresses seen: {stats['all_time_addresses']}")
-            logger.info("=" * 70)
+        stats = self.tracker.get_current_stats()
+        logger.info("=" * 70)
+        logger.info("FINAL STATS")
+        logger.info("=" * 70)
+        logger.info(f"Total coins tracked: {stats['total_coins_tracked']}")
+        logger.info(f"Coins with activity: {stats['coins_with_activity']}")
+        logger.info(f"Total orders: {stats['total_orders']}")
+        logger.info(f"Active orders: {stats['total_active_orders']}")
+        logger.info(f"Addresses seen: {stats['all_time_addresses']}")
+        if 'db_stats' in stats:
+            db_stats = stats['db_stats']
+            logger.info(f"Database size: {db_stats.get('db_size_mb', 0)} MB")
+        logger.info("=" * 70)
 
 
 def load_config(config_file: str = "twap_config.json") -> dict:
-    """Load configuration"""
+    """Load configuration from JSON file"""
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
@@ -282,45 +200,24 @@ def load_config(config_file: str = "twap_config.json") -> dict:
     except FileNotFoundError:
         logger.warning(f"Config file not found, using defaults")
         return {
-            'symbols': ['HYPE'],
             'hypurr_data': {},
-            'json_logging': {
-                'enabled': True,
-                'log_dir': 'json_logs'
-            },
-            'all_coins_tracking': {
-                'enabled': True,
-                'exclude_coins': []  # Set to ['HYPE'] if you want to avoid duplication
-            }
+            'exclude_coins': []
         }
     except Exception as e:
         logger.error(f"Config error: {e}")
-        return {
-            'hypurr_data': {},
-            'all_coins_tracking': {
-                'enabled': True,
-                'exclude_coins': []
-            }
-        }
+        return {'hypurr_data': {}}
 
 
 def main():
     """Main entry point"""
-    print("TWAP State Tracker with All Coins Support")
+    print("TWAP State Tracker - All Coins (SQLite)")
     print("=" * 50)
-    print("Tracks TWAP orders for individual coins + ALL coins")
-    print("=" * 50)
-    print()
 
     try:
-        # Load config first
         config = load_config()
-
-        # Setup logging based on config
         setup_logging(config)
 
-        # Now start the bot
-        bot = SimpleTWAPBot(config)
+        bot = TWAPBot(config)
         bot.start()
         return 0
     except KeyboardInterrupt:
@@ -332,5 +229,4 @@ def main():
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    sys.exit(main())
