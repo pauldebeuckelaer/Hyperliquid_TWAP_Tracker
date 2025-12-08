@@ -1,0 +1,57 @@
+{
+  "collection_info": {
+    "created": "2025-12-06T12:49:47.048292",
+    "last_updated": "2025-12-06T12:50:30.575049",
+    "total_addresses": 1,
+    "light_fetches": 1,
+    "deep_fetches": 0
+  },
+  "traders": {
+    "0xb676a78f19227ffe9a97db93263fce675e547dbf": {
+      "first_seen": "2025-12-06T12:49:54.456560",
+      "last_light_update": "2025-12-06T12:49:48.509373",
+      "last_deep_update": null,
+      "data": {
+        "user_role": {
+          "role": "user"
+        },
+        "account": {
+          "value": 80804.152418,
+          "spot_value": 212851.44952214,
+          "spot_balances_detail": [
+            {
+              "coin": "USDC",
+              "amount": 212851.44952214,
+              "value": 212851.44952214,
+              "price_source": "stablecoin_1:1"
+            }
+          ],
+          "dust_value": 1.022040966585,
+          "dust_count": 3,
+          "vault_value": 0,
+          "vault_details": [],
+          "total_portfolio_value": 293655.60194014,
+          "position_value": 170461.94175,
+          "margin_used": 17046.194175,
+          "withdrawable": 50677.958243,
+          "leverage_ratio": 0.58,
+          "num_positions": 1
+        },
+        "positions": [
+          {
+            "coin": "HYPE",
+            "size": -5529.99,
+            "side": "SHORT",
+            "entry_price": 31.1042,
+            "liquidation_price": 43.2733227483,
+            "leverage": 10.0,
+            "margin_used": 17046.194175,
+            "unrealized_pnl": 1544.476892
+          }
+        ],
+        "cumulative_volume": 482708039.87,
+        "open_orders_count": 3
+      }
+    }
+  }
+}

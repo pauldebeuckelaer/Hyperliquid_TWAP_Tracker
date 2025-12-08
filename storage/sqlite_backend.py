@@ -167,11 +167,16 @@ class SQLiteBackend:
             # 1. Save snapshot summary
             self._save_snapshot_summary(timestamp, symbol, price, summary)
 
-            # 2. Update/insert active orders
+            # 2. Update/insert active orders from snapshot
             for order in active_orders:
                 self._upsert_order(symbol, order, timestamp)
 
-            # 3. Record events
+            # 3. ALSO insert orders from new_orders changes
+            #    (catches orders that may not be in active_orders)
+            for order in changes.get('new_orders', []):
+                self._upsert_order_from_change(symbol, order, timestamp)
+
+            # 4. Record events
             for order in changes.get('new_orders', []):
                 self._record_event('new', symbol, order, timestamp)
 
@@ -183,7 +188,7 @@ class SQLiteBackend:
                 self._record_event('canceled', symbol, order, timestamp)
                 self._mark_order_canceled(order, timestamp)
 
-            # 4. Update addresses
+            # 5. Update addresses
             addresses_in_snapshot = set()
             for order in active_orders:
                 addr = order.get('address', '')
@@ -227,7 +232,7 @@ class SQLiteBackend:
         ))
 
     def _upsert_order(self, symbol: str, order: Dict, timestamp: str):
-        """Insert or update an order"""
+        """Insert or update an order from active_orders (dict format)"""
         order_hash = order.get('order_hash', '')
         if not order_hash:
             return
@@ -244,7 +249,7 @@ class SQLiteBackend:
         size = order.get('size', 0)
         product_type = order.get('product_type', '')
         duration = order.get('duration_minutes', 0)
-        status = order.get('status', 'running')
+        status = order.get('status', 'active')
 
         if existing:
             # Update existing order
@@ -269,13 +274,72 @@ class SQLiteBackend:
                 timestamp, timestamp
             ))
 
-    def _mark_order_completed(self, order: Dict, timestamp: str):
-        """Mark an order as completed"""
-        order_hash = order.get('order_hash', '')
+    def _upsert_order_from_change(self, symbol: str, order, timestamp: str):
+        """Insert/update order from changes (handles TWAPOrder objects and dicts)"""
+        # Extract fields - handle both TWAPOrder objects and dicts
+        if hasattr(order, 'order_hash'):
+            # TWAPOrder object
+            order_hash = order.order_hash
+            address = order.full_address
+            side = order.side
+            size = order.size
+            product_type = order.product_type
+            duration = order.duration_minutes
+            status = order.status
+        else:
+            # Dict
+            order_hash = order.get('order_hash', '')
+            address = order.get('address', order.get('full_address', ''))
+            side = order.get('side', '')
+            size = order.get('size', 0)
+            product_type = order.get('product_type', '')
+            duration = order.get('duration_minutes', 0)
+            status = order.get('status', 'active')
+
         if not order_hash:
             return
 
-        progress = order.get('progress_percent')
+        # Check if order exists
+        self.cursor.execute(
+            "SELECT id FROM orders WHERE order_hash = ?",
+            (order_hash,)
+        )
+        existing = self.cursor.fetchone()
+
+        if existing:
+            # Update existing order
+            self.cursor.execute("""
+                UPDATE orders SET
+                    last_seen_at = ?,
+                    status = ?
+                WHERE order_hash = ?
+            """, (timestamp, status, order_hash))
+        else:
+            # Insert new order
+            self.cursor.execute("""
+                INSERT INTO orders (
+                    order_hash, address, symbol, side, size,
+                    product_type, duration_minutes, status,
+                    first_seen_at, last_seen_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                order_hash, address, symbol, side, size,
+                product_type, duration, status,
+                timestamp, timestamp
+            ))
+
+    def _mark_order_completed(self, order, timestamp: str):
+        """Mark an order as completed"""
+        # Handle both TWAPOrder objects and dicts
+        if hasattr(order, 'order_hash'):
+            order_hash = order.order_hash
+            progress = order.progress_percent
+        else:
+            order_hash = order.get('order_hash', '')
+            progress = order.get('progress_percent')
+
+        if not order_hash:
+            return
 
         self.cursor.execute("""
             UPDATE orders SET
@@ -285,13 +349,18 @@ class SQLiteBackend:
             WHERE order_hash = ?
         """, (timestamp, progress, order_hash))
 
-    def _mark_order_canceled(self, order: Dict, timestamp: str):
+    def _mark_order_canceled(self, order, timestamp: str):
         """Mark an order as canceled"""
-        order_hash = order.get('order_hash', '')
+        # Handle both TWAPOrder objects and dicts
+        if hasattr(order, 'order_hash'):
+            order_hash = order.order_hash
+            progress = order.progress_percent
+        else:
+            order_hash = order.get('order_hash', '')
+            progress = order.get('progress_percent')
+
         if not order_hash:
             return
-
-        progress = order.get('progress_percent')
 
         self.cursor.execute("""
             UPDATE orders SET
@@ -301,7 +370,7 @@ class SQLiteBackend:
             WHERE order_hash = ?
         """, (timestamp, progress, order_hash))
 
-    def _record_event(self, event_type: str, symbol: str, order: Dict, timestamp: str):
+    def _record_event(self, event_type: str, symbol: str, order, timestamp: str):
         """Record an event (new/completed/canceled)"""
         # Handle both TWAPOrder objects and dicts
         if hasattr(order, 'order_hash'):
@@ -324,6 +393,11 @@ class SQLiteBackend:
             duration = order.get('duration_minutes', 0)
             elapsed = order.get('elapsed_minutes')
             progress = order.get('progress_percent')
+
+        # Skip events without order_hash
+        if not order_hash:
+            logger.debug(f"Skipping {event_type} event for {symbol}: missing order_hash")
+            return
 
         self.cursor.execute("""
             INSERT INTO events (
