@@ -447,7 +447,7 @@ class SQLiteBackend:
             order_id, order_hash, symbol, first_seen, duration, last_seen = row
 
             # Calculate expected completion
-            first_seen_dt = datetime.fromisoformat(first_seen)
+            first_seen_dt = datetime.fromisoformat(first_seen).replace(tzinfo=timezone.utc)
             expected_completion = first_seen_dt + timedelta(minutes=duration)
             grace_end = expected_completion + timedelta(minutes=grace_period_minutes)
 
