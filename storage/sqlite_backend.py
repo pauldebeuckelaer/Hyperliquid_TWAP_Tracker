@@ -421,6 +421,57 @@ class SQLiteBackend:
                 total_orders = total_orders + 1
         """, (address, timestamp, timestamp, timestamp))
 
+    def cleanup_stale_orders(self, grace_period_minutes: int = 2) -> int:
+        """
+        Mark orders as completed if they're past their expected completion time.
+
+        Args:
+            grace_period_minutes: Extra time to wait after expected completion
+
+        Returns:
+            Number of orders cleaned up
+        """
+        from datetime import datetime, timedelta, timezone
+
+        current_time = datetime.now(timezone.utc)
+
+        # Find active orders past their expected completion
+        self.cursor.execute("""
+            SELECT id, order_hash, symbol, first_seen_at, duration_minutes, last_seen_at
+            FROM orders
+            WHERE status = 'active'
+        """)
+
+        cleaned = 0
+        for row in self.cursor.fetchall():
+            order_id, order_hash, symbol, first_seen, duration, last_seen = row
+
+            # Calculate expected completion
+            first_seen_dt = datetime.fromisoformat(first_seen)
+            expected_completion = first_seen_dt + timedelta(minutes=duration)
+            grace_end = expected_completion + timedelta(minutes=grace_period_minutes)
+
+            # If past expected completion + grace period
+            if current_time > grace_end:
+                self.cursor.execute("""
+                    UPDATE orders 
+                    SET 
+                        status = 'completed',
+                        completed_at = ?,
+                        last_seen_at = ?,
+                        final_progress_percent = 100.0
+                    WHERE id = ?
+                """, (expected_completion.isoformat(), last_seen, order_id))
+
+                cleaned += 1
+                logger.info(f"🧹 Cleaned stale order: {symbol} {order_hash[:10]}...")
+
+        if cleaned > 0:
+            self.conn.commit()
+            logger.info(f"✅ Cleaned {cleaned} stale orders")
+
+        return cleaned
+
     # =========================================================================
     # Query methods
     # =========================================================================

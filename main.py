@@ -88,6 +88,10 @@ class TWAPBot:
 
                 # Update tracker
                 self.tracker.update(twap_data, prices=prices)
+                # NEW: Clean up stale orders
+                cleaned = self.tracker.db.cleanup_stale_orders()
+                if cleaned > 0:
+                    logger.info(f"🧹 Cleaned up {cleaned} stale orders this cycle")
             else:
                 logger.warning("No TWAP data received")
 
