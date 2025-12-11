@@ -4,7 +4,7 @@ TWAP State Tracker - All Coins
 ==============================
 Tracks TWAP orders for ALL coins on Hyperliquid
 Single fetch, single tracker, 1-minute snapshots
-NOW WITH SQLITE STORAGE
+NOW WITH SQLITE STORAGE (including trader metrics)
 """
 import time
 import signal
@@ -49,12 +49,16 @@ class TWAPBot:
             self.hyperliquid_client = HyperliquidClient(hyperliquid_config)
             init_dynamic_registry(self.hyperliquid_client)
 
+            # Get the SQLite storage from tracker (shared database)
+            storage = self.tracker.db
+
             metrics_config = hyperliquid_config.get('metrics_collection', {})
             self.metrics_manager = TraderMetricsManager(
                 self.hyperliquid_client,
+                storage,  # Pass SQLite storage
                 config=metrics_config
             )
-            logger.info("Hyperliquid client and metrics manager initialized")
+            logger.info("Hyperliquid client and metrics manager initialized (SQLite storage)")
         else:
             self.hyperliquid_client = None
             self.metrics_manager = None
@@ -88,7 +92,8 @@ class TWAPBot:
 
                 # Update tracker
                 self.tracker.update(twap_data, prices=prices)
-                # NEW: Clean up stale orders
+
+                # Clean up stale orders
                 cleaned = self.tracker.db.cleanup_stale_orders()
                 if cleaned > 0:
                     logger.info(f"🧹 Cleaned up {cleaned} stale orders this cycle")
@@ -136,10 +141,9 @@ class TWAPBot:
                         if pending > 0:
                             logger.info(f"Scheduled metrics check - {pending} pending updates")
 
-                # Process pending metrics updates
+                # Process pending metrics updates (SQLite commits automatically)
                 if self.hyperliquid_enabled and self.metrics_manager.has_pending_updates():
                     self.metrics_manager.process_single_update()
-                    self.metrics_manager.save_if_needed()
 
                 # Maintain consistent interval
                 elapsed = time.time() - loop_start
@@ -167,11 +171,8 @@ class TWAPBot:
         logger.info("Shutdown signal received")
         self.running = False
 
-        # Save metrics if enabled
+        # Log metrics summary if enabled
         if self.hyperliquid_enabled and self.metrics_manager:
-            logger.info("Saving trader metrics...")
-            self.metrics_manager._save_metrics()
-            self.metrics_manager._archive_to_history()
             logger.info(f"Metrics summary: {self.metrics_manager.get_summary()}")
 
         # Close database connection
@@ -191,6 +192,8 @@ class TWAPBot:
         if 'db_stats' in stats:
             db_stats = stats['db_stats']
             logger.info(f"Database size: {db_stats.get('db_size_mb', 0)} MB")
+            logger.info(f"Tracked traders: {db_stats.get('total_traders', 0)}")
+            logger.info(f"Portfolio addresses: {db_stats.get('portfolio_addresses', 0)}")
         logger.info("=" * 70)
 
 

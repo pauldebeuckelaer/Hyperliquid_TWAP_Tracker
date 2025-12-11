@@ -10,9 +10,16 @@ Tables:
 - events: New/completed/canceled events for pattern detection
 - addresses: All addresses seen
 
+Trader Metrics Tables (NEW):
+- trader_metrics: Account data per trader (flat)
+- trader_perp_positions: Perp positions (normalized)
+- trader_spot_balances: Spot holdings (normalized)
+- portfolio_addresses: Your personal addresses
+
 Usage:
     db = SQLiteBackend('data/twap.db')
     db.save_snapshot(symbol, snapshot_data, changes)
+    db.save_trader_metrics(address, metrics_data)
     db.close()
 """
 import sqlite3
@@ -125,6 +132,76 @@ class SQLiteBackend:
             )
         """)
 
+        # =====================================================================
+        # TRADER METRICS TABLES (NEW)
+        # =====================================================================
+
+        # Trader metrics - flat account data (one row per trader)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trader_metrics (
+                address TEXT PRIMARY KEY,
+                first_seen TEXT NOT NULL,
+                last_light_update TEXT,
+                last_deep_update TEXT,
+                user_role TEXT,
+                perp_value REAL DEFAULT 0,
+                spot_value REAL DEFAULT 0,
+                vault_value REAL DEFAULT 0,
+                total_portfolio_value REAL DEFAULT 0,
+                position_value REAL DEFAULT 0,
+                margin_used REAL DEFAULT 0,
+                withdrawable REAL DEFAULT 0,
+                leverage_ratio REAL DEFAULT 0,
+                num_positions INTEGER DEFAULT 0,
+                dust_value REAL DEFAULT 0,
+                dust_count INTEGER DEFAULT 0,
+                cumulative_volume REAL DEFAULT 0,
+                open_orders_count INTEGER DEFAULT 0,
+                fills_count INTEGER DEFAULT 0,
+                twap_fills_count INTEGER DEFAULT 0,
+                subaccounts_count INTEGER DEFAULT 0
+            )
+        """)
+
+        # Trader perp positions - normalized (multiple rows per trader)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trader_perp_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                address TEXT NOT NULL,
+                coin TEXT NOT NULL,
+                size REAL NOT NULL,
+                side TEXT NOT NULL,
+                entry_price REAL,
+                liquidation_price REAL,
+                leverage REAL,
+                margin_used REAL,
+                unrealized_pnl REAL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        # Trader spot balances - normalized (multiple rows per trader)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trader_spot_balances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                address TEXT NOT NULL,
+                coin TEXT NOT NULL,
+                amount REAL NOT NULL,
+                value REAL NOT NULL,
+                price REAL,
+                price_source TEXT,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        # Portfolio addresses - your personal addresses
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS portfolio_addresses (
+                address TEXT PRIMARY KEY,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Create indexes for common queries
         self._create_indexes()
 
@@ -134,6 +211,7 @@ class SQLiteBackend:
     def _create_indexes(self):
         """Create indexes for query performance"""
         indexes = [
+            # Existing indexes
             "CREATE INDEX IF NOT EXISTS idx_orders_address ON orders(address)",
             "CREATE INDEX IF NOT EXISTS idx_orders_symbol ON orders(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
@@ -144,6 +222,15 @@ class SQLiteBackend:
             "CREATE INDEX IF NOT EXISTS idx_events_address ON events(address)",
             "CREATE INDEX IF NOT EXISTS idx_events_symbol ON events(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)",
+
+            # New indexes for trader metrics
+            "CREATE INDEX IF NOT EXISTS idx_trader_metrics_portfolio_value ON trader_metrics(total_portfolio_value)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_metrics_volume ON trader_metrics(cumulative_volume)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_metrics_leverage ON trader_metrics(leverage_ratio)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_perp_positions_address ON trader_perp_positions(address)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_perp_positions_coin ON trader_perp_positions(coin)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_spot_balances_address ON trader_spot_balances(address)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_spot_balances_coin ON trader_spot_balances(coin)",
         ]
 
         for idx_sql in indexes:
@@ -473,7 +560,7 @@ class SQLiteBackend:
         return cleaned
 
     # =========================================================================
-    # Query methods
+    # Query methods (existing)
     # =========================================================================
 
     def get_orders_by_address(self, address: str, limit: int = 100) -> List[Dict]:
@@ -606,6 +693,453 @@ class SQLiteBackend:
 
         self.cursor.execute("SELECT COUNT(DISTINCT symbol) FROM snapshots")
         stats['unique_symbols'] = self.cursor.fetchone()[0]
+
+        # Database file size
+        stats['db_size_mb'] = round(self.db_path.stat().st_size / (1024 * 1024), 2)
+
+        return stats
+
+    # =========================================================================
+    # TRADER METRICS METHODS (NEW)
+    # =========================================================================
+
+    def save_trader_metrics(self, address: str, data: Dict, update_type: str = 'light'):
+        """
+        Save or update trader metrics.
+
+        Args:
+            address: Trader address
+            data: Metrics data dict (from TraderMetricsManager)
+            update_type: 'light' or 'deep'
+        """
+        timestamp = datetime.now().isoformat()
+        account = data.get('account', {})
+
+        try:
+            # Check if trader exists
+            self.cursor.execute(
+                "SELECT address, first_seen FROM trader_metrics WHERE address = ?",
+                (address,)
+            )
+            existing = self.cursor.fetchone()
+
+            if existing:
+                # Update existing trader
+                update_fields = {
+                    'perp_value': account.get('value', 0),
+                    'spot_value': account.get('spot_value', 0),
+                    'vault_value': account.get('vault_value', 0),
+                    'total_portfolio_value': account.get('total_portfolio_value', 0),
+                    'position_value': account.get('position_value', 0),
+                    'margin_used': account.get('margin_used', 0),
+                    'withdrawable': account.get('withdrawable', 0),
+                    'leverage_ratio': account.get('leverage_ratio', 0),
+                    'num_positions': account.get('num_positions', 0),
+                    'dust_value': account.get('dust_value', 0),
+                    'dust_count': account.get('dust_count', 0),
+                    'cumulative_volume': data.get('cumulative_volume', 0),
+                    'open_orders_count': data.get('open_orders_count', 0),
+                    'user_role': data.get('user_role', {}).get('role', ''),
+                }
+
+                # Add deep metrics if available
+                if update_type == 'deep':
+                    update_fields['fills_count'] = data.get('fills_count', 0)
+                    update_fields['twap_fills_count'] = data.get('twap_fills_count', 0)
+                    update_fields['subaccounts_count'] = data.get('subaccounts_count', 0)
+                    update_fields['last_deep_update'] = timestamp
+                else:
+                    update_fields['last_light_update'] = timestamp
+
+                # Build update query
+                set_clause = ', '.join([f"{k} = ?" for k in update_fields.keys()])
+                values = list(update_fields.values()) + [address]
+
+                self.cursor.execute(f"""
+                    UPDATE trader_metrics SET {set_clause} WHERE address = ?
+                """, values)
+
+            else:
+                # Insert new trader
+                user_role = data.get('user_role', {})
+                role_str = user_role.get('role', '') if isinstance(user_role, dict) else ''
+
+                self.cursor.execute("""
+                    INSERT INTO trader_metrics (
+                        address, first_seen, last_light_update, last_deep_update,
+                        user_role, perp_value, spot_value, vault_value,
+                        total_portfolio_value, position_value, margin_used,
+                        withdrawable, leverage_ratio, num_positions,
+                        dust_value, dust_count, cumulative_volume, open_orders_count,
+                        fills_count, twap_fills_count, subaccounts_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    address,
+                    timestamp,
+                    timestamp if update_type == 'light' else None,
+                    timestamp if update_type == 'deep' else None,
+                    role_str,
+                    account.get('value', 0),
+                    account.get('spot_value', 0),
+                    account.get('vault_value', 0),
+                    account.get('total_portfolio_value', 0),
+                    account.get('position_value', 0),
+                    account.get('margin_used', 0),
+                    account.get('withdrawable', 0),
+                    account.get('leverage_ratio', 0),
+                    account.get('num_positions', 0),
+                    account.get('dust_value', 0),
+                    account.get('dust_count', 0),
+                    data.get('cumulative_volume', 0),
+                    data.get('open_orders_count', 0),
+                    data.get('fills_count', 0),
+                    data.get('twap_fills_count', 0),
+                    data.get('subaccounts_count', 0),
+                ))
+
+            # Update positions and spot balances
+            self._save_trader_positions(address, data.get('positions', []), timestamp)
+            self._save_trader_spot_balances(address, account.get('spot_balances_detail', []), timestamp)
+
+            self.conn.commit()
+            logger.debug(f"Saved trader metrics for {address}")
+
+        except Exception as e:
+            logger.error(f"Error saving trader metrics for {address}: {e}")
+            self.conn.rollback()
+            raise
+
+    def _save_trader_positions(self, address: str, positions: List[Dict], timestamp: str):
+        """
+        Save trader perp positions (delete and re-insert).
+
+        Args:
+            address: Trader address
+            positions: List of position dicts
+            timestamp: Update timestamp
+        """
+        # Delete existing positions for this trader
+        self.cursor.execute(
+            "DELETE FROM trader_perp_positions WHERE address = ?",
+            (address,)
+        )
+
+        # Insert current positions
+        for pos in positions:
+            self.cursor.execute("""
+                INSERT INTO trader_perp_positions (
+                    address, coin, size, side, entry_price,
+                    liquidation_price, leverage, margin_used,
+                    unrealized_pnl, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                address,
+                pos.get('coin', ''),
+                pos.get('size', 0),
+                pos.get('side', ''),
+                pos.get('entry_price', 0),
+                pos.get('liquidation_price', 0),
+                pos.get('leverage', 0),
+                pos.get('margin_used', 0),
+                pos.get('unrealized_pnl', 0),
+                timestamp,
+            ))
+
+    def _save_trader_spot_balances(self, address: str, balances: List[Dict], timestamp: str):
+        """
+        Save trader spot balances (delete and re-insert).
+
+        Args:
+            address: Trader address
+            balances: List of balance dicts
+            timestamp: Update timestamp
+        """
+        # Delete existing balances for this trader
+        self.cursor.execute(
+            "DELETE FROM trader_spot_balances WHERE address = ?",
+            (address,)
+        )
+
+        # Insert current balances
+        for bal in balances:
+            self.cursor.execute("""
+                INSERT INTO trader_spot_balances (
+                    address, coin, amount, value, price, price_source, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                address,
+                bal.get('coin', ''),
+                bal.get('amount', 0),
+                bal.get('value', 0),
+                bal.get('price'),
+                bal.get('price_source', ''),
+                timestamp,
+            ))
+
+    def get_trader_metrics(self, address: str) -> Optional[Dict]:
+        """
+        Get metrics for a single trader.
+
+        Args:
+            address: Trader address
+
+        Returns:
+            Dict with trader metrics or None
+        """
+        self.cursor.execute("SELECT * FROM trader_metrics WHERE address = ?", (address,))
+        row = self.cursor.fetchone()
+
+        if not row:
+            return None
+
+        result = dict(row)
+
+        # Add positions
+        self.cursor.execute(
+            "SELECT * FROM trader_perp_positions WHERE address = ?",
+            (address,)
+        )
+        result['positions'] = [dict(r) for r in self.cursor.fetchall()]
+
+        # Add spot balances
+        self.cursor.execute(
+            "SELECT * FROM trader_spot_balances WHERE address = ?",
+            (address,)
+        )
+        result['spot_balances'] = [dict(r) for r in self.cursor.fetchall()]
+
+        return result
+
+    def get_all_trader_metrics(self, limit: int = None, order_by: str = 'total_portfolio_value') -> List[Dict]:
+        """
+        Get all trader metrics.
+
+        Args:
+            limit: Max number of traders to return
+            order_by: Column to sort by (descending)
+
+        Returns:
+            List of trader metric dicts (without positions/balances for performance)
+        """
+        query = f"SELECT * FROM trader_metrics ORDER BY {order_by} DESC"
+        if limit:
+            query += f" LIMIT {limit}"
+
+        self.cursor.execute(query)
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_trader_count(self) -> int:
+        """Get total number of tracked traders"""
+        self.cursor.execute("SELECT COUNT(*) FROM trader_metrics")
+        return self.cursor.fetchone()[0]
+
+    def get_positions_by_coin(self, coin: str, limit: int = 100) -> List[Dict]:
+        """
+        Get all positions for a specific coin.
+
+        Args:
+            coin: Coin symbol (e.g., 'HYPE', 'BTC')
+            limit: Max results
+
+        Returns:
+            List of position dicts with trader address
+        """
+        self.cursor.execute("""
+            SELECT p.*, t.total_portfolio_value, t.cumulative_volume
+            FROM trader_perp_positions p
+            JOIN trader_metrics t ON p.address = t.address
+            WHERE p.coin = ?
+            ORDER BY ABS(p.size) DESC
+            LIMIT ?
+        """, (coin, limit))
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_spot_holders_by_coin(self, coin: str, limit: int = 100) -> List[Dict]:
+        """
+        Get all spot holders for a specific coin.
+
+        Args:
+            coin: Coin symbol
+            limit: Max results
+
+        Returns:
+            List of balance dicts with trader address
+        """
+        self.cursor.execute("""
+            SELECT s.*, t.total_portfolio_value, t.cumulative_volume
+            FROM trader_spot_balances s
+            JOIN trader_metrics t ON s.address = t.address
+            WHERE s.coin = ?
+            ORDER BY s.value DESC
+            LIMIT ?
+        """, (coin, limit))
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    # =========================================================================
+    # PORTFOLIO ADDRESS METHODS (NEW)
+    # =========================================================================
+
+    def add_portfolio_address(self, address: str) -> bool:
+        """
+        Add an address to your portfolio.
+
+        Args:
+            address: Your wallet address
+
+        Returns:
+            True if added, False if already exists
+        """
+        try:
+            self.cursor.execute("""
+                INSERT INTO portfolio_addresses (address) VALUES (?)
+            """, (address,))
+            self.conn.commit()
+            logger.info(f"Added portfolio address: {address}")
+            return True
+        except sqlite3.IntegrityError:
+            logger.debug(f"Portfolio address already exists: {address}")
+            return False
+
+    def remove_portfolio_address(self, address: str) -> bool:
+        """
+        Remove an address from your portfolio.
+
+        Args:
+            address: Wallet address to remove
+
+        Returns:
+            True if removed, False if not found
+        """
+        self.cursor.execute(
+            "DELETE FROM portfolio_addresses WHERE address = ?",
+            (address,)
+        )
+        self.conn.commit()
+        removed = self.cursor.rowcount > 0
+        if removed:
+            logger.info(f"Removed portfolio address: {address}")
+        return removed
+
+    def get_portfolio_addresses(self) -> List[str]:
+        """
+        Get all your portfolio addresses.
+
+        Returns:
+            List of addresses
+        """
+        self.cursor.execute("SELECT address FROM portfolio_addresses")
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def is_portfolio_address(self, address: str) -> bool:
+        """
+        Check if an address is in your portfolio.
+
+        Args:
+            address: Address to check
+
+        Returns:
+            True if it's your address
+        """
+        self.cursor.execute(
+            "SELECT 1 FROM portfolio_addresses WHERE address = ?",
+            (address,)
+        )
+        return self.cursor.fetchone() is not None
+
+    def get_portfolio_metrics(self) -> Optional[Dict]:
+        """
+        Get combined metrics for all your portfolio addresses.
+
+        Returns:
+            Dict with aggregated portfolio data
+        """
+        addresses = self.get_portfolio_addresses()
+        if not addresses:
+            return None
+
+        placeholders = ','.join(['?' for _ in addresses])
+
+        self.cursor.execute(f"""
+            SELECT 
+                COUNT(*) as num_addresses,
+                SUM(total_portfolio_value) as total_value,
+                SUM(perp_value) as total_perp_value,
+                SUM(spot_value) as total_spot_value,
+                SUM(vault_value) as total_vault_value,
+                SUM(position_value) as total_position_value,
+                SUM(cumulative_volume) as total_volume,
+                AVG(leverage_ratio) as avg_leverage
+            FROM trader_metrics
+            WHERE address IN ({placeholders})
+        """, addresses)
+
+        row = self.cursor.fetchone()
+        if not row:
+            return None
+
+        result = dict(row)
+
+        # Get all positions for portfolio
+        self.cursor.execute(f"""
+            SELECT * FROM trader_perp_positions
+            WHERE address IN ({placeholders})
+            ORDER BY ABS(size) DESC
+        """, addresses)
+        result['positions'] = [dict(r) for r in self.cursor.fetchall()]
+
+        # Get all spot balances for portfolio
+        self.cursor.execute(f"""
+            SELECT * FROM trader_spot_balances
+            WHERE address IN ({placeholders})
+            ORDER BY value DESC
+        """, addresses)
+        result['spot_balances'] = [dict(r) for r in self.cursor.fetchall()]
+
+        return result
+
+    # =========================================================================
+    # EXTENDED STATS (UPDATED)
+    # =========================================================================
+
+    def get_stats(self) -> Dict:
+        """Get database statistics (updated with trader metrics)"""
+        stats = {}
+
+        # Existing stats
+        self.cursor.execute("SELECT COUNT(*) FROM orders")
+        stats['total_orders'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'running'")
+        stats['active_orders'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM snapshots")
+        stats['total_snapshots'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM events")
+        stats['total_events'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM addresses")
+        stats['total_addresses'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(DISTINCT symbol) FROM snapshots")
+        stats['unique_symbols'] = self.cursor.fetchone()[0]
+
+        # New trader metrics stats
+        self.cursor.execute("SELECT COUNT(*) FROM trader_metrics")
+        stats['total_traders'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM trader_perp_positions")
+        stats['total_perp_positions'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM trader_spot_balances")
+        stats['total_spot_balances'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM portfolio_addresses")
+        stats['portfolio_addresses'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT SUM(total_portfolio_value) FROM trader_metrics")
+        total_value = self.cursor.fetchone()[0]
+        stats['total_tracked_value'] = round(total_value, 2) if total_value else 0
 
         # Database file size
         stats['db_size_mb'] = round(self.db_path.stat().st_size / (1024 * 1024), 2)
