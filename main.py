@@ -140,14 +140,25 @@ class TWAPBot:
                 config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
             )
 
+            # Get addresses already in whale_addresses (active or inactive)
+            all_whales = storage.get_all_whale_addresses()
+            known_whale_addresses = {w['address'] for w in all_whales}
+
+            # Only check addresses not yet in whale_addresses
+            new_addresses = addresses - known_whale_addresses
+
+            if not new_addresses:
+                storage.close()
+                return
+
             # Check each new address
             added = 0
-            for addr in addresses:
+            for addr in new_addresses:
                 if manager.register_address(addr):
                     added += 1
 
             if added > 0:
-                logger.info(f"Discovered {added} new whale(s) from {len(addresses)} new addresses")
+                logger.info(f"Discovered {added} new whale(s) from {len(new_addresses)} addresses")
 
             storage.close()
 
