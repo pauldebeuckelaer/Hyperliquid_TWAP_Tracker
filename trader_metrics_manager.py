@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
 """
-Trader Metrics Manager
-======================
-Manages collection and storage of trader metrics with two-tier system.
-
-REFACTORED: Now uses SQLite storage instead of JSON files.
+Whale Metrics Manager
+=====================
+Manages hourly snapshots of whale portfolios (>$50K).
 
 Features:
-- LIGHT updates: Quick essential metrics (every 6h)
-- DEEP updates: Complete metrics (every 24h)
-- Tracks spot balances and total portfolio value
-- Enhanced filtering with blacklist and price sanity checks
+- Hourly snapshots of portfolio composition
+- Tracks perp positions, spot balances, vault holdings
+- $50K minimum threshold (configurable)
+- ~1000 address target capacity
+- Liquidation price tracking
+- Token filtering with blacklist and price sanity checks
 """
 import logging
 from datetime import datetime
 from typing import Dict, Set, Optional, List
-from collections import deque
 
 logger = logging.getLogger(__name__)
 
 
-class TraderMetricsManager:
+class WhaleMetricsManager:
     """
-    Manages trader metrics collection with two-tier system:
-    - LIGHT: Quick essential metrics (every 6h)
-    - DEEP: Complete metrics (every 24h)
+    Manages whale portfolio snapshots.
 
-    Now uses SQLite for storage instead of JSON files.
+    Takes hourly snapshots of whale portfolios including:
+    - Perp positions with liquidation prices
+    - Spot balances
+    - Vault holdings
     """
 
     def __init__(self, hl_client, storage, config: Optional[Dict] = None):
         """
-        Initialize metrics manager.
+        Initialize whale metrics manager.
 
         Args:
             hl_client: HyperliquidClient instance
@@ -42,26 +42,24 @@ class TraderMetricsManager:
         self.storage = storage
         self.config = config or {}
 
-        # Update intervals
-        self.light_interval_hours = self.config.get('light_interval_hours', 6)
-        self.deep_interval_hours = self.config.get('deep_interval_hours', 24)
+        # Portfolio threshold (minimum to track)
+        self.min_portfolio_value = self.config.get('min_portfolio_value', 50000)
 
-        # Queue for pending updates
-        self.update_queue = deque()
-
-        # Tracking
-        self.addresses_seen: Set[str] = set()
-
-        # Stats counters (in-memory, reset on restart)
-        self.light_fetches = 0
-        self.deep_fetches = 0
-
+        # Dust threshold for spot balances
         self.dust_threshold = self.config.get('dust_threshold', 5.0)
+
+        # Stats counters
+        self.snapshots_taken = 0
+        self.addresses_processed = 0
+        self.errors_count = 0
 
         # FILTERING CONFIGURATION
         self.blacklisted_tokens = self.config.get('blacklisted_tokens', {
+            # Original blacklist
             "NIGGO", "LIQD", "FUND", "STEEL", "HWTR",
-            "SWAP", "BERA", "DEPIN", "GENESY",
+            "SWAP", "BERA", "DEPIN", "GENESY", "TILT",
+            # New additions
+            "RANK", "PURRO", "HOLD", "RAT", "MANLET", "WHYPI"
         })
 
         self.whitelisted_high_value_tokens = self.config.get('whitelisted_high_value_tokens', {
@@ -79,83 +77,10 @@ class TraderMetricsManager:
         self.max_high_value_token_price = self.config.get('max_high_value_token_price', 150000)
 
         logger.info(
-            f"TraderMetricsManager initialized: "
-            f"light={self.light_interval_hours}h, deep={self.deep_interval_hours}h"
+            f"WhaleMetricsManager initialized: "
+            f"min_portfolio=${self.min_portfolio_value:,}, "
+            f"blacklist={len(self.blacklisted_tokens)} tokens"
         )
-        logger.info(
-            f"Filtering: {len(self.blacklisted_tokens)} blacklisted, "
-            f"{len(self.whitelisted_sub_dollar_tokens)} whitelisted sub-$1 tokens"
-        )
-
-    def register_addresses(self, addresses: Set[str]):
-        """
-        Register addresses for tracking.
-        Adds new addresses to update queue.
-
-        Args:
-            addresses: Set of addresses to track
-        """
-        new_addresses = addresses - self.addresses_seen
-
-        if new_addresses:
-            logger.info(f"Registered {len(new_addresses)} new addresses")
-
-            # Add to queue for immediate light fetch
-            for addr in new_addresses:
-                self.update_queue.append((addr, 'light', 'new'))
-
-            self.addresses_seen.update(new_addresses)
-
-    def check_for_updates(self):
-        """
-        Check which addresses need updates based on time intervals.
-        Queries SQLite for last update times and adds to queue.
-        """
-        now = datetime.now()
-
-        # Get all traders from database
-        traders = self.storage.get_all_trader_metrics()
-
-        for trader in traders:
-            address = trader['address']
-            last_light = trader.get('last_light_update')
-            last_deep = trader.get('last_deep_update')
-
-            # Check if deep update needed
-            if last_deep:
-                last_deep_dt = datetime.fromisoformat(last_deep)
-                hours_since_deep = (now - last_deep_dt).total_seconds() / 3600
-
-                if hours_since_deep >= self.deep_interval_hours:
-                    self.update_queue.append((address, 'deep', 'scheduled'))
-                    continue
-            else:
-                # Never had deep update
-                self.update_queue.append((address, 'deep', 'first'))
-                continue
-
-            # Check if light update needed
-            if last_light:
-                last_light_dt = datetime.fromisoformat(last_light)
-                hours_since_light = (now - last_light_dt).total_seconds() / 3600
-
-                if hours_since_light >= self.light_interval_hours:
-                    self.update_queue.append((address, 'light', 'scheduled'))
-
-    def has_pending_updates(self) -> bool:
-        """Check if there are pending updates"""
-        return len(self.update_queue) > 0
-
-    def get_next_update(self) -> Optional[tuple]:
-        """
-        Get next address to update from queue.
-
-        Returns:
-            (address, update_type, reason) or None
-        """
-        if self.update_queue:
-            return self.update_queue.popleft()
-        return None
 
     def _should_include_token(self, coin: str, price: float, amount: float) -> tuple:
         """
@@ -199,387 +124,480 @@ class TraderMetricsManager:
 
         return True, "passed all filters"
 
-    def fetch_light_metrics(self, address: str) -> Dict:
+    def register_address(self, address: str) -> bool:
         """
-        Fetch light metrics (fast, essential data).
-        Includes spot balance, vault holdings, and total portfolio value.
+        Register a new address for potential tracking.
+        Address will be tracked if portfolio >= threshold.
 
         Args:
-            address: Trader address
+            address: Wallet address
 
         Returns:
-            Dict with metrics
+            True if added to whale tracking, False otherwise
         """
-        logger.debug(f"Fetching LIGHT metrics for {address}...")
+        # Check if already tracked
+        existing = self.storage.get_active_whale_addresses()
+        if address in existing:
+            return False
 
-        metrics = {
-            "address": address,
-            "fetch_type": "light",
-            "timestamp": datetime.now().isoformat(),
-            "data": {}
-        }
-
-        # 1. User role
+        # Fetch portfolio value to check threshold
         try:
-            role = self.hl_client.get_user_role(address)
-            metrics["data"]["user_role"] = role
-        except Exception as e:
-            metrics["data"]["user_role"] = {"error": str(e)}
-            logger.warning(f"Failed to get role for {address}: {e}")
+            portfolio_value = self._get_portfolio_value(address)
 
-        # 2. Clearinghouse state (positions, account value)
+            if portfolio_value >= self.min_portfolio_value:
+                self.storage.add_whale_address(address)
+                logger.info(f"Added whale: {address[:10]}... (${portfolio_value:,.0f})")
+                return True
+            else:
+                logger.debug(f"Below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+                return False
+
+        except Exception as e:
+            logger.warning(f"Error checking address {address[:10]}...: {e}")
+            return False
+
+    def register_addresses(self, addresses: Set[str]):
+        """
+        Register multiple addresses for tracking.
+        Only adds addresses with portfolio >= $50K threshold.
+        """
+        # Get existing addresses to skip
+        existing = set(self.storage.get_active_whale_addresses())
+        all_whales = self.storage.get_all_whale_addresses()
+        existing.update(w['address'] for w in all_whales)
+
+        new_addresses = addresses - existing
+
+        if not new_addresses:
+            return
+
+        logger.info(f"Checking {len(new_addresses)} new addresses for whale status...")
+
+        added = 0
+        for addr in new_addresses:
+            try:
+                portfolio_value = self._get_portfolio_value(addr)
+
+                if portfolio_value >= self.min_portfolio_value:
+                    self.storage.add_whale_address(addr)
+                    logger.info(f"Added whale: {addr[:10]}... (${portfolio_value:,.0f})")
+                    added += 1
+            except Exception as e:
+                logger.warning(f"Error checking {addr[:10]}...: {e}")
+
+        if added > 0:
+            logger.info(f"Added {added} new whales from {len(new_addresses)} candidates")
+
+    def _get_portfolio_value(self, address: str) -> float:
+        """
+        Get total portfolio value for an address (quick check).
+
+        Args:
+            address: Wallet address
+
+        Returns:
+            Total portfolio value in USD
+        """
+        total = 0.0
+
+        # Perp value
         try:
             state = self.hl_client.get_user_state(address)
             margin_summary = state.get("marginSummary", {})
-            perp_value = float(margin_summary.get("accountValue", 0))
+            total += float(margin_summary.get("accountValue", 0))
+        except Exception:
+            pass
 
-            # Get spot balance with filtering
-            spot_value = 0
-            spot_balances_detail = []
-            dust_value = 0
-            dust_count = 0
-            filtered_tokens = []
+        # Spot value (simplified - just check if significant)
+        try:
+            spot_state = self.hl_client.get_spot_clearinghouse_state(address)
+            if spot_state:
+                for balance in spot_state.get("balances", []):
+                    bal_total = float(balance.get("total", 0))
+                    coin = balance.get("coin", "")
 
+                    if bal_total == 0:
+                        continue
+
+                    # Stablecoins
+                    if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE", "USDH"]:
+                        total += bal_total
+                    else:
+                        price = self.hl_client.get_token_price(coin)
+                        if price:
+                            should_include, _ = self._should_include_token(coin, price, bal_total)
+                            if should_include:
+                                total += bal_total * price
+        except Exception:
+            pass
+
+        # Vault value
+        try:
+            vault_equities = self.hl_client.get_user_vault_equities(address)
+            if vault_equities:
+                for vault_eq in vault_equities:
+                    total += float(vault_eq.get("equity", 0))
+        except Exception:
+            pass
+
+        return total
+
+    def fetch_whale_data(self, address: str) -> Optional[Dict]:
+        """
+        Fetch complete portfolio data for a whale.
+
+        Args:
+            address: Wallet address
+
+        Returns:
+            Dict with portfolio_data, positions, spot_balances, vaults
+            or None if error
+        """
+        try:
+            portfolio_data = {
+                "perp_value": 0,
+                "spot_value": 0,
+                "vault_value": 0,
+                "total_portfolio_value": 0,
+                "margin_used": 0,
+                "leverage_ratio": 0,
+                "num_positions": 0,
+            }
+            positions = []
+            spot_balances = []
+            vaults = []
+
+            # 1. Perp positions and account state
+            try:
+                state = self.hl_client.get_user_state(address)
+                margin_summary = state.get("marginSummary", {})
+
+                portfolio_data["perp_value"] = float(margin_summary.get("accountValue", 0))
+                portfolio_data["margin_used"] = float(margin_summary.get("totalMarginUsed", 0))
+
+                # Parse positions
+                for pos_data in state.get("assetPositions", []):
+                    position = pos_data.get("position", {})
+                    size = float(position.get("szi", 0))
+
+                    if size != 0:
+                        positions.append({
+                            "coin": position.get("coin", ""),
+                            "size": size,
+                            "side": "LONG" if size > 0 else "SHORT",
+                            "entry_price": float(position.get("entryPx", 0)),
+                            "liquidation_price": float(position.get("liquidationPx") or 0),
+                            "leverage": float(position.get("leverage", {}).get("value", 1)),
+                            "margin_used": float(position.get("marginUsed", 0)),
+                            "unrealized_pnl": float(position.get("unrealizedPnl", 0))
+                        })
+
+                portfolio_data["num_positions"] = len(positions)
+
+            except Exception as e:
+                logger.warning(f"Failed to get perp state for {address[:10]}...: {e}")
+
+            # 2. Spot balances
             try:
                 spot_state = self.hl_client.get_spot_clearinghouse_state(address)
                 if spot_state:
-                    balances = spot_state.get("balances", [])
-
-                    for balance in balances:
-                        total = float(balance.get("total", 0))
+                    for balance in spot_state.get("balances", []):
+                        bal_total = float(balance.get("total", 0))
                         coin = balance.get("coin", "")
 
-                        if total == 0:
+                        if bal_total == 0:
                             continue
 
-                        # Stablecoins are 1:1 USD
+                        # Stablecoins
                         if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE", "USDH"]:
-                            token_value = total
-                            if token_value > self.dust_threshold:
-                                spot_value += total
-                                spot_balances_detail.append({
+                            if bal_total > self.dust_threshold:
+                                portfolio_data["spot_value"] += bal_total
+                                spot_balances.append({
                                     "coin": coin,
-                                    "amount": total,
-                                    "value": token_value,
-                                    "price_source": "stablecoin_1:1"
+                                    "amount": bal_total,
+                                    "value": bal_total,
+                                    "price": 1.0
                                 })
-                            else:
-                                dust_value += token_value
-                                dust_count += 1
                         else:
                             price = self.hl_client.get_token_price(coin)
-
                             if price:
-                                should_include, reason = self._should_include_token(coin, price, total)
-
+                                should_include, reason = self._should_include_token(coin, price, bal_total)
                                 if should_include:
-                                    token_value = total * price
-                                    spot_value += token_value
-
-                                    price_source = "bridged_asset" if coin.startswith('U') else "all_mids"
-                                    spot_balances_detail.append({
+                                    token_value = bal_total * price
+                                    portfolio_data["spot_value"] += token_value
+                                    spot_balances.append({
                                         "coin": coin,
-                                        "amount": total,
+                                        "amount": bal_total,
                                         "value": token_value,
-                                        "price": price,
-                                        "price_source": price_source
+                                        "price": price
                                     })
-                                    logger.debug(f"✅ {coin}: Included - ${token_value:.2f}")
-                                else:
-                                    token_value = total * price
-                                    filtered_tokens.append({
-                                        "coin": coin,
-                                        "reason": reason,
-                                        "price": price,
-                                        "amount": total,
-                                        "value": token_value
-                                    })
-                                    if token_value <= self.dust_threshold:
-                                        dust_value += token_value
-                                    dust_count += 1
-                            else:
-                                if total > 0.01:
-                                    logger.debug(f"🚫 {coin}: No price available")
-                                dust_count += 1
-
-                    if spot_value > 1000:
-                        logger.debug(f"💰 Spot breakdown for {address}: Total=${spot_value:,.2f}")
 
             except Exception as e:
-                logger.warning(f"Failed to get spot balance for {address}: {e}")
+                logger.warning(f"Failed to get spot state for {address[:10]}...: {e}")
 
-            # Get vault holdings
-            vault_value = 0
-            vault_details = []
+            # 3. Vault holdings
             try:
                 vault_equities = self.hl_client.get_user_vault_equities(address)
-
                 if vault_equities:
                     for vault_eq in vault_equities:
-                        vault_addr = vault_eq["vaultAddress"]
-                        equity = float(vault_eq["equity"])
-                        vault_value += equity
-                        vault_details.append({
-                            "vault_address": vault_addr,
-                            "equity": equity
-                        })
+                        equity = float(vault_eq.get("equity", 0))
+                        if equity > 0:
+                            portfolio_data["vault_value"] += equity
+                            vaults.append({
+                                "vault_address": vault_eq.get("vaultAddress", ""),
+                                "value": equity
+                            })
 
             except Exception as e:
-                logger.warning(f"Failed to get vaults for {address}: {e}")
+                logger.warning(f"Failed to get vaults for {address[:10]}...: {e}")
 
-            # Calculate total portfolio value
-            total_portfolio = perp_value + spot_value + vault_value
-
-            metrics["data"]["account"] = {
-                "value": perp_value,
-                "spot_value": spot_value,
-                "spot_balances_detail": spot_balances_detail,
-                "dust_value": dust_value,
-                "dust_count": dust_count,
-                "vault_value": vault_value,
-                "vault_details": vault_details,
-                "total_portfolio_value": total_portfolio,
-                "position_value": float(margin_summary.get("totalNtlPos", 0)),
-                "margin_used": float(margin_summary.get("totalMarginUsed", 0)),
-                "withdrawable": float(state.get("withdrawable", 0))
-            }
+            # Calculate totals
+            portfolio_data["total_portfolio_value"] = (
+                    portfolio_data["perp_value"] +
+                    portfolio_data["spot_value"] +
+                    portfolio_data["vault_value"]
+            )
 
             # Leverage ratio
-            pos_val = metrics["data"]["account"]["position_value"]
-            metrics["data"]["account"]["leverage_ratio"] = (
-                round(pos_val / total_portfolio, 2) if total_portfolio > 0 else 0
-            )
+            if portfolio_data["total_portfolio_value"] > 0:
+                position_value = sum(abs(p["size"] * p["entry_price"]) for p in positions)
+                portfolio_data["leverage_ratio"] = round(
+                    position_value / portfolio_data["total_portfolio_value"], 2
+                )
 
-            # Parse positions
-            metrics["data"]["positions"] = []
-            for pos_data in state.get("assetPositions", []):
-                position = pos_data.get("position", {})
-                size = float(position.get("szi", 0))
-
-                if size != 0:
-                    metrics["data"]["positions"].append({
-                        "coin": position.get("coin", ""),
-                        "size": size,
-                        "side": "LONG" if size > 0 else "SHORT",
-                        "entry_price": float(position.get("entryPx", 0)),
-                        "liquidation_price": float(position.get("liquidationPx") or 0),
-                        "leverage": float(position.get("leverage", {}).get("value", 1)),
-                        "margin_used": float(position.get("marginUsed", 0)),
-                        "unrealized_pnl": float(position.get("unrealizedPnl", 0))
-                    })
-
-            metrics["data"]["account"]["num_positions"] = len(metrics["data"]["positions"])
+            return {
+                "portfolio_data": portfolio_data,
+                "positions": positions,
+                "spot_balances": spot_balances,
+                "vaults": vaults
+            }
 
         except Exception as e:
-            metrics["data"]["account"] = {"error": str(e)}
-            metrics["data"]["positions"] = []
-            logger.warning(f"Failed to get state for {address}: {e}")
+            logger.error(f"Error fetching data for {address[:10]}...: {e}")
+            self.errors_count += 1
+            return None
 
-        # 3. Referral info (cumulative volume)
-        try:
-            referral = self.hl_client.get_referral_info(address)
-            metrics["data"]["cumulative_volume"] = float(referral.get("cumVlm", 0))
-        except Exception as e:
-            metrics["data"]["cumulative_volume"] = 0
-            logger.warning(f"Failed to get referral for {address}: {e}")
-
-        # 4. Open orders count
-        try:
-            orders = self.hl_client.get_open_orders(address)
-            metrics["data"]["open_orders_count"] = len(orders) if orders else 0
-        except Exception as e:
-            metrics["data"]["open_orders_count"] = 0
-            logger.warning(f"Failed to get orders for {address}: {e}")
-
-        return metrics
-
-    def fetch_deep_metrics(self, address: str) -> Dict:
+    def take_snapshot(self, address: str) -> bool:
         """
-        Fetch deep metrics (complete data).
+        Take a snapshot of a whale's portfolio.
 
         Args:
-            address: Trader address
+            address: Wallet address
 
         Returns:
-            Dict with comprehensive metrics
+            True if snapshot saved, False otherwise
         """
-        logger.debug(f"Fetching DEEP metrics for {address}...")
-
-        # Start with light metrics
-        metrics = self.fetch_light_metrics(address)
-        metrics["fetch_type"] = "deep"
-
-        # 5. Fills count
-        try:
-            fills = self.hl_client.get_user_fills(address)
-            metrics["data"]["fills_count"] = len(fills) if fills else 0
-        except Exception as e:
-            metrics["data"]["fills_count"] = 0
-            logger.warning(f"Failed to get fills for {address}: {e}")
-
-        # 6. TWAP fills count
-        try:
-            twap_fills = self.hl_client.get_twap_slice_fills(address)
-            metrics["data"]["twap_fills_count"] = len(twap_fills) if twap_fills else 0
-        except Exception as e:
-            metrics["data"]["twap_fills_count"] = 0
-            logger.warning(f"Failed to get TWAP fills for {address}: {e}")
-
-        # 7. Subaccounts
-        try:
-            subaccounts = self.hl_client.get_sub_accounts(address)
-            metrics["data"]["subaccounts_count"] = len(subaccounts) if subaccounts else 0
-        except Exception as e:
-            metrics["data"]["subaccounts_count"] = 0
-            logger.warning(f"Failed to get subaccounts for {address}: {e}")
-
-        return metrics
-
-    def update_trader(self, address: str, update_type: str = 'light'):
-        """
-        Update metrics for a trader and save to SQLite.
-
-        Args:
-            address: Trader address
-            update_type: 'light' or 'deep'
-        """
-        try:
-            # Fetch metrics
-            if update_type == 'light':
-                metrics = self.fetch_light_metrics(address)
-                self.light_fetches += 1
-            else:
-                metrics = self.fetch_deep_metrics(address)
-                self.deep_fetches += 1
-
-            # Save to SQLite
-            self.storage.save_trader_metrics(address, metrics["data"], update_type)
-
-            # Log summary
-            data = metrics["data"]
-            acct = data.get("account", {})
-            acct_val = acct.get("total_portfolio_value", acct.get("value", 0))
-            num_pos = acct.get("num_positions", 0)
-            leverage = acct.get("leverage_ratio", 0)
-            cum_vol = data.get("cumulative_volume", 0)
-
-            logger.debug(
-                f"Updated {address} ({update_type}): "
-                f"Value=${float(acct_val):,.0f} "
-                f"Positions={num_pos} "
-                f"Leverage={leverage:.1f}x "
-                f"Vol=${float(cum_vol):,.0f}"
-            )
-
-        except Exception as e:
-            logger.error(f"Error updating {address}: {e}")
-
-    def process_single_update(self) -> bool:
-        """
-        Process one update from the queue.
-
-        Returns:
-            True if update was processed, False if queue empty
-        """
-        update = self.get_next_update()
-        if not update:
+        data = self.fetch_whale_data(address)
+        if not data:
             return False
 
-        address, update_type, reason = update
-        logger.debug(f"Processing {update_type} update for {address} (reason: {reason})")
+        portfolio_value = data["portfolio_data"]["total_portfolio_value"]
 
-        self.update_trader(address, update_type)
+        # Check if still above threshold
+        if portfolio_value < self.min_portfolio_value:
+            # Mark as inactive but keep in database
+            self.storage.update_whale_status(address, is_active=False)
+            logger.info(f"Whale dropped below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+            return False
+
+        # Ensure whale is marked active
+        self.storage.update_whale_status(address, is_active=True)
+
+        # Save snapshot
+        snapshot_time = datetime.now().isoformat()
+
+        self.storage.save_whale_snapshot(
+            address=address,
+            snapshot_time=snapshot_time,
+            portfolio_data=data["portfolio_data"],
+            positions=data["positions"],
+            spot_balances=data["spot_balances"],
+            vaults=data["vaults"]
+        )
+
+        self.snapshots_taken += 1
         return True
 
-    def get_summary(self) -> Dict:
+    def run_hourly_snapshot(self) -> Dict:
         """
-        Get summary statistics from SQLite.
+        Run hourly snapshot for all active whales.
 
         Returns:
             Dict with summary stats
         """
-        traders = self.storage.get_all_trader_metrics()
-        total = len(traders)
+        start_time = datetime.now()
+        logger.info("Starting hourly whale snapshot...")
+
+        active_whales = self.storage.get_active_whale_addresses()
+        total = len(active_whales)
 
         if total == 0:
-            return {"total_addresses": 0}
+            logger.warning("No active whales to snapshot")
+            return {"total": 0, "success": 0, "failed": 0, "dropped": 0}
 
-        active = 0
-        with_positions = 0
-        total_volume = 0
-        total_account_value = 0
+        logger.info(f"Snapshotting {total} active whales...")
 
-        for trader in traders:
-            cum_vol = trader.get('cumulative_volume', 0)
-            if cum_vol > 0:
-                active += 1
-                total_volume += cum_vol
+        success = 0
+        failed = 0
+        dropped = 0
 
-            if trader.get('num_positions', 0) > 0:
-                with_positions += 1
+        for i, address in enumerate(active_whales):
+            try:
+                result = self.take_snapshot(address)
+                if result:
+                    success += 1
+                else:
+                    # Either error or dropped below threshold
+                    # Check if dropped
+                    if address not in self.storage.get_active_whale_addresses():
+                        dropped += 1
+                    else:
+                        failed += 1
 
-            total_account_value += trader.get('total_portfolio_value', 0)
+                self.addresses_processed += 1
+
+                # Progress logging every 100 addresses
+                if (i + 1) % 100 == 0:
+                    logger.info(f"Progress: {i + 1}/{total} ({success} success, {failed} failed, {dropped} dropped)")
+
+            except Exception as e:
+                logger.error(f"Error snapshotting {address[:10]}...: {e}")
+                failed += 1
+                self.errors_count += 1
+
+        elapsed = (datetime.now() - start_time).total_seconds()
+
+        logger.info(
+            f"Hourly snapshot complete: "
+            f"{success}/{total} success, {failed} failed, {dropped} dropped "
+            f"({elapsed:.1f}s)"
+        )
 
         return {
-            "total_addresses": total,
-            "active_traders": active,
-            "traders_with_positions": with_positions,
-            "total_volume": round(total_volume, 2),
-            "total_account_value": round(total_account_value, 2),
-            "avg_volume": round(total_volume / active, 2) if active > 0 else 0,
-            "avg_account_value": round(total_account_value / total, 2) if total > 0 else 0,
-            "light_fetches": self.light_fetches,
-            "deep_fetches": self.deep_fetches,
-            "pending_updates": len(self.update_queue)
+            "total": total,
+            "success": success,
+            "failed": failed,
+            "dropped": dropped,
+            "elapsed_seconds": elapsed
         }
 
-    def get_trader(self, address: str) -> Optional[Dict]:
+    def reactivate_whale(self, address: str) -> bool:
         """
-        Get metrics for a single trader.
+        Check if an inactive whale should be reactivated.
 
         Args:
-            address: Trader address
+            address: Wallet address
 
         Returns:
-            Dict with trader metrics or None
+            True if reactivated, False otherwise
         """
-        return self.storage.get_trader_metrics(address)
+        portfolio_value = self._get_portfolio_value(address)
 
-    def get_all_traders(self, limit: int = None, order_by: str = 'total_portfolio_value') -> List[Dict]:
+        if portfolio_value >= self.min_portfolio_value:
+            self.storage.update_whale_status(address, is_active=True)
+            logger.info(f"Reactivated whale: {address[:10]}... (${portfolio_value:,.0f})")
+            return True
+
+        return False
+
+    def check_inactive_whales(self) -> int:
         """
-        Get all trader metrics.
-
-        Args:
-            limit: Max number of traders
-            order_by: Column to sort by
+        Check all inactive whales and reactivate any above threshold.
 
         Returns:
-            List of trader dicts
+            Number of whales reactivated
         """
-        return self.storage.get_all_trader_metrics(limit=limit, order_by=order_by)
+        all_whales = self.storage.get_all_whale_addresses()
+        inactive = [w for w in all_whales if not w['is_active']]
 
-    def get_positions_by_coin(self, coin: str, limit: int = 100) -> List[Dict]:
+        if not inactive:
+            return 0
+
+        logger.info(f"Checking {len(inactive)} inactive whales...")
+
+        reactivated = 0
+        for whale in inactive:
+            if self.reactivate_whale(whale['address']):
+                reactivated += 1
+
+        if reactivated > 0:
+            logger.info(f"Reactivated {reactivated} whales")
+
+        return reactivated
+
+    def get_summary(self) -> Dict:
         """
-        Get all positions for a specific coin.
+        Get summary statistics.
+
+        Returns:
+            Dict with summary stats
+        """
+        active_count = self.storage.get_whale_count(active_only=True)
+        total_count = self.storage.get_whale_count(active_only=False)
+
+        return {
+            "active_whales": active_count,
+            "total_whales": total_count,
+            "inactive_whales": total_count - active_count,
+            "snapshots_taken": self.snapshots_taken,
+            "addresses_processed": self.addresses_processed,
+            "errors": self.errors_count,
+            "min_portfolio_threshold": self.min_portfolio_value,
+            "blacklisted_tokens": len(self.blacklisted_tokens)
+        }
+
+    def get_whale(self, address: str) -> Optional[Dict]:
+        """
+        Get latest snapshot for a whale.
 
         Args:
-            coin: Coin symbol (e.g., 'HYPE')
+            address: Wallet address
+
+        Returns:
+            Dict with latest snapshot or None
+        """
+        return self.storage.get_latest_snapshot(address)
+
+    def get_whale_history(self, address: str, limit: int = 168) -> List[Dict]:
+        """
+        Get portfolio history for a whale.
+
+        Args:
+            address: Wallet address
+            limit: Max snapshots (default 168 = 1 week hourly)
+
+        Returns:
+            List of portfolio snapshots
+        """
+        return self.storage.get_portfolio_history(address, limit=limit)
+
+    def get_top_whales(self, limit: int = 20) -> List[Dict]:
+        """
+        Get top whales by portfolio value.
+
+        Args:
             limit: Max results
 
         Returns:
-            List of positions
+            List of whale snapshots sorted by portfolio value
         """
-        return self.storage.get_positions_by_coin(coin, limit)
+        active_whales = self.storage.get_active_whale_addresses()
 
-    def get_spot_holders_by_coin(self, coin: str, limit: int = 100) -> List[Dict]:
-        """
-        Get all spot holders for a specific coin.
+        whales_with_value = []
+        for address in active_whales:
+            snapshot = self.storage.get_latest_snapshot(address)
+            if snapshot:
+                whales_with_value.append({
+                    "address": address,
+                    "total_portfolio_value": snapshot.get("total_portfolio_value", 0),
+                    "perp_value": snapshot.get("perp_value", 0),
+                    "spot_value": snapshot.get("spot_value", 0),
+                    "vault_value": snapshot.get("vault_value", 0),
+                    "num_positions": snapshot.get("num_positions", 0),
+                    "leverage_ratio": snapshot.get("leverage_ratio", 0),
+                })
 
-        Args:
-            coin: Coin symbol
-            limit: Max results
+        # Sort by portfolio value
+        whales_with_value.sort(key=lambda x: x["total_portfolio_value"], reverse=True)
 
-        Returns:
-            List of spot balances
-        """
-        return self.storage.get_spot_holders_by_coin(coin, limit)
+        return whales_with_value[:limit]

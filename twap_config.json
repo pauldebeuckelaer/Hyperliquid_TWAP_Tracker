@@ -34,14 +34,14 @@
       },
       {
         "path": "logs/main.log",
-        "modules": ["main", "__main__", "trader_metrics_manager", "api_client"]
+        "modules": ["main", "__main__", "trader_metrics_manager"]
       }
     ],
     "modules": {
       "api_client.hypurrscan_client": "INFO",
       "api_client.hyperliquid_client": "DEBUG",
       "trackers.state_tracker": "INFO",
-      "trader_metrics_manager": "INFO",
+      "trader_metrics_manager": "DEBUG",
       "coin_registry": "DEBUG",
       "__main__": "DEBUG"
     }

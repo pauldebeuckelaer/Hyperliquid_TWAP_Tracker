@@ -4,22 +4,23 @@ SQLite Storage Backend
 ======================
 Replaces JSONL storage with SQLite database for efficient querying.
 
-Tables:
+TWAP Tables (existing):
 - orders: Individual order tracking with lifecycle
 - snapshots: Aggregated summaries per coin per timestamp
 - events: New/completed/canceled events for pattern detection
-- addresses: All addresses seen
+- addresses: All addresses seen from TWAP orders
 
-Trader Metrics Tables (NEW):
-- trader_metrics: Account data per trader (flat)
-- trader_perp_positions: Perp positions (normalized)
-- trader_spot_balances: Spot holdings (normalized)
-- portfolio_addresses: Your personal addresses
+Whale Snapshot Tables (NEW):
+- whale_addresses: Master list of tracked whales (>$50K portfolio)
+- portfolio_snapshots: Hourly portfolio summaries
+- perp_snapshots: Hourly perp position details
+- spot_snapshots: Hourly spot balance details
+- vault_snapshots: Hourly vault holding details
 
 Usage:
     db = SQLiteBackend('data/twap.db')
     db.save_snapshot(symbol, snapshot_data, changes)
-    db.save_trader_metrics(address, metrics_data)
+    db.save_whale_snapshot(address, portfolio_data, positions, spot_balances, vaults)
     db.close()
 """
 import sqlite3
@@ -35,7 +36,7 @@ DEFAULT_DB_PATH = Path('data/twap.db')
 
 
 class SQLiteBackend:
-    """SQLite storage backend for TWAP data"""
+    """SQLite storage backend for TWAP data and whale snapshots"""
 
     def __init__(self, db_path: Path = None):
         """
@@ -61,6 +62,10 @@ class SQLiteBackend:
 
     def _create_tables(self):
         """Create database tables if they don't exist"""
+
+        # =================================================================
+        # TWAP TABLES (existing - unchanged)
+        # =================================================================
 
         # Orders table - tracks individual orders with lifecycle
         self.cursor.execute("""
@@ -121,7 +126,7 @@ class SQLiteBackend:
             )
         """)
 
-        # Addresses table - all addresses ever seen
+        # Addresses table - all addresses ever seen from TWAP orders
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS addresses (
                 address TEXT PRIMARY KEY,
@@ -132,77 +137,78 @@ class SQLiteBackend:
             )
         """)
 
-        # =====================================================================
-        # TRADER METRICS TABLES (NEW)
-        # =====================================================================
+        # =================================================================
+        # WHALE SNAPSHOT TABLES (NEW)
+        # =================================================================
 
-        # Trader metrics - flat account data (one row per trader)
+        # Whale addresses - master list of tracked whales
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS trader_metrics (
+            CREATE TABLE IF NOT EXISTS whale_addresses (
                 address TEXT PRIMARY KEY,
                 first_seen TEXT NOT NULL,
-                last_light_update TEXT,
-                last_deep_update TEXT,
-                user_role TEXT,
-                perp_value REAL DEFAULT 0,
-                spot_value REAL DEFAULT 0,
-                vault_value REAL DEFAULT 0,
-                total_portfolio_value REAL DEFAULT 0,
-                position_value REAL DEFAULT 0,
-                margin_used REAL DEFAULT 0,
-                withdrawable REAL DEFAULT 0,
-                leverage_ratio REAL DEFAULT 0,
-                num_positions INTEGER DEFAULT 0,
-                dust_value REAL DEFAULT 0,
-                dust_count INTEGER DEFAULT 0,
-                cumulative_volume REAL DEFAULT 0,
-                open_orders_count INTEGER DEFAULT 0,
-                fills_count INTEGER DEFAULT 0,
-                twap_fills_count INTEGER DEFAULT 0,
-                subaccounts_count INTEGER DEFAULT 0
+                last_updated TEXT,
+                is_active INTEGER DEFAULT 1
             )
         """)
 
-        # Trader perp positions - normalized (multiple rows per trader)
+        # Portfolio snapshots - hourly summary per address
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS trader_perp_positions (
+            CREATE TABLE IF NOT EXISTS portfolio_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 address TEXT NOT NULL,
+                snapshot_time TEXT NOT NULL,
+                total_portfolio_value REAL,
+                perp_value REAL,
+                spot_value REAL,
+                vault_value REAL,
+                margin_used REAL,
+                leverage_ratio REAL,
+                num_positions INTEGER
+            )
+        """)
+
+        # Perp snapshots - position details per snapshot
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS perp_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                address TEXT NOT NULL,
+                snapshot_time TEXT NOT NULL,
                 coin TEXT NOT NULL,
-                size REAL NOT NULL,
-                side TEXT NOT NULL,
+                size REAL,
+                side TEXT,
                 entry_price REAL,
                 liquidation_price REAL,
                 leverage REAL,
                 margin_used REAL,
-                unrealized_pnl REAL,
-                updated_at TEXT NOT NULL
+                unrealized_pnl REAL
             )
         """)
 
-        # Trader spot balances - normalized (multiple rows per trader)
+        # Spot snapshots - spot balances per snapshot
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS trader_spot_balances (
+            CREATE TABLE IF NOT EXISTS spot_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 address TEXT NOT NULL,
+                snapshot_time TEXT NOT NULL,
                 coin TEXT NOT NULL,
-                amount REAL NOT NULL,
-                value REAL NOT NULL,
-                price REAL,
-                price_source TEXT,
-                updated_at TEXT NOT NULL
+                amount REAL,
+                value REAL,
+                price REAL
             )
         """)
 
-        # Portfolio addresses - your personal addresses
+        # Vault snapshots - vault holdings per snapshot
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS portfolio_addresses (
-                address TEXT PRIMARY KEY,
-                added_at TEXT DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS vault_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                address TEXT NOT NULL,
+                snapshot_time TEXT NOT NULL,
+                vault_address TEXT,
+                value REAL
             )
         """)
 
-        # Create indexes for common queries
+        # Create indexes
         self._create_indexes()
 
         self.conn.commit()
@@ -211,7 +217,7 @@ class SQLiteBackend:
     def _create_indexes(self):
         """Create indexes for query performance"""
         indexes = [
-            # Existing indexes
+            # TWAP indexes (existing)
             "CREATE INDEX IF NOT EXISTS idx_orders_address ON orders(address)",
             "CREATE INDEX IF NOT EXISTS idx_orders_symbol ON orders(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
@@ -223,18 +229,30 @@ class SQLiteBackend:
             "CREATE INDEX IF NOT EXISTS idx_events_symbol ON events(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)",
 
-            # New indexes for trader metrics
-            "CREATE INDEX IF NOT EXISTS idx_trader_metrics_portfolio_value ON trader_metrics(total_portfolio_value)",
-            "CREATE INDEX IF NOT EXISTS idx_trader_metrics_volume ON trader_metrics(cumulative_volume)",
-            "CREATE INDEX IF NOT EXISTS idx_trader_metrics_leverage ON trader_metrics(leverage_ratio)",
-            "CREATE INDEX IF NOT EXISTS idx_trader_perp_positions_address ON trader_perp_positions(address)",
-            "CREATE INDEX IF NOT EXISTS idx_trader_perp_positions_coin ON trader_perp_positions(coin)",
-            "CREATE INDEX IF NOT EXISTS idx_trader_spot_balances_address ON trader_spot_balances(address)",
-            "CREATE INDEX IF NOT EXISTS idx_trader_spot_balances_coin ON trader_spot_balances(coin)",
+            # Whale snapshot indexes (NEW)
+            "CREATE INDEX IF NOT EXISTS idx_whale_addresses_active ON whale_addresses(is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_time ON portfolio_snapshots(snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_address ON portfolio_snapshots(address)",
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_address_time ON portfolio_snapshots(address, snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_perp_time ON perp_snapshots(snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_perp_address ON perp_snapshots(address)",
+            "CREATE INDEX IF NOT EXISTS idx_perp_coin ON perp_snapshots(coin)",
+            "CREATE INDEX IF NOT EXISTS idx_perp_address_time ON perp_snapshots(address, snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_spot_time ON spot_snapshots(snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_spot_address ON spot_snapshots(address)",
+            "CREATE INDEX IF NOT EXISTS idx_spot_coin ON spot_snapshots(coin)",
+            "CREATE INDEX IF NOT EXISTS idx_spot_address_time ON spot_snapshots(address, snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_vault_time ON vault_snapshots(snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_vault_address ON vault_snapshots(address)",
+            "CREATE INDEX IF NOT EXISTS idx_vault_address_time ON vault_snapshots(address, snapshot_time)",
         ]
 
         for idx_sql in indexes:
             self.cursor.execute(idx_sql)
+
+    # =========================================================================
+    # TWAP METHODS (existing - unchanged)
+    # =========================================================================
 
     def save_snapshot(self, symbol: str, snapshot_data: Dict, changes: Dict):
         """
@@ -259,7 +277,6 @@ class SQLiteBackend:
                 self._upsert_order(symbol, order, timestamp)
 
             # 3. ALSO insert orders from new_orders changes
-            #    (catches orders that may not be in active_orders)
             for order in changes.get('new_orders', []):
                 self._upsert_order_from_change(symbol, order, timestamp)
 
@@ -324,7 +341,6 @@ class SQLiteBackend:
         if not order_hash:
             return
 
-        # Check if order exists
         self.cursor.execute(
             "SELECT id, first_seen_at FROM orders WHERE order_hash = ?",
             (order_hash,)
@@ -339,7 +355,6 @@ class SQLiteBackend:
         status = order.get('status', 'active')
 
         if existing:
-            # Update existing order
             self.cursor.execute("""
                 UPDATE orders SET
                     last_seen_at = ?,
@@ -348,7 +363,6 @@ class SQLiteBackend:
                 WHERE order_hash = ?
             """, (timestamp, status, size, order_hash))
         else:
-            # Insert new order
             self.cursor.execute("""
                 INSERT INTO orders (
                     order_hash, address, symbol, side, size,
@@ -363,9 +377,7 @@ class SQLiteBackend:
 
     def _upsert_order_from_change(self, symbol: str, order, timestamp: str):
         """Insert/update order from changes (handles TWAPOrder objects and dicts)"""
-        # Extract fields - handle both TWAPOrder objects and dicts
         if hasattr(order, 'order_hash'):
-            # TWAPOrder object
             order_hash = order.order_hash
             address = order.full_address
             side = order.side
@@ -374,7 +386,6 @@ class SQLiteBackend:
             duration = order.duration_minutes
             status = order.status
         else:
-            # Dict
             order_hash = order.get('order_hash', '')
             address = order.get('address', order.get('full_address', ''))
             side = order.get('side', '')
@@ -386,7 +397,6 @@ class SQLiteBackend:
         if not order_hash:
             return
 
-        # Check if order exists
         self.cursor.execute(
             "SELECT id FROM orders WHERE order_hash = ?",
             (order_hash,)
@@ -394,7 +404,6 @@ class SQLiteBackend:
         existing = self.cursor.fetchone()
 
         if existing:
-            # Update existing order
             self.cursor.execute("""
                 UPDATE orders SET
                     last_seen_at = ?,
@@ -402,7 +411,6 @@ class SQLiteBackend:
                 WHERE order_hash = ?
             """, (timestamp, status, order_hash))
         else:
-            # Insert new order
             self.cursor.execute("""
                 INSERT INTO orders (
                     order_hash, address, symbol, side, size,
@@ -417,7 +425,6 @@ class SQLiteBackend:
 
     def _mark_order_completed(self, order, timestamp: str):
         """Mark an order as completed"""
-        # Handle both TWAPOrder objects and dicts
         if hasattr(order, 'order_hash'):
             order_hash = order.order_hash
             progress = order.progress_percent
@@ -438,7 +445,6 @@ class SQLiteBackend:
 
     def _mark_order_canceled(self, order, timestamp: str):
         """Mark an order as canceled"""
-        # Handle both TWAPOrder objects and dicts
         if hasattr(order, 'order_hash'):
             order_hash = order.order_hash
             progress = order.progress_percent
@@ -459,9 +465,7 @@ class SQLiteBackend:
 
     def _record_event(self, event_type: str, symbol: str, order, timestamp: str):
         """Record an event (new/completed/canceled)"""
-        # Handle both TWAPOrder objects and dicts
         if hasattr(order, 'order_hash'):
-            # TWAPOrder object
             order_hash = order.order_hash
             address = order.full_address
             side = order.side
@@ -471,7 +475,6 @@ class SQLiteBackend:
             elapsed = order.elapsed_minutes
             progress = order.progress_percent
         else:
-            # Dict
             order_hash = order.get('order_hash', '')
             address = order.get('address', order.get('full_address', ''))
             side = order.get('side', '')
@@ -481,7 +484,6 @@ class SQLiteBackend:
             elapsed = order.get('elapsed_minutes')
             progress = order.get('progress_percent')
 
-        # Skip events without order_hash
         if not order_hash:
             logger.debug(f"Skipping {event_type} event for {symbol}: missing order_hash")
             return
@@ -509,20 +511,11 @@ class SQLiteBackend:
         """, (address, timestamp, timestamp, timestamp))
 
     def cleanup_stale_orders(self, grace_period_minutes: int = 2) -> int:
-        """
-        Mark orders as completed if they're past their expected completion time.
-
-        Args:
-            grace_period_minutes: Extra time to wait after expected completion
-
-        Returns:
-            Number of orders cleaned up
-        """
+        """Mark orders as completed if they're past their expected completion time."""
         from datetime import datetime, timedelta, timezone
 
         current_time = datetime.now(timezone.utc)
 
-        # Find active orders past their expected completion
         self.cursor.execute("""
             SELECT id, order_hash, symbol, first_seen_at, duration_minutes, last_seen_at
             FROM orders
@@ -533,12 +526,10 @@ class SQLiteBackend:
         for row in self.cursor.fetchall():
             order_id, order_hash, symbol, first_seen, duration, last_seen = row
 
-            # Calculate expected completion
             first_seen_dt = datetime.fromisoformat(first_seen).replace(tzinfo=timezone.utc)
             expected_completion = first_seen_dt + timedelta(minutes=duration)
             grace_end = expected_completion + timedelta(minutes=grace_period_minutes)
 
-            # If past expected completion + grace period
             if current_time > grace_end:
                 self.cursor.execute("""
                     UPDATE orders 
@@ -551,16 +542,16 @@ class SQLiteBackend:
                 """, (expected_completion.isoformat(), last_seen, order_id))
 
                 cleaned += 1
-                logger.info(f"🧹 Cleaned stale order: {symbol} {order_hash[:10]}...")
+                logger.info(f"Cleaned stale order: {symbol} {order_hash[:10]}...")
 
         if cleaned > 0:
             self.conn.commit()
-            logger.info(f"✅ Cleaned {cleaned} stale orders")
+            logger.info(f"Cleaned {cleaned} stale orders")
 
         return cleaned
 
     # =========================================================================
-    # Query methods (existing)
+    # TWAP QUERY METHODS (existing - unchanged)
     # =========================================================================
 
     def get_orders_by_address(self, address: str, limit: int = 100) -> List[Dict]:
@@ -639,7 +630,7 @@ class SQLiteBackend:
         return [dict(row) for row in self.cursor.fetchall()]
 
     def get_all_addresses(self) -> List[str]:
-        """Get all tracked addresses"""
+        """Get all tracked addresses from TWAP orders"""
         self.cursor.execute("SELECT address FROM addresses ORDER BY address")
         return [row[0] for row in self.cursor.fetchall()]
 
@@ -655,8 +646,7 @@ class SQLiteBackend:
         return [row[0] for row in self.cursor.fetchall()]
 
     def get_whale_orders(self, min_size_usd: float = 10000, limit: int = 100) -> List[Dict]:
-        """Get large orders (requires joining with price data)"""
-        # This is a simplified version - size is in tokens not USD
+        """Get large orders"""
         self.cursor.execute("""
             SELECT o.*, s.price 
             FROM orders o
@@ -672,440 +662,368 @@ class SQLiteBackend:
         """, (limit,))
         return [dict(row) for row in self.cursor.fetchall()]
 
-    def get_stats(self) -> Dict:
-        """Get database statistics"""
-        stats = {}
-
-        self.cursor.execute("SELECT COUNT(*) FROM orders")
-        stats['total_orders'] = self.cursor.fetchone()[0]
-
-        self.cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'running'")
-        stats['active_orders'] = self.cursor.fetchone()[0]
-
-        self.cursor.execute("SELECT COUNT(*) FROM snapshots")
-        stats['total_snapshots'] = self.cursor.fetchone()[0]
-
-        self.cursor.execute("SELECT COUNT(*) FROM events")
-        stats['total_events'] = self.cursor.fetchone()[0]
-
-        self.cursor.execute("SELECT COUNT(*) FROM addresses")
-        stats['total_addresses'] = self.cursor.fetchone()[0]
-
-        self.cursor.execute("SELECT COUNT(DISTINCT symbol) FROM snapshots")
-        stats['unique_symbols'] = self.cursor.fetchone()[0]
-
-        # Database file size
-        stats['db_size_mb'] = round(self.db_path.stat().st_size / (1024 * 1024), 2)
-
-        return stats
-
     # =========================================================================
-    # TRADER METRICS METHODS (NEW)
+    # WHALE SNAPSHOT METHODS (NEW)
     # =========================================================================
 
-    def save_trader_metrics(self, address: str, data: Dict, update_type: str = 'light'):
+    def add_whale_address(self, address: str) -> bool:
         """
-        Save or update trader metrics.
+        Add a new whale address to track.
 
         Args:
-            address: Trader address
-            data: Metrics data dict (from TraderMetricsManager)
-            update_type: 'light' or 'deep'
-        """
-        timestamp = datetime.now().isoformat()
-        account = data.get('account', {})
-
-        try:
-            # Check if trader exists
-            self.cursor.execute(
-                "SELECT address, first_seen FROM trader_metrics WHERE address = ?",
-                (address,)
-            )
-            existing = self.cursor.fetchone()
-
-            if existing:
-                # Update existing trader
-                update_fields = {
-                    'perp_value': account.get('value', 0),
-                    'spot_value': account.get('spot_value', 0),
-                    'vault_value': account.get('vault_value', 0),
-                    'total_portfolio_value': account.get('total_portfolio_value', 0),
-                    'position_value': account.get('position_value', 0),
-                    'margin_used': account.get('margin_used', 0),
-                    'withdrawable': account.get('withdrawable', 0),
-                    'leverage_ratio': account.get('leverage_ratio', 0),
-                    'num_positions': account.get('num_positions', 0),
-                    'dust_value': account.get('dust_value', 0),
-                    'dust_count': account.get('dust_count', 0),
-                    'cumulative_volume': data.get('cumulative_volume', 0),
-                    'open_orders_count': data.get('open_orders_count', 0),
-                    'user_role': data.get('user_role', {}).get('role', ''),
-                }
-
-                # Add deep metrics if available
-                if update_type == 'deep':
-                    update_fields['fills_count'] = data.get('fills_count', 0)
-                    update_fields['twap_fills_count'] = data.get('twap_fills_count', 0)
-                    update_fields['subaccounts_count'] = data.get('subaccounts_count', 0)
-                    update_fields['last_deep_update'] = timestamp
-                else:
-                    update_fields['last_light_update'] = timestamp
-
-                # Build update query
-                set_clause = ', '.join([f"{k} = ?" for k in update_fields.keys()])
-                values = list(update_fields.values()) + [address]
-
-                self.cursor.execute(f"""
-                    UPDATE trader_metrics SET {set_clause} WHERE address = ?
-                """, values)
-
-            else:
-                # Insert new trader
-                user_role = data.get('user_role', {})
-                role_str = user_role.get('role', '') if isinstance(user_role, dict) else ''
-
-                self.cursor.execute("""
-                    INSERT INTO trader_metrics (
-                        address, first_seen, last_light_update, last_deep_update,
-                        user_role, perp_value, spot_value, vault_value,
-                        total_portfolio_value, position_value, margin_used,
-                        withdrawable, leverage_ratio, num_positions,
-                        dust_value, dust_count, cumulative_volume, open_orders_count,
-                        fills_count, twap_fills_count, subaccounts_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    address,
-                    timestamp,
-                    timestamp if update_type == 'light' else None,
-                    timestamp if update_type == 'deep' else None,
-                    role_str,
-                    account.get('value', 0),
-                    account.get('spot_value', 0),
-                    account.get('vault_value', 0),
-                    account.get('total_portfolio_value', 0),
-                    account.get('position_value', 0),
-                    account.get('margin_used', 0),
-                    account.get('withdrawable', 0),
-                    account.get('leverage_ratio', 0),
-                    account.get('num_positions', 0),
-                    account.get('dust_value', 0),
-                    account.get('dust_count', 0),
-                    data.get('cumulative_volume', 0),
-                    data.get('open_orders_count', 0),
-                    data.get('fills_count', 0),
-                    data.get('twap_fills_count', 0),
-                    data.get('subaccounts_count', 0),
-                ))
-
-            # Update positions and spot balances
-            self._save_trader_positions(address, data.get('positions', []), timestamp)
-            self._save_trader_spot_balances(address, account.get('spot_balances_detail', []), timestamp)
-
-            self.conn.commit()
-            logger.debug(f"Saved trader metrics for {address}")
-
-        except Exception as e:
-            logger.error(f"Error saving trader metrics for {address}: {e}")
-            self.conn.rollback()
-            raise
-
-    def _save_trader_positions(self, address: str, positions: List[Dict], timestamp: str):
-        """
-        Save trader perp positions (delete and re-insert).
-
-        Args:
-            address: Trader address
-            positions: List of position dicts
-            timestamp: Update timestamp
-        """
-        # Delete existing positions for this trader
-        self.cursor.execute(
-            "DELETE FROM trader_perp_positions WHERE address = ?",
-            (address,)
-        )
-
-        # Insert current positions
-        for pos in positions:
-            self.cursor.execute("""
-                INSERT INTO trader_perp_positions (
-                    address, coin, size, side, entry_price,
-                    liquidation_price, leverage, margin_used,
-                    unrealized_pnl, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                address,
-                pos.get('coin', ''),
-                pos.get('size', 0),
-                pos.get('side', ''),
-                pos.get('entry_price', 0),
-                pos.get('liquidation_price', 0),
-                pos.get('leverage', 0),
-                pos.get('margin_used', 0),
-                pos.get('unrealized_pnl', 0),
-                timestamp,
-            ))
-
-    def _save_trader_spot_balances(self, address: str, balances: List[Dict], timestamp: str):
-        """
-        Save trader spot balances (delete and re-insert).
-
-        Args:
-            address: Trader address
-            balances: List of balance dicts
-            timestamp: Update timestamp
-        """
-        # Delete existing balances for this trader
-        self.cursor.execute(
-            "DELETE FROM trader_spot_balances WHERE address = ?",
-            (address,)
-        )
-
-        # Insert current balances
-        for bal in balances:
-            self.cursor.execute("""
-                INSERT INTO trader_spot_balances (
-                    address, coin, amount, value, price, price_source, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                address,
-                bal.get('coin', ''),
-                bal.get('amount', 0),
-                bal.get('value', 0),
-                bal.get('price'),
-                bal.get('price_source', ''),
-                timestamp,
-            ))
-
-    def get_trader_metrics(self, address: str) -> Optional[Dict]:
-        """
-        Get metrics for a single trader.
-
-        Args:
-            address: Trader address
-
-        Returns:
-            Dict with trader metrics or None
-        """
-        self.cursor.execute("SELECT * FROM trader_metrics WHERE address = ?", (address,))
-        row = self.cursor.fetchone()
-
-        if not row:
-            return None
-
-        result = dict(row)
-
-        # Add positions
-        self.cursor.execute(
-            "SELECT * FROM trader_perp_positions WHERE address = ?",
-            (address,)
-        )
-        result['positions'] = [dict(r) for r in self.cursor.fetchall()]
-
-        # Add spot balances
-        self.cursor.execute(
-            "SELECT * FROM trader_spot_balances WHERE address = ?",
-            (address,)
-        )
-        result['spot_balances'] = [dict(r) for r in self.cursor.fetchall()]
-
-        return result
-
-    def get_all_trader_metrics(self, limit: int = None, order_by: str = 'total_portfolio_value') -> List[Dict]:
-        """
-        Get all trader metrics.
-
-        Args:
-            limit: Max number of traders to return
-            order_by: Column to sort by (descending)
-
-        Returns:
-            List of trader metric dicts (without positions/balances for performance)
-        """
-        query = f"SELECT * FROM trader_metrics ORDER BY {order_by} DESC"
-        if limit:
-            query += f" LIMIT {limit}"
-
-        self.cursor.execute(query)
-        return [dict(row) for row in self.cursor.fetchall()]
-
-    def get_trader_count(self) -> int:
-        """Get total number of tracked traders"""
-        self.cursor.execute("SELECT COUNT(*) FROM trader_metrics")
-        return self.cursor.fetchone()[0]
-
-    def get_positions_by_coin(self, coin: str, limit: int = 100) -> List[Dict]:
-        """
-        Get all positions for a specific coin.
-
-        Args:
-            coin: Coin symbol (e.g., 'HYPE', 'BTC')
-            limit: Max results
-
-        Returns:
-            List of position dicts with trader address
-        """
-        self.cursor.execute("""
-            SELECT p.*, t.total_portfolio_value, t.cumulative_volume
-            FROM trader_perp_positions p
-            JOIN trader_metrics t ON p.address = t.address
-            WHERE p.coin = ?
-            ORDER BY ABS(p.size) DESC
-            LIMIT ?
-        """, (coin, limit))
-        return [dict(row) for row in self.cursor.fetchall()]
-
-    def get_spot_holders_by_coin(self, coin: str, limit: int = 100) -> List[Dict]:
-        """
-        Get all spot holders for a specific coin.
-
-        Args:
-            coin: Coin symbol
-            limit: Max results
-
-        Returns:
-            List of balance dicts with trader address
-        """
-        self.cursor.execute("""
-            SELECT s.*, t.total_portfolio_value, t.cumulative_volume
-            FROM trader_spot_balances s
-            JOIN trader_metrics t ON s.address = t.address
-            WHERE s.coin = ?
-            ORDER BY s.value DESC
-            LIMIT ?
-        """, (coin, limit))
-        return [dict(row) for row in self.cursor.fetchall()]
-
-    # =========================================================================
-    # PORTFOLIO ADDRESS METHODS (NEW)
-    # =========================================================================
-
-    def add_portfolio_address(self, address: str) -> bool:
-        """
-        Add an address to your portfolio.
-
-        Args:
-            address: Your wallet address
+            address: Wallet address
 
         Returns:
             True if added, False if already exists
         """
+        timestamp = datetime.now().isoformat()
         try:
             self.cursor.execute("""
-                INSERT INTO portfolio_addresses (address) VALUES (?)
-            """, (address,))
+                INSERT INTO whale_addresses (address, first_seen, last_updated, is_active)
+                VALUES (?, ?, ?, 1)
+            """, (address, timestamp, timestamp))
             self.conn.commit()
-            logger.info(f"Added portfolio address: {address}")
+            logger.debug(f"Added whale address: {address[:10]}...")
             return True
         except sqlite3.IntegrityError:
-            logger.debug(f"Portfolio address already exists: {address}")
             return False
 
-    def remove_portfolio_address(self, address: str) -> bool:
+    def update_whale_status(self, address: str, is_active: bool):
         """
-        Remove an address from your portfolio.
+        Update whale active status (above/below threshold).
 
         Args:
-            address: Wallet address to remove
-
-        Returns:
-            True if removed, False if not found
+            address: Wallet address
+            is_active: True if above threshold, False if below
         """
-        self.cursor.execute(
-            "DELETE FROM portfolio_addresses WHERE address = ?",
-            (address,)
-        )
+        timestamp = datetime.now().isoformat()
+        self.cursor.execute("""
+            UPDATE whale_addresses
+            SET is_active = ?, last_updated = ?
+            WHERE address = ?
+        """, (1 if is_active else 0, timestamp, address))
         self.conn.commit()
-        removed = self.cursor.rowcount > 0
-        if removed:
-            logger.info(f"Removed portfolio address: {address}")
-        return removed
 
-    def get_portfolio_addresses(self) -> List[str]:
-        """
-        Get all your portfolio addresses.
-
-        Returns:
-            List of addresses
-        """
-        self.cursor.execute("SELECT address FROM portfolio_addresses")
+    def get_active_whale_addresses(self) -> List[str]:
+        """Get all active whale addresses (above threshold)."""
+        self.cursor.execute("""
+            SELECT address FROM whale_addresses
+            WHERE is_active = 1
+            ORDER BY address
+        """)
         return [row[0] for row in self.cursor.fetchall()]
 
-    def is_portfolio_address(self, address: str) -> bool:
+    def get_all_whale_addresses(self) -> List[Dict]:
+        """Get all whale addresses with metadata."""
+        self.cursor.execute("""
+            SELECT * FROM whale_addresses
+            ORDER BY last_updated DESC
+        """)
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_whale_count(self, active_only: bool = True) -> int:
+        """Get count of whale addresses."""
+        if active_only:
+            self.cursor.execute("SELECT COUNT(*) FROM whale_addresses WHERE is_active = 1")
+        else:
+            self.cursor.execute("SELECT COUNT(*) FROM whale_addresses")
+        return self.cursor.fetchone()[0]
+
+    def save_whale_snapshot(
+        self,
+        address: str,
+        snapshot_time: str,
+        portfolio_data: Dict,
+        positions: List[Dict],
+        spot_balances: List[Dict],
+        vaults: List[Dict]
+    ):
         """
-        Check if an address is in your portfolio.
+        Save a complete hourly snapshot for a whale.
 
         Args:
-            address: Address to check
+            address: Wallet address
+            snapshot_time: ISO timestamp for this snapshot
+            portfolio_data: Dict with total_portfolio_value, perp_value, etc.
+            positions: List of perp position dicts
+            spot_balances: List of spot balance dicts
+            vaults: List of vault holding dicts
+        """
+        try:
+            # 1. Save portfolio summary
+            self.cursor.execute("""
+                INSERT INTO portfolio_snapshots (
+                    address, snapshot_time, total_portfolio_value,
+                    perp_value, spot_value, vault_value,
+                    margin_used, leverage_ratio, num_positions
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                address,
+                snapshot_time,
+                portfolio_data.get('total_portfolio_value', 0),
+                portfolio_data.get('perp_value', 0),
+                portfolio_data.get('spot_value', 0),
+                portfolio_data.get('vault_value', 0),
+                portfolio_data.get('margin_used', 0),
+                portfolio_data.get('leverage_ratio', 0),
+                portfolio_data.get('num_positions', 0),
+            ))
+
+            # 2. Save perp positions
+            for pos in positions:
+                self.cursor.execute("""
+                    INSERT INTO perp_snapshots (
+                        address, snapshot_time, coin, size, side,
+                        entry_price, liquidation_price, leverage,
+                        margin_used, unrealized_pnl
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    address,
+                    snapshot_time,
+                    pos.get('coin', ''),
+                    pos.get('size', 0),
+                    pos.get('side', ''),
+                    pos.get('entry_price', 0),
+                    pos.get('liquidation_price', 0),
+                    pos.get('leverage', 0),
+                    pos.get('margin_used', 0),
+                    pos.get('unrealized_pnl', 0),
+                ))
+
+            # 3. Save spot balances
+            for bal in spot_balances:
+                self.cursor.execute("""
+                    INSERT INTO spot_snapshots (
+                        address, snapshot_time, coin, amount, value, price
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    address,
+                    snapshot_time,
+                    bal.get('coin', ''),
+                    bal.get('amount', 0),
+                    bal.get('value', 0),
+                    bal.get('price'),
+                ))
+
+            # 4. Save vault holdings
+            for vault in vaults:
+                self.cursor.execute("""
+                    INSERT INTO vault_snapshots (
+                        address, snapshot_time, vault_address, value
+                    ) VALUES (?, ?, ?, ?)
+                """, (
+                    address,
+                    snapshot_time,
+                    vault.get('vault_address', ''),
+                    vault.get('value', 0),
+                ))
+
+            # Update whale last_updated
+            self.cursor.execute("""
+                UPDATE whale_addresses
+                SET last_updated = ?
+                WHERE address = ?
+            """, (snapshot_time, address))
+
+            self.conn.commit()
+            logger.debug(f"Saved snapshot for {address[:10]}... at {snapshot_time}")
+
+        except Exception as e:
+            logger.error(f"Error saving whale snapshot for {address}: {e}")
+            self.conn.rollback()
+            raise
+
+    def get_portfolio_history(
+        self,
+        address: str,
+        start_time: str = None,
+        end_time: str = None,
+        limit: int = 168  # 1 week of hourly snapshots
+    ) -> List[Dict]:
+        """
+        Get portfolio snapshot history for an address.
+
+        Args:
+            address: Wallet address
+            start_time: Optional start timestamp
+            end_time: Optional end timestamp
+            limit: Max results (default 168 = 1 week hourly)
 
         Returns:
-            True if it's your address
+            List of portfolio snapshots
         """
-        self.cursor.execute(
-            "SELECT 1 FROM portfolio_addresses WHERE address = ?",
-            (address,)
-        )
-        return self.cursor.fetchone() is not None
+        query = "SELECT * FROM portfolio_snapshots WHERE address = ?"
+        params = [address]
 
-    def get_portfolio_metrics(self) -> Optional[Dict]:
+        if start_time:
+            query += " AND snapshot_time >= ?"
+            params.append(start_time)
+
+        if end_time:
+            query += " AND snapshot_time <= ?"
+            params.append(end_time)
+
+        query += " ORDER BY snapshot_time DESC LIMIT ?"
+        params.append(limit)
+
+        self.cursor.execute(query, params)
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_positions_at_time(self, address: str, snapshot_time: str) -> List[Dict]:
+        """Get perp positions for an address at a specific snapshot time."""
+        self.cursor.execute("""
+            SELECT * FROM perp_snapshots
+            WHERE address = ? AND snapshot_time = ?
+            ORDER BY ABS(size) DESC
+        """, (address, snapshot_time))
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_spot_at_time(self, address: str, snapshot_time: str) -> List[Dict]:
+        """Get spot balances for an address at a specific snapshot time."""
+        self.cursor.execute("""
+            SELECT * FROM spot_snapshots
+            WHERE address = ? AND snapshot_time = ?
+            ORDER BY value DESC
+        """, (address, snapshot_time))
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_vaults_at_time(self, address: str, snapshot_time: str) -> List[Dict]:
+        """Get vault holdings for an address at a specific snapshot time."""
+        self.cursor.execute("""
+            SELECT * FROM vault_snapshots
+            WHERE address = ? AND snapshot_time = ?
+            ORDER BY value DESC
+        """, (address, snapshot_time))
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_latest_snapshot(self, address: str) -> Optional[Dict]:
         """
-        Get combined metrics for all your portfolio addresses.
+        Get the most recent snapshot for an address.
 
         Returns:
-            Dict with aggregated portfolio data
+            Dict with portfolio data, positions, spot, vaults or None
         """
-        addresses = self.get_portfolio_addresses()
-        if not addresses:
-            return None
-
-        placeholders = ','.join(['?' for _ in addresses])
-
-        self.cursor.execute(f"""
-            SELECT 
-                COUNT(*) as num_addresses,
-                SUM(total_portfolio_value) as total_value,
-                SUM(perp_value) as total_perp_value,
-                SUM(spot_value) as total_spot_value,
-                SUM(vault_value) as total_vault_value,
-                SUM(position_value) as total_position_value,
-                SUM(cumulative_volume) as total_volume,
-                AVG(leverage_ratio) as avg_leverage
-            FROM trader_metrics
-            WHERE address IN ({placeholders})
-        """, addresses)
-
+        self.cursor.execute("""
+            SELECT * FROM portfolio_snapshots
+            WHERE address = ?
+            ORDER BY snapshot_time DESC
+            LIMIT 1
+        """, (address,))
         row = self.cursor.fetchone()
+
         if not row:
             return None
 
         result = dict(row)
+        snapshot_time = result['snapshot_time']
 
-        # Get all positions for portfolio
-        self.cursor.execute(f"""
-            SELECT * FROM trader_perp_positions
-            WHERE address IN ({placeholders})
-            ORDER BY ABS(size) DESC
-        """, addresses)
-        result['positions'] = [dict(r) for r in self.cursor.fetchall()]
-
-        # Get all spot balances for portfolio
-        self.cursor.execute(f"""
-            SELECT * FROM trader_spot_balances
-            WHERE address IN ({placeholders})
-            ORDER BY value DESC
-        """, addresses)
-        result['spot_balances'] = [dict(r) for r in self.cursor.fetchall()]
+        result['positions'] = self.get_positions_at_time(address, snapshot_time)
+        result['spot_balances'] = self.get_spot_at_time(address, snapshot_time)
+        result['vaults'] = self.get_vaults_at_time(address, snapshot_time)
 
         return result
 
+    def get_coin_holders_history(
+        self,
+        coin: str,
+        snapshot_time: str = None,
+        limit: int = 100
+    ) -> List[Dict]:
+        """
+        Get all holders of a coin at a specific time (or latest).
+
+        Args:
+            coin: Coin symbol
+            snapshot_time: Optional specific time, defaults to latest
+            limit: Max results
+
+        Returns:
+            List of position/balance dicts with address
+        """
+        if not snapshot_time:
+            # Get latest snapshot time
+            self.cursor.execute("""
+                SELECT MAX(snapshot_time) FROM portfolio_snapshots
+            """)
+            row = self.cursor.fetchone()
+            snapshot_time = row[0] if row else None
+
+        if not snapshot_time:
+            return []
+
+        # Get perp positions
+        self.cursor.execute("""
+            SELECT p.*, 'perp' as holding_type
+            FROM perp_snapshots p
+            WHERE p.coin = ? AND p.snapshot_time = ?
+            ORDER BY ABS(p.size) DESC
+            LIMIT ?
+        """, (coin, snapshot_time, limit))
+        perp_results = [dict(row) for row in self.cursor.fetchall()]
+
+        # Get spot balances
+        self.cursor.execute("""
+            SELECT s.*, 'spot' as holding_type
+            FROM spot_snapshots s
+            WHERE s.coin = ? AND s.snapshot_time = ?
+            ORDER BY s.value DESC
+            LIMIT ?
+        """, (coin, snapshot_time, limit))
+        spot_results = [dict(row) for row in self.cursor.fetchall()]
+
+        return perp_results + spot_results
+
+    def get_snapshot_times(self, limit: int = 100) -> List[str]:
+        """Get list of unique snapshot times."""
+        self.cursor.execute("""
+            SELECT DISTINCT snapshot_time
+            FROM portfolio_snapshots
+            ORDER BY snapshot_time DESC
+            LIMIT ?
+        """, (limit,))
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def cleanup_old_snapshots(self, days_to_keep: int = 30) -> int:
+        """
+        Remove snapshots older than specified days.
+
+        Args:
+            days_to_keep: Number of days of history to keep
+
+        Returns:
+            Number of portfolio snapshots deleted
+        """
+        from datetime import datetime, timedelta
+
+        cutoff = (datetime.now() - timedelta(days=days_to_keep)).isoformat()
+
+        # Get count before deletion
+        self.cursor.execute("""
+            SELECT COUNT(*) FROM portfolio_snapshots
+            WHERE snapshot_time < ?
+        """, (cutoff,))
+        count = self.cursor.fetchone()[0]
+
+        if count > 0:
+            # Delete from all snapshot tables
+            self.cursor.execute("DELETE FROM portfolio_snapshots WHERE snapshot_time < ?", (cutoff,))
+            self.cursor.execute("DELETE FROM perp_snapshots WHERE snapshot_time < ?", (cutoff,))
+            self.cursor.execute("DELETE FROM spot_snapshots WHERE snapshot_time < ?", (cutoff,))
+            self.cursor.execute("DELETE FROM vault_snapshots WHERE snapshot_time < ?", (cutoff,))
+            self.conn.commit()
+            logger.info(f"Cleaned up {count} old snapshots (older than {days_to_keep} days)")
+
+        return count
+
     # =========================================================================
-    # EXTENDED STATS (UPDATED)
+    # STATS (updated)
     # =========================================================================
 
     def get_stats(self) -> Dict:
-        """Get database statistics (updated with trader metrics)"""
+        """Get database statistics"""
         stats = {}
 
-        # Existing stats
+        # TWAP stats
         self.cursor.execute("SELECT COUNT(*) FROM orders")
         stats['total_orders'] = self.cursor.fetchone()[0]
 
@@ -1113,33 +1031,35 @@ class SQLiteBackend:
         stats['active_orders'] = self.cursor.fetchone()[0]
 
         self.cursor.execute("SELECT COUNT(*) FROM snapshots")
-        stats['total_snapshots'] = self.cursor.fetchone()[0]
+        stats['total_twap_snapshots'] = self.cursor.fetchone()[0]
 
         self.cursor.execute("SELECT COUNT(*) FROM events")
         stats['total_events'] = self.cursor.fetchone()[0]
 
         self.cursor.execute("SELECT COUNT(*) FROM addresses")
-        stats['total_addresses'] = self.cursor.fetchone()[0]
+        stats['total_twap_addresses'] = self.cursor.fetchone()[0]
 
         self.cursor.execute("SELECT COUNT(DISTINCT symbol) FROM snapshots")
         stats['unique_symbols'] = self.cursor.fetchone()[0]
 
-        # New trader metrics stats
-        self.cursor.execute("SELECT COUNT(*) FROM trader_metrics")
-        stats['total_traders'] = self.cursor.fetchone()[0]
+        # Whale snapshot stats
+        self.cursor.execute("SELECT COUNT(*) FROM whale_addresses")
+        stats['total_whales'] = self.cursor.fetchone()[0]
 
-        self.cursor.execute("SELECT COUNT(*) FROM trader_perp_positions")
-        stats['total_perp_positions'] = self.cursor.fetchone()[0]
+        self.cursor.execute("SELECT COUNT(*) FROM whale_addresses WHERE is_active = 1")
+        stats['active_whales'] = self.cursor.fetchone()[0]
 
-        self.cursor.execute("SELECT COUNT(*) FROM trader_spot_balances")
-        stats['total_spot_balances'] = self.cursor.fetchone()[0]
+        self.cursor.execute("SELECT COUNT(*) FROM portfolio_snapshots")
+        stats['total_portfolio_snapshots'] = self.cursor.fetchone()[0]
 
-        self.cursor.execute("SELECT COUNT(*) FROM portfolio_addresses")
-        stats['portfolio_addresses'] = self.cursor.fetchone()[0]
+        self.cursor.execute("SELECT COUNT(*) FROM perp_snapshots")
+        stats['total_perp_snapshots'] = self.cursor.fetchone()[0]
 
-        self.cursor.execute("SELECT SUM(total_portfolio_value) FROM trader_metrics")
-        total_value = self.cursor.fetchone()[0]
-        stats['total_tracked_value'] = round(total_value, 2) if total_value else 0
+        self.cursor.execute("SELECT COUNT(*) FROM spot_snapshots")
+        stats['total_spot_snapshots'] = self.cursor.fetchone()[0]
+
+        self.cursor.execute("SELECT COUNT(*) FROM vault_snapshots")
+        stats['total_vault_snapshots'] = self.cursor.fetchone()[0]
 
         # Database file size
         stats['db_size_mb'] = round(self.db_path.stat().st_size / (1024 * 1024), 2)

@@ -10,13 +10,15 @@ import time
 import signal
 import sys
 import json
+import threading
+from pathlib import Path
 
 from logging_config import setup_logging, get_module_logger
 from api_client.hypurrscan_client import HypurrScanClient
 from api_client.hyperliquid_client import HyperliquidClient
 from trackers.state_tracker import AllCoinsStateTracker
 from coin_registry import init_dynamic_registry
-from trader_metrics_manager import TraderMetricsManager
+from trader_metrics_manager import WhaleMetricsManager
 
 logger = get_module_logger(__name__)
 
@@ -32,6 +34,8 @@ class TWAPBot:
 
         self.config = config
         self.running = False
+        self._snapshot_running = False
+        self.db_path = Path('data/twap.db')
 
         # HypurrScan client for TWAP data
         self.hypurr_client = HypurrScanClient(config.get('hypurr_data', {}))
@@ -41,6 +45,7 @@ class TWAPBot:
             exclude_coins=config.get('exclude_coins', [])
         )
 
+
         # Hyperliquid client for prices + trader metrics
         hyperliquid_config = config.get('hyperliquid', {})
         self.hyperliquid_enabled = hyperliquid_config.get('enabled', False)
@@ -48,20 +53,10 @@ class TWAPBot:
         if self.hyperliquid_enabled:
             self.hyperliquid_client = HyperliquidClient(hyperliquid_config)
             init_dynamic_registry(self.hyperliquid_client)
-
-            # Get the SQLite storage from tracker (shared database)
-            storage = self.tracker.db
-
-            metrics_config = hyperliquid_config.get('metrics_collection', {})
-            self.metrics_manager = TraderMetricsManager(
-                self.hyperliquid_client,
-                storage,  # Pass SQLite storage
-                config=metrics_config
-            )
-            logger.info("Hyperliquid client and metrics manager initialized (SQLite storage)")
+            logger.info("Hyperliquid client initialized")
+            self.tracker.on_new_addresses = self._on_new_addresses
         else:
             self.hyperliquid_client = None
-            self.metrics_manager = None
             logger.info("Hyperliquid client disabled")
 
         # Shutdown handler
@@ -96,7 +91,7 @@ class TWAPBot:
                 # Clean up stale orders
                 cleaned = self.tracker.db.cleanup_stale_orders()
                 if cleaned > 0:
-                    logger.info(f"🧹 Cleaned up {cleaned} stale orders this cycle")
+                    logger.info(f"Cleaned up {cleaned} stale orders this cycle")
             else:
                 logger.warning("No TWAP data received")
 
@@ -104,12 +99,60 @@ class TWAPBot:
             logger.error(f"Error fetching data: {e}")
             logger.exception(e)
 
-    def _register_addresses_with_metrics(self):
-        """Register tracked addresses with metrics manager"""
-        if not self.hyperliquid_enabled or not self.metrics_manager:
+    def _run_whale_snapshot(self):
+        """Run whale snapshot in background thread"""
+        try:
+            from storage.sqlite_backend import SQLiteBackend
+            from trader_metrics_manager import WhaleMetricsManager
+
+            # Create thread-local connection
+            thread_storage = SQLiteBackend(self.db_path)
+            thread_manager = WhaleMetricsManager(
+                self.hyperliquid_client,
+                thread_storage,
+                config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
+            )
+
+            # Just snapshot - no discovery (that happens in _on_new_addresses now)
+            result = thread_manager.run_hourly_snapshot()
+            logger.info(f"Hourly snapshot complete: {result['success']}/{result['total']} whales")
+
+            thread_storage.close()
+        except Exception as e:
+            logger.error(f"Snapshot error: {e}")
+        finally:
+            self._snapshot_running = False
+
+    def _on_new_addresses(self, addresses: set):
+        """Check new TWAP addresses for whale status immediately"""
+        if not self.hyperliquid_enabled or not addresses:
             return
 
-        self.metrics_manager.register_addresses(self.tracker.all_addresses_seen)
+        try:
+            from storage.sqlite_backend import SQLiteBackend
+            from trader_metrics_manager import WhaleMetricsManager
+
+            # Quick check with fresh connection
+            storage = SQLiteBackend(self.db_path)
+            manager = WhaleMetricsManager(
+                self.hyperliquid_client,
+                storage,
+                config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
+            )
+
+            # Check each new address
+            added = 0
+            for addr in addresses:
+                if manager.register_address(addr):
+                    added += 1
+
+            if added > 0:
+                logger.info(f"Discovered {added} new whale(s) from {len(addresses)} new addresses")
+
+            storage.close()
+
+        except Exception as e:
+            logger.error(f"Error checking new addresses: {e}")
 
     def start(self):
         """Start the tracking loop"""
@@ -118,7 +161,7 @@ class TWAPBot:
         self.running = True
         loop_count = 0
 
-        # Metrics check every hour
+        # Whale snapshot every hour
         metrics_check_cycles = int(3600 / FETCH_INTERVAL) if self.hyperliquid_enabled else 0
 
         while self.running:
@@ -129,21 +172,14 @@ class TWAPBot:
                 # Fetch all coins (single API call)
                 self._fetch_all_coins()
 
-                # Register addresses with metrics manager
-                if self.hyperliquid_enabled:
-                    self._register_addresses_with_metrics()
-
-                # Periodic metrics check (hourly)
-                if self.hyperliquid_enabled and metrics_check_cycles > 0:
-                    if loop_count % metrics_check_cycles == 0:
-                        self.metrics_manager.check_for_updates()
-                        pending = len(self.metrics_manager.update_queue)
-                        if pending > 0:
-                            logger.info(f"Scheduled metrics check - {pending} pending updates")
-
-                # Process pending metrics updates (SQLite commits automatically)
-                if self.hyperliquid_enabled and self.metrics_manager.has_pending_updates():
-                    self.metrics_manager.process_single_update()
+                # Periodic whale snapshots (hourly, in background thread)
+                if self.hyperliquid_enabled and metrics_check_cycles > 0 and loop_count % metrics_check_cycles == 0:
+                    if not self._snapshot_running:
+                        self._snapshot_running = True
+                        logger.info("Starting whale snapshot in background...")
+                        threading.Thread(target=self._run_whale_snapshot, daemon=True).start()
+                    else:
+                        logger.warning("Snapshot still running, skipping this cycle")
 
                 # Maintain consistent interval
                 elapsed = time.time() - loop_start
@@ -171,10 +207,6 @@ class TWAPBot:
         logger.info("Shutdown signal received")
         self.running = False
 
-        # Log metrics summary if enabled
-        if self.hyperliquid_enabled and self.metrics_manager:
-            logger.info(f"Metrics summary: {self.metrics_manager.get_summary()}")
-
         # Close database connection
         logger.info("Closing database connection...")
         self.tracker.close()
@@ -192,8 +224,6 @@ class TWAPBot:
         if 'db_stats' in stats:
             db_stats = stats['db_stats']
             logger.info(f"Database size: {db_stats.get('db_size_mb', 0)} MB")
-            logger.info(f"Tracked traders: {db_stats.get('total_traders', 0)}")
-            logger.info(f"Portfolio addresses: {db_stats.get('portfolio_addresses', 0)}")
         logger.info("=" * 70)
 
 

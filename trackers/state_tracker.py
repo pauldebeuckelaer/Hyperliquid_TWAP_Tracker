@@ -118,6 +118,8 @@ class AllCoinsStateTracker:
         # Load addresses from database
         self.all_addresses_seen: Set[str] = set(self.db.get_all_addresses())
 
+        self.on_new_addresses = None
+
         logger.info("=" * 70)
         logger.info("All Coins TWAP State Tracker Initialized (SQLite)")
         logger.info(f"Database: {DB_PATH}")
@@ -229,15 +231,18 @@ class AllCoinsStateTracker:
             coin_state.current_snapshot = new_snapshot
 
             # Track addresses
-            addresses_before = len(self.all_addresses_seen)
-            self.all_addresses_seen.update(new_snapshot.unique_addresses)
+            new_addresses = new_snapshot.unique_addresses - self.all_addresses_seen
 
-            if len(self.all_addresses_seen) > addresses_before:
-                new_count = len(self.all_addresses_seen) - addresses_before
+            if new_addresses:
+                self.all_addresses_seen.update(new_addresses)
                 logger.debug(
-                    f"[{symbol}] Discovered {new_count} new address(es). "
+                    f"[{symbol}] Discovered {len(new_addresses)} new address(es). "
                     f"Total: {len(self.all_addresses_seen)}"
                 )
+
+                # Callback for immediate whale discovery
+                if self.on_new_addresses:
+                    self.on_new_addresses(new_addresses)
 
             if new_snapshot.active_orders:
                 coins_with_orders.append(symbol)
