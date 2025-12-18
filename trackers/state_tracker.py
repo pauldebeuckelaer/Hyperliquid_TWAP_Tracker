@@ -240,9 +240,9 @@ class AllCoinsStateTracker:
                     f"Total: {len(self.all_addresses_seen)}"
                 )
 
-                # Callback for immediate whale discovery
-                if self.on_new_addresses:
-                    self.on_new_addresses(new_addresses)
+            # Callback for whale discovery (checks against whale_addresses table)
+            if self.on_new_addresses and new_snapshot.unique_addresses:
+                self.on_new_addresses(new_snapshot.unique_addresses)
 
             if new_snapshot.active_orders:
                 coins_with_orders.append(symbol)
