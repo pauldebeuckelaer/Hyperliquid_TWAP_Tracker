@@ -1059,6 +1059,73 @@ class HyperliquidClient:
         """
         return self._make_request("perpDexs", {})
 
+    def get_meta_and_asset_ctxs(self) -> Optional[Dict]:
+        """
+        Get perp metadata + asset contexts (funding, OI, volume, prices)
+
+        Single API call returns all market data for all perps.
+
+        Returns:
+            {
+                'meta': {universe: [...], marginTables: [...]},
+                'asset_ctxs': {
+                    'BTC': {funding, open_interest, day_ntl_vlm, mark_px, ...},
+                    'ETH': {...},
+                    ...
+                }
+            }
+            or None on error
+        """
+        result = self._make_request("metaAndAssetCtxs", {})
+
+        if not result or len(result) < 2:
+            logger.warning("Failed to get metaAndAssetCtxs")
+            return None
+
+        meta = result[0]
+        raw_ctxs = result[1]
+        universe = meta.get('universe', [])
+
+        # Zip universe names with contexts
+        asset_ctxs = {}
+        for i, asset in enumerate(universe):
+            name = asset.get('name')
+            if name and i < len(raw_ctxs):
+                ctx = raw_ctxs[i]
+                asset_ctxs[name] = {
+                    'funding': float(ctx.get('funding') or 0),
+                    'open_interest': float(ctx.get('openInterest') or 0),
+                    'day_ntl_vlm': float(ctx.get('dayNtlVlm') or 0),
+                    'mark_px': float(ctx.get('markPx') or 0),
+                    'oracle_px': float(ctx.get('oraclePx') or 0),
+                    'mid_px': float(ctx.get('midPx') or 0) if ctx.get('midPx') else None,
+                    'prev_day_px': float(ctx.get('prevDayPx') or 0),
+                    'premium': float(ctx.get('premium') or 0) if ctx.get('premium') else None,
+                    'is_delisted': asset.get('isDelisted', False),
+                    'max_leverage': asset.get('maxLeverage', 0),
+                }
+
+        # DEBUG: Log which coins we got
+        logger.info(f"📋 API returned {len(asset_ctxs)} perpetual markets")
+
+        # Check for specific missing coins that we saw on Hypurrscan
+        missing_coins = ['ZEREBRO', 'BNB', 'XPL', 'WLFI', 'IP', 'ASTER']
+        found = [c for c in missing_coins if c in asset_ctxs]
+        not_found = [c for c in missing_coins if c not in asset_ctxs]
+
+        if found:
+            logger.info(f"   ✅ Found: {found}")
+        if not_found:
+            logger.info(f"   ❌ Missing: {not_found}")
+
+        # Log all coins at DEBUG level
+        logger.debug(f"   All coins: {sorted(asset_ctxs.keys())}")
+
+        return {
+            'meta': meta,
+            'asset_ctxs': asset_ctxs
+        }
+
     # =============================================================================
     # Convenience Methods
     # =============================================================================

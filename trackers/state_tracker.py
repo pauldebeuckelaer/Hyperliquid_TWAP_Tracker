@@ -21,7 +21,7 @@ from pathlib import Path
 
 # Import models
 from api_client.models import TWAPOrder, TWAPSnapshot
-from storage.sqlite_backend import SQLiteBackend
+from storage import SQLiteBackend
 
 logger = logging.getLogger(__name__)
 

@@ -5,6 +5,7 @@ TWAP State Tracker - All Coins
 Tracks TWAP orders for ALL coins on Hyperliquid
 Single fetch, single tracker, 1-minute snapshots
 NOW WITH SQLITE STORAGE (including trader metrics)
+NOW WITH MARKET DATA SNAPSHOTS
 """
 import time
 import signal
@@ -17,7 +18,9 @@ from logging_config import setup_logging, get_module_logger
 from api_client.hypurrscan_client import HypurrScanClient
 from api_client.hyperliquid_client import HyperliquidClient
 from trackers.state_tracker import AllCoinsStateTracker
+from trackers.market_data_tracker import MarketDataTracker
 from coin_registry import init_dynamic_registry
+from storage import SQLiteBackend
 from trader_metrics_manager import WhaleMetricsManager
 
 logger = get_module_logger(__name__)
@@ -45,7 +48,6 @@ class TWAPBot:
             exclude_coins=config.get('exclude_coins', [])
         )
 
-
         # Hyperliquid client for prices + trader metrics
         hyperliquid_config = config.get('hyperliquid', {})
         self.hyperliquid_enabled = hyperliquid_config.get('enabled', False)
@@ -55,8 +57,12 @@ class TWAPBot:
             init_dynamic_registry(self.hyperliquid_client)
             logger.info("Hyperliquid client initialized")
             self.tracker.on_new_addresses = self._on_new_addresses
+
+            # Market data tracker
+            self.market_tracker = MarketDataTracker(self.hyperliquid_client, self.db_path)
         else:
             self.hyperliquid_client = None
+            self.market_tracker = None
             logger.info("Hyperliquid client disabled")
 
         # Shutdown handler
@@ -102,8 +108,7 @@ class TWAPBot:
     def _run_whale_snapshot(self):
         """Run whale snapshot in background thread"""
         try:
-            from storage.sqlite_backend import SQLiteBackend
-            from trader_metrics_manager import WhaleMetricsManager
+
 
             # Create thread-local connection
             thread_storage = SQLiteBackend(self.db_path)
@@ -129,9 +134,6 @@ class TWAPBot:
             return
 
         try:
-            from storage.sqlite_backend import SQLiteBackend
-            from trader_metrics_manager import WhaleMetricsManager
-
             # Quick check with fresh connection
             storage = SQLiteBackend(self.db_path)
             manager = WhaleMetricsManager(
@@ -182,6 +184,10 @@ class TWAPBot:
 
                 # Fetch all coins (single API call)
                 self._fetch_all_coins()
+
+                # Market data snapshot every cycle
+                if self.market_tracker:
+                    self.market_tracker.take_snapshot()
 
                 # Periodic whale snapshots (hourly, in background thread)
                 if self.hyperliquid_enabled and metrics_check_cycles > 0 and loop_count % metrics_check_cycles == 0:
@@ -235,6 +241,12 @@ class TWAPBot:
         if 'db_stats' in stats:
             db_stats = stats['db_stats']
             logger.info(f"Database size: {db_stats.get('db_size_mb', 0)} MB")
+
+        # Market tracker stats
+        if self.market_tracker:
+            market_stats = self.market_tracker.get_stats()
+            logger.info(f"Market snapshots taken: {market_stats['snapshot_count']}")
+
         logger.info("=" * 70)
 
 

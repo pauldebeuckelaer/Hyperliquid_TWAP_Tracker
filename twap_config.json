@@ -26,7 +26,7 @@
   "logging": {
     "root_level": "INFO",
     "console": true,
-    "console_modules": ["trackers.state_tracker"],
+    "console_modules": ["trackers.market_data_tracker"],
     "files": [
       {
         "path": "logs/allcoins_tracker.log",
@@ -41,6 +41,7 @@
       "api_client.hypurrscan_client": "INFO",
       "api_client.hyperliquid_client": "DEBUG",
       "trackers.state_tracker": "INFO",
+      "trackers.market_data_tracker": "INFO",
       "trader_metrics_manager": "DEBUG",
       "coin_registry": "DEBUG",
       "__main__": "DEBUG"
