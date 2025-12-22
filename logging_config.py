@@ -96,7 +96,7 @@ def setup_logging(config: Dict = None):
             filename=log_file,
             when='midnight',
             interval=1,
-            backupCount=0,
+            backupCount=7,
             encoding='utf-8'
         )
         file_handler.suffix = '%Y-%m-%d'

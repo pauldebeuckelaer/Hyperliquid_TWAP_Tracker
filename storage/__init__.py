@@ -32,6 +32,9 @@ Usage:
 
 from pathlib import Path
 from typing import Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+import logging
+
 
 from .base import BaseStorage, DEFAULT_DB_PATH
 from .twap_storage import TwapStorage
@@ -75,7 +78,6 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
         self._create_all_tables()
         self._create_all_indexes()
 
-        import logging
         logger = logging.getLogger(__name__)
         logger.info(f"SQLiteBackend initialized: {self.db_path}")
 
@@ -94,6 +96,51 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
         MarketStorage._create_indexes(self)
         LiquidationStorage._create_indexes(self)
         WhaleEventStorage._create_indexes(self)
+
+    def cleanup_old_data(self, days_to_keep: int = 7) -> Dict[str, int]:
+        """
+        Delete data older than specified days to manage database size.
+
+        Args:
+            days_to_keep: Number of days of data to retain (default: 7)
+
+        Returns:
+            Dict with count of deleted rows per table
+        """
+        logger = logging.getLogger(__name__)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
+
+        deleted = {}
+
+        # Tables with 'snapshot_time' column
+        snapshot_time_tables = ['market_snapshots', 'liquidation_snapshots']
+        for table in snapshot_time_tables:
+            self.cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE snapshot_time < ?", (cutoff,))
+            count = self.cursor.fetchone()[0]
+            if count > 0:
+                self.cursor.execute(f"DELETE FROM {table} WHERE snapshot_time < ?", (cutoff,))
+                deleted[table] = count
+                logger.info(f"Deleted {count} rows from {table} older than {days_to_keep} days")
+
+        # Tables with 'timestamp' column
+        timestamp_tables = ['whale_events']
+        for table in timestamp_tables:
+            self.cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE timestamp < ?", (cutoff,))
+            count = self.cursor.fetchone()[0]
+            if count > 0:
+                self.cursor.execute(f"DELETE FROM {table} WHERE timestamp < ?", (cutoff,))
+                deleted[table] = count
+                logger.info(f"Deleted {count} rows from {table} older than {days_to_keep} days")
+
+        self.conn.commit()
+
+        # Reclaim space
+        self.cursor.execute("VACUUM")
+
+        total = sum(deleted.values())
+        logger.info(f"Cleanup complete: {total} total rows deleted, database vacuumed")
+
+        return deleted
 
     def get_stats(self) -> Dict:
         """Get combined statistics from all storage modules."""

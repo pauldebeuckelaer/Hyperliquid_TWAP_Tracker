@@ -13,6 +13,7 @@ import sys
 import json
 import threading
 from pathlib import Path
+from datetime import datetime, timezone
 
 from logging_config import setup_logging, get_module_logger
 from api_client.hypurrscan_client import HypurrScanClient
@@ -108,8 +109,6 @@ class TWAPBot:
     def _run_whale_snapshot(self):
         """Run whale snapshot in background thread"""
         try:
-
-
             # Create thread-local connection
             thread_storage = SQLiteBackend(self.db_path)
             thread_manager = WhaleMetricsManager(
@@ -167,12 +166,27 @@ class TWAPBot:
         except Exception as e:
             logger.error(f"Error checking new addresses: {e}")
 
+    def _run_daily_cleanup(self):
+        """Run database cleanup to remove old data"""
+        try:
+            storage = SQLiteBackend(self.db_path)
+            deleted = storage.cleanup_old_data(days_to_keep=7)
+            if deleted:
+                total = sum(deleted.values())
+                logger.info(f"Daily cleanup removed {total} rows: {deleted}")
+            else:
+                logger.info("Daily cleanup: no old data to remove")
+            storage.close()
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+
     def start(self):
         """Start the tracking loop"""
         logger.info(f"Starting TWAP tracking loop (interval: {FETCH_INTERVAL}s)")
 
         self.running = True
         loop_count = 0
+        last_cleanup_date = None  # Track daily cleanup
 
         # Whale snapshot every hour
         metrics_check_cycles = int(3600 / FETCH_INTERVAL) if self.hyperliquid_enabled else 0
@@ -197,6 +211,13 @@ class TWAPBot:
                         threading.Thread(target=self._run_whale_snapshot, daemon=True).start()
                     else:
                         logger.warning("Snapshot still running, skipping this cycle")
+
+                # Daily cleanup (runs once when date changes)
+                current_date = datetime.now(timezone.utc).date()
+                if last_cleanup_date != current_date:
+                    logger.info("Running daily database cleanup...")
+                    self._run_daily_cleanup()
+                    last_cleanup_date = current_date
 
                 # Maintain consistent interval
                 elapsed = time.time() - loop_start
