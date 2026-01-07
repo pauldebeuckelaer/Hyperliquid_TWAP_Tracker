@@ -92,6 +92,9 @@ class LiquidationStorage(BaseStorage):
                 positions = data.get('positions', [])
 
                 for pos in positions:
+                    # Only save positions within 20% of liquidation
+                    if pos.get('distance_to_liq', 100) > 20:
+                        continue
                     self.cursor.execute("""
                         INSERT OR REPLACE INTO liquidation_snapshots (
                             snapshot_time, address, coin, side,

@@ -668,6 +668,10 @@ class WhaleEventDetector:
         self.previous_state = {}
         self.snapshot_count = 0
 
+        # Debounce tracking - prevents false close/open events from API timeouts
+        self._missing_positions = {}  # {(address, coin): consecutive_missing_count}
+        self.DEBOUNCE_THRESHOLD = 3  # Must be missing for 3 loops to count as closed
+
         logger.info("WhaleEventDetector initialized")
 
     def _parse_current_state(self, whale_states: List[Dict]) -> Dict:
@@ -762,6 +766,7 @@ class WhaleEventDetector:
     def detect(self, whale_states: List[Dict], prices: Dict) -> List[Dict]:
         """
         Compare current state to previous and detect events.
+        Uses debouncing to prevent false open/close events from API timeouts.
 
         Args:
             whale_states: Current whale states from API
@@ -799,54 +804,76 @@ class WhaleEventDetector:
             for coin in all_coins:
                 in_prev = coin in prev_positions
                 in_curr = coin in curr_positions
+                key = (address, coin)
 
                 if not in_prev and in_curr:
-                    # POSITION OPENED
-                    pos = curr_positions[coin]
-                    events.append({
-                        'timestamp': timestamp,
-                        'address': address,
-                        'event_type': 'position_opened',
-                        'coin': coin,
-                        'side': pos['side'],
-                        'old_value': 0,
-                        'new_value': pos['value'],
-                        'size': pos['abs_size'],
-                        'leverage': pos['leverage'],
-                        'entry_price': pos['entry_price'],
-                        'current_price': prices.get(coin, 0),
-                    })
-                    logger.debug(
-                        f"position_opened | {address[:10]}... | "
-                        f"{coin} {pos['side']} ${pos['value']:,.0f} {pos['leverage']}x"
-                    )
+                    # Position appeared - check if it was missing (API flicker) or truly new
+                    if key in self._missing_positions:
+                        # Was missing, now back - API flicker, not a real open
+                        del self._missing_positions[key]
+                        logger.debug(f"Position reappeared (API flicker): {address[:10]}... {coin}")
+                    else:
+                        # Truly new position
+                        pos = curr_positions[coin]
+                        events.append({
+                            'timestamp': timestamp,
+                            'address': address,
+                            'event_type': 'position_opened',
+                            'coin': coin,
+                            'side': pos['side'],
+                            'old_value': 0,
+                            'new_value': pos['value'],
+                            'size': pos['abs_size'],
+                            'leverage': pos['leverage'],
+                            'entry_price': pos['entry_price'],
+                            'current_price': prices.get(coin, 0),
+                        })
+                        logger.debug(
+                            f"position_opened | {address[:10]}... | "
+                            f"{coin} {pos['side']} ${pos['value']:,.0f} {pos['leverage']}x"
+                        )
 
                 elif in_prev and not in_curr:
-                    # POSITION CLOSED - check if liquidation
-                    pos = prev_positions[coin]
-                    is_liquidation = self._check_liquidation(address, coin)
-                    event_type = 'position_liquidated' if is_liquidation else 'position_closed'
+                    # Position missing - increment counter, only fire event after threshold
+                    self._missing_positions[key] = self._missing_positions.get(key, 0) + 1
+                    missing_count = self._missing_positions[key]
 
-                    events.append({
-                        'timestamp': timestamp,
-                        'address': address,
-                        'event_type': event_type,
-                        'coin': coin,
-                        'side': pos['side'],
-                        'old_value': pos['value'],
-                        'new_value': 0,
-                        'size': pos['abs_size'],
-                        'leverage': pos['leverage'],
-                        'entry_price': pos['entry_price'],
-                        'current_price': prices.get(coin, 0),
-                    })
-                    logger.debug(
-                        f"{event_type} | {address[:10]}... | "
-                        f"{coin} {pos['side']} ${pos['value']:,.0f}"
-                    )
+                    if missing_count >= self.DEBOUNCE_THRESHOLD:
+                        # Missing for enough loops - really closed
+                        del self._missing_positions[key]
+
+                        pos = prev_positions[coin]
+                        is_liquidation = self._check_liquidation(address, coin)
+                        event_type = 'position_liquidated' if is_liquidation else 'position_closed'
+
+                        events.append({
+                            'timestamp': timestamp,
+                            'address': address,
+                            'event_type': event_type,
+                            'coin': coin,
+                            'side': pos['side'],
+                            'old_value': pos['value'],
+                            'new_value': 0,
+                            'size': pos['abs_size'],
+                            'leverage': pos['leverage'],
+                            'entry_price': pos['entry_price'],
+                            'current_price': prices.get(coin, 0),
+                        })
+                        logger.debug(
+                            f"{event_type} | {address[:10]}... | "
+                            f"{coin} {pos['side']} ${pos['value']:,.0f}"
+                        )
+                    else:
+                        logger.debug(
+                            f"Position missing ({missing_count}/{self.DEBOUNCE_THRESHOLD}): "
+                            f"{address[:10]}... {coin}"
+                        )
 
                 elif in_prev and in_curr:
-                    # POSITION EXISTS IN BOTH - check for changes
+                    # Position exists in both - clear any missing counter and check for changes
+                    if key in self._missing_positions:
+                        del self._missing_positions[key]
+
                     prev_pos = prev_positions[coin]
                     curr_pos = curr_positions[coin]
 
