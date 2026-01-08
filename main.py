@@ -117,6 +117,11 @@ class TWAPBot:
                 config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
             )
 
+            # Check if any inactive whales should be reactivated
+            reactivated = thread_manager.check_inactive_whales()
+            if reactivated > 0:
+                logger.info(f"Reactivated {reactivated} whales")
+
             # Just snapshot - no discovery (that happens in _on_new_addresses now)
             result = thread_manager.run_hourly_snapshot()
             logger.info(f"Hourly snapshot complete: {result['success']}/{result['total']} whales")

@@ -45,13 +45,16 @@ class MarketDataTracker:
         logger.info("MarketDataTracker initialized")
 
     def _get_whale_addresses(self) -> List[str]:
-        """Get unique whale addresses from perp_snapshots table"""
+        """Get unique whale addresses from all snapshot tables"""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT DISTINCT address 
-                FROM perp_snapshots 
+                SELECT DISTINCT address FROM perp_snapshots 
+                UNION
+                SELECT DISTINCT address FROM vault_snapshots
+                UNION
+                SELECT DISTINCT address FROM spot_snapshots
                 ORDER BY address
             """)
             addresses = [row[0] for row in cursor.fetchall()]
