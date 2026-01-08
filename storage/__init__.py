@@ -73,6 +73,15 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
 
         # Enable WAL mode
         self.cursor.execute("PRAGMA journal_mode=WAL")
+        # Checkpoint tracking
+        self._write_count = 0
+        self._last_checkpoint = datetime.now()
+        self._checkpoint_interval_seconds = 3600
+        self._checkpoint_write_threshold = 10000
+
+        # Create all tables from all parent classes
+        self._create_all_tables()
+
 
         # Create all tables from all parent classes
         self._create_all_tables()
