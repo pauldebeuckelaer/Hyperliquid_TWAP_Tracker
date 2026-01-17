@@ -13,8 +13,10 @@ Features:
 - Token filtering with blacklist and price sanity checks
 """
 import logging
+import asyncio
+import aiohttp
 from datetime import datetime
-from typing import Dict, Set, Optional, List
+from typing import Dict, Set, Optional, List, cast
 
 logger = logging.getLogger(__name__)
 
@@ -524,6 +526,156 @@ class WhaleMetricsManager:
             logger.info(f"Reactivated {reactivated} whales")
 
         return reactivated
+
+    # =============================================================================
+    # ASYNC METHODS
+    # =============================================================================
+
+    async def _get_portfolio_value_async(
+            self,
+            address: str,
+            session: aiohttp.ClientSession
+    ) -> float:
+        """
+        Async version of _get_portfolio_value.
+        Fetches perp, spot, and vault data in PARALLEL.
+        """
+        total = 0.0
+
+        # Fetch all 3 data sources in parallel
+        state_result, spot_result, vault_result = await asyncio.gather(
+            self.hl_client.get_user_state_async(address, session),
+            self.hl_client.get_spot_clearinghouse_state_async(address, session),
+            self.hl_client.get_user_vault_equities_async(address, session),
+            return_exceptions=True  # Don't fail if one call fails
+        )
+
+        # Process perp value
+        if state_result and not isinstance(state_result, Exception):
+            try:
+                state = cast(Dict, state_result)
+                margin_summary = state.get("marginSummary", {})
+                total += float(margin_summary.get("accountValue", 0))
+            except Exception:
+                pass
+
+        # Process spot value
+        if spot_result and not isinstance(spot_result, Exception):
+            try:
+                spot_state = cast(Dict, spot_result)
+                for balance in spot_state.get("balances", []):
+                    bal_total = float(balance.get("total", 0))
+                    coin = balance.get("coin", "")
+
+                    if bal_total == 0:
+                        continue
+
+                    # Stablecoins
+                    if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE", "USDH"]:
+                        total += bal_total
+                    else:
+                        price = self.hl_client.get_token_price(coin)
+                        if price:
+                            should_include, _ = self._should_include_token(coin, price, bal_total)
+                            if should_include:
+                                total += bal_total * price
+            except Exception:
+                pass
+
+        # Process vault value
+        if vault_result and not isinstance(vault_result, Exception):
+            try:
+                vault_equities = cast(List, vault_result)
+                for vault_eq in vault_equities:
+                    total += float(vault_eq.get("equity", 0))
+            except Exception:
+                pass
+
+        return total
+
+    async def register_address_async(
+            self,
+            address: str,
+            session: aiohttp.ClientSession
+    ) -> bool:
+        """
+        Async version of register_address.
+        """
+        # Check if already tracked
+        existing = self.storage.get_active_whale_addresses()
+        if address in existing:
+            return False
+
+        try:
+            portfolio_value = await self._get_portfolio_value_async(address, session)
+
+            if portfolio_value >= self.min_portfolio_value:
+                self.storage.add_whale_address(address)
+                logger.info(f"Added whale: {address[:10]}... (${portfolio_value:,.0f})")
+                return True
+            else:
+                logger.debug(f"Below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+                return False
+
+        except Exception as e:
+            logger.warning(f"Error checking address {address[:10]}...: {e}")
+            return False
+
+    async def register_addresses_async(self, addresses: set) -> int:
+        """
+        Async version of register_addresses.
+        Checks ALL addresses in PARALLEL.
+
+        Returns:
+            Number of new whales added
+        """
+        if not addresses:
+            return 0
+
+        # Get existing addresses to skip
+        existing = set(self.storage.get_active_whale_addresses())
+        all_whales = self.storage.get_all_whale_addresses()
+        existing.update(w['address'] for w in all_whales)
+
+        # Only check addresses not yet in whale_addresses
+        new_addresses = addresses - existing
+
+        if not new_addresses:
+            return 0
+
+        logger.info(f"Checking {len(new_addresses)} addresses for whale status (async)...")
+
+        import time
+        start = time.time()
+
+        # Create shared session for all requests
+        async with aiohttp.ClientSession() as session:
+            # Check all addresses in parallel
+            tasks = [
+                self._get_portfolio_value_async(addr, session)
+                for addr in new_addresses
+            ]
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results
+        added = 0
+        for addr, result in zip(new_addresses, results):
+            if isinstance(result, Exception):
+                logger.warning(f"Error checking {addr[:10]}...: {result}")
+                continue
+
+            portfolio_value = cast(float, result)
+
+            if portfolio_value >= self.min_portfolio_value:
+                self.storage.add_whale_address(addr)
+                logger.info(f"Added whale: {addr[:10]}... (${portfolio_value:,.0f})")
+                added += 1
+
+        elapsed = time.time() - start
+        logger.info(f"⏱️ Async whale check: {len(new_addresses)} addresses in {elapsed:.2f}s ({added} whales found)")
+
+        return added
 
     def get_summary(self) -> Dict:
         """

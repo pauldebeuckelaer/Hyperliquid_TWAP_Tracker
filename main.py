@@ -12,6 +12,7 @@ import signal
 import sys
 import json
 import threading
+import asyncio
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -40,6 +41,8 @@ class TWAPBot:
         self.running = False
         self._snapshot_running = False
         self.db_path = Path('data/twap.db')
+
+        self._pending_address_checks: set = set()
 
         # HypurrScan client for TWAP data
         self.hypurr_client = HypurrScanClient(config.get('hypurr_data', {}))
@@ -133,12 +136,21 @@ class TWAPBot:
             self._snapshot_running = False
 
     def _on_new_addresses(self, addresses: set):
-        """Check new TWAP addresses for whale status immediately"""
+        """Collect new addresses for async whale check after loop completes"""
         if not self.hyperliquid_enabled or not addresses:
             return
+        # Just collect them - don't block the loop
+        self._pending_address_checks.update(addresses)
+
+    def _process_pending_addresses(self):
+        """Process collected addresses asynchronously (all in parallel)"""
+        if not self._pending_address_checks:
+            return
+
+        addresses = self._pending_address_checks.copy()
+        self._pending_address_checks.clear()
 
         try:
-            # Quick check with fresh connection
             storage = SQLiteBackend(self.db_path)
             manager = WhaleMetricsManager(
                 self.hyperliquid_client,
@@ -146,30 +158,16 @@ class TWAPBot:
                 config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
             )
 
-            # Get addresses already in whale_addresses (active or inactive)
-            all_whales = storage.get_all_whale_addresses()
-            known_whale_addresses = {w['address'] for w in all_whales}
-
-            # Only check addresses not yet in whale_addresses
-            new_addresses = addresses - known_whale_addresses
-
-            if not new_addresses:
-                storage.close()
-                return
-
-            # Check each new address
-            added = 0
-            for addr in new_addresses:
-                if manager.register_address(addr):
-                    added += 1
+            # Run async whale check
+            added = asyncio.run(manager.register_addresses_async(addresses))
 
             if added > 0:
-                logger.info(f"Discovered {added} new whale(s) from {len(new_addresses)} addresses")
+                logger.info(f"Discovered {added} new whale(s) from {len(addresses)} addresses")
 
             storage.close()
 
         except Exception as e:
-            logger.error(f"Error checking new addresses: {e}")
+            logger.error(f"Error processing addresses: {e}")
 
     def _run_daily_cleanup(self):
         """Run database cleanup to remove old data"""
@@ -203,6 +201,10 @@ class TWAPBot:
 
                 # Fetch all coins (single API call)
                 self._fetch_all_coins()
+
+                # NEW: Process pending whale checks (async, all in parallel)
+                if self.hyperliquid_enabled:
+                    self._process_pending_addresses()
 
                 # Market data snapshot every cycle
                 if self.market_tracker:

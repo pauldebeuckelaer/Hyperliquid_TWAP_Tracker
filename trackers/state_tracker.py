@@ -267,6 +267,14 @@ class AllCoinsStateTracker:
             # Save to SQLite (replaces _save_coin_to_json)
             self._save_to_sqlite(symbol, coin_state, new_snapshot, changes)
 
+        # Batch commit all coin snapshots (single commit instead of per-coin)
+        try:
+            self.db.commit()
+            logger.debug(f"Batch committed {len(coins_with_orders)} coin snapshots")
+        except Exception as e:
+            logger.error(f"Batch commit failed: {e}")
+            self.db.rollback()
+
         # Log global summary
         logger.info("=" * 70)
         logger.info(f"📊 GLOBAL SUMMARY")

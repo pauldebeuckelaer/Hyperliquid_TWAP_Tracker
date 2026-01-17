@@ -53,7 +53,7 @@ class BaseStorage:
         # Checkpoint tracking
         self._write_count = 0
         self._last_checkpoint = datetime.now()
-        self._checkpoint_interval_seconds = 3600  # 1 hour
+        self._checkpoint_interval_seconds = 300  # 5 min
         self._checkpoint_write_threshold = 10000  # every 10k writes
 
         # Subclasses create their own tables
@@ -138,7 +138,7 @@ class BaseStorage:
 
         if elapsed > self._checkpoint_interval_seconds or self._write_count > self._checkpoint_write_threshold:
             logger.info(f"Auto-checkpoint triggered (elapsed={elapsed:.0f}s, writes={self._write_count})")
-            return self.checkpoint('PASSIVE')
+            return self.checkpoint('TRUNCATE')
 
         return None
 
@@ -158,6 +158,7 @@ class BaseStorage:
     def close(self):
         """Close database connection."""
         if self.conn:
+            self.checkpoint('TRUNCATE')
             self.conn.close()
             logger.debug(f"{self.__class__.__name__} connection closed")
 

@@ -166,7 +166,6 @@ class TwapStorage(BaseStorage):
             for addr in addresses_in_snapshot:
                 self._upsert_address(addr, timestamp)
 
-            self.conn.commit()
 
         except Exception as e:
             logger.error(f"Error saving snapshot for {symbol}: {e}")

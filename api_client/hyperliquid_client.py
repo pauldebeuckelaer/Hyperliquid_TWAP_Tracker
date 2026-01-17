@@ -11,6 +11,8 @@ LOGGING STRATEGY:
 """
 import logging
 import requests
+import aiohttp
+import asyncio
 from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timedelta
 
@@ -1125,6 +1127,106 @@ class HyperliquidClient:
             'meta': meta,
             'asset_ctxs': asset_ctxs
         }
+
+    # =============================================================================
+    # ASYNC METHODS
+    # =============================================================================
+
+    async def _make_request_async(
+            self,
+            request_type: str,
+            params: Dict[str, Any],
+            session: Optional[aiohttp.ClientSession] = None,
+            retry_count: int = 2
+    ) -> Optional[Any]:
+        """
+        Async version of _make_request using aiohttp
+
+        Args:
+            request_type: The type of info request
+            params: Additional parameters for the request
+            session: Optional shared aiohttp session (recommended for multiple calls)
+            retry_count: Number of retries on failure
+
+        Returns:
+            Response data or None on error
+        """
+        payload = {"type": request_type, **params}
+
+        # Create session if not provided
+        close_session = False
+        if session is None:
+            session = aiohttp.ClientSession()
+            close_session = True
+
+        try:
+            for attempt in range(retry_count + 1):
+                try:
+                    logger.debug(f"🌐 Async API call: {request_type} (attempt {attempt + 1}/{retry_count + 1})")
+
+                    async with session.post(
+                            self.info_endpoint,
+                            json=payload,
+                            headers={"Content-Type": "application/json"},
+                            timeout=aiohttp.ClientTimeout(total=self.timeout)
+                    ) as response:
+                        logger.debug(f"   Response status: {response.status}")
+
+                        if response.status != 200:
+                            text = await response.text()
+                            logger.error(f"❌ HTTP error for {request_type}: {response.status} - {text}")
+                            if attempt == retry_count:
+                                return None
+                            continue
+
+                        result = await response.json()
+                        return result
+
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏱️  Async timeout for {request_type} (attempt {attempt + 1}/{retry_count + 1})")
+                    if attempt == retry_count:
+                        logger.error(f"❌ {request_type} failed after {retry_count + 1} attempts (timeout)")
+                        return None
+
+                except aiohttp.ClientError as e:
+                    logger.error(f"❌ Async client error for {request_type}: {e}")
+                    if attempt == retry_count:
+                        return None
+
+                except Exception as e:
+                    logger.error(f"❌ Unexpected async error for {request_type}: {e}")
+                    if attempt == retry_count:
+                        return None
+
+        finally:
+            if close_session:
+                await session.close()
+
+        return None
+
+    async def get_user_state_async(
+            self,
+            address: str,
+            session: Optional[aiohttp.ClientSession] = None
+    ) -> Optional[Dict]:
+        """Async version of get_user_state"""
+        return await self._make_request_async("clearinghouseState", {"user": address}, session)
+
+    async def get_spot_clearinghouse_state_async(
+            self,
+            address: str,
+            session: Optional[aiohttp.ClientSession] = None
+    ) -> Optional[Dict]:
+        """Async version of get_spot_clearinghouse_state"""
+        return await self._make_request_async("spotClearinghouseState", {"user": address}, session)
+
+    async def get_user_vault_equities_async(
+            self,
+            address: str,
+            session: Optional[aiohttp.ClientSession] = None
+    ) -> Optional[Dict]:
+        """Async version of get_user_vault_equities"""
+        return await self._make_request_async("userVaultEquities", {"user": address}, session)
 
     # =============================================================================
     # Convenience Methods
