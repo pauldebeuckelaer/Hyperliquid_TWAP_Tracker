@@ -1,0 +1,217 @@
+{
+  "date": "2025-12-20",
+  "generated_at": "2026-01-18T18:51:02.406265",
+  "snapshots": {
+    "total_snapshots": 30741,
+    "unique_symbols": 98,
+    "time_range": {
+      "first": "2025-12-20T00:00:11.976761",
+      "last": "2025-12-20T23:59:34.130960"
+    }
+  },
+  "cycle_timing": {
+    "cycles": 1440,
+    "avg_seconds": 60.0,
+    "min_seconds": 30.8,
+    "max_seconds": 84.8,
+    "max_gap_at": "2025-12-20T09:13:24.860048",
+    "cycles_over_65s": 16
+  },
+  "pressure": {
+    "perp": {
+      "total_buy_usd": 15206172.72,
+      "total_sell_usd": 27503588.9,
+      "net_usd": -12297416.18
+    },
+    "spot": {
+      "total_buy_usd": 10352387.83,
+      "total_sell_usd": 892458.12,
+      "net_usd": 9459929.71
+    },
+    "top_buy_pressure": [
+      {
+        "symbol": "USOL",
+        "net_usd": 9496764.11,
+        "perp_usd": 0.0,
+        "spot_usd": 9496764.11
+      },
+      {
+        "symbol": "BTC",
+        "net_usd": 3063591.72,
+        "perp_usd": 3063591.72,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "PUMP",
+        "net_usd": 1482233.44,
+        "perp_usd": 1482233.44,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "ENA",
+        "net_usd": 164586.88,
+        "perp_usd": 164586.88,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "UNI",
+        "net_usd": 154862.66,
+        "perp_usd": 154862.66,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "UXPL",
+        "net_usd": 143184.73,
+        "perp_usd": 0.0,
+        "spot_usd": 143184.73
+      },
+      {
+        "symbol": "MNT",
+        "net_usd": 137972.88,
+        "perp_usd": 137972.88,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "VIRTUAL",
+        "net_usd": 113728.53,
+        "perp_usd": 113728.53,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "ZEC",
+        "net_usd": 110162.94,
+        "perp_usd": 110162.94,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "BNB",
+        "net_usd": 74604.64,
+        "perp_usd": 74604.64,
+        "spot_usd": 0.0
+      }
+    ],
+    "top_sell_pressure": [
+      {
+        "symbol": "LDO",
+        "net_usd": -5158603.95,
+        "perp_usd": -5158603.95,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "ETH",
+        "net_usd": -4394632.27,
+        "perp_usd": -4394632.27,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "XPL",
+        "net_usd": -2749351.85,
+        "perp_usd": -2749351.85,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "RESOLV",
+        "net_usd": -1720272.58,
+        "perp_usd": -1720272.58,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "HYPE",
+        "net_usd": -1666109.28,
+        "perp_usd": -1806917.28,
+        "spot_usd": 140808.0
+      },
+      {
+        "symbol": "SOL",
+        "net_usd": -1356888.23,
+        "perp_usd": -1356888.23,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "XRP",
+        "net_usd": -326567.87,
+        "perp_usd": -326567.87,
+        "spot_usd": 0.0
+      },
+      {
+        "symbol": "UETH",
+        "net_usd": -195527.07,
+        "perp_usd": 0.0,
+        "spot_usd": -195527.07
+      },
+      {
+        "symbol": "UBTC",
+        "net_usd": -141625.29,
+        "perp_usd": 0.0,
+        "spot_usd": -141625.29
+      },
+      {
+        "symbol": "PAXG",
+        "net_usd": -69914.2,
+        "perp_usd": -69914.2,
+        "spot_usd": 0.0
+      }
+    ]
+  },
+  "activity": {
+    "avg_active_orders": 1.5,
+    "peak_active_orders": 19,
+    "peak_time": "2025-12-20T18:52:32.136373",
+    "most_active_coins": [
+      {
+        "symbol": "HYPE",
+        "avg_orders": 7.4,
+        "max_orders": 16
+      },
+      {
+        "symbol": "BTC",
+        "avg_orders": 3.6,
+        "max_orders": 10
+      },
+      {
+        "symbol": "ETH",
+        "avg_orders": 3.2,
+        "max_orders": 9
+      },
+      {
+        "symbol": "IMX",
+        "avg_orders": 3.0,
+        "max_orders": 3
+      },
+      {
+        "symbol": "ZORA",
+        "avg_orders": 2.5,
+        "max_orders": 5
+      },
+      {
+        "symbol": "APEX",
+        "avg_orders": 2.4,
+        "max_orders": 5
+      },
+      {
+        "symbol": "HYPER",
+        "avg_orders": 2.2,
+        "max_orders": 4
+      },
+      {
+        "symbol": "SUPER",
+        "avg_orders": 2.1,
+        "max_orders": 3
+      },
+      {
+        "symbol": "SOL",
+        "avg_orders": 2.0,
+        "max_orders": 7
+      },
+      {
+        "symbol": "TRX",
+        "avg_orders": 1.7,
+        "max_orders": 3
+      }
+    ]
+  },
+  "addresses": {
+    "total_unique": 62503,
+    "avg_per_snapshot": 2.0
+  }
+}

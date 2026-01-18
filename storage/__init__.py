@@ -106,16 +106,19 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
         LiquidationStorage._create_indexes(self)
         WhaleEventStorage._create_indexes(self)
 
-    def cleanup_old_data(self, days_to_keep: int = 7) -> Dict[str, int]:
+    def cleanup_old_data(self, days_to_keep: int = 7, batch_size: int = 5000) -> Dict[str, int]:
         """
         Delete data older than specified days to manage database size.
+        Uses batched deletes to avoid blocking the main loop.
 
         Args:
             days_to_keep: Number of days of data to retain (default: 7)
+            batch_size: Rows to delete per batch (default: 5000)
 
         Returns:
             Dict with count of deleted rows per table
         """
+        import time
         logger = logging.getLogger(__name__)
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
 
@@ -124,32 +127,80 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
         # Tables with 'snapshot_time' column
         snapshot_time_tables = ['market_snapshots', 'liquidation_snapshots']
         for table in snapshot_time_tables:
-            self.cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE snapshot_time < ?", (cutoff,))
-            count = self.cursor.fetchone()[0]
-            if count > 0:
-                self.cursor.execute(f"DELETE FROM {table} WHERE snapshot_time < ?", (cutoff,))
-                deleted[table] = count
-                logger.info(f"Deleted {count} rows from {table} older than {days_to_keep} days")
+            table_deleted = self._batched_delete(
+                table, 'snapshot_time', cutoff, batch_size
+            )
+            if table_deleted > 0:
+                deleted[table] = table_deleted
 
         # Tables with 'timestamp' column
         timestamp_tables = ['whale_events']
         for table in timestamp_tables:
-            self.cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE timestamp < ?", (cutoff,))
-            count = self.cursor.fetchone()[0]
-            if count > 0:
-                self.cursor.execute(f"DELETE FROM {table} WHERE timestamp < ?", (cutoff,))
-                deleted[table] = count
-                logger.info(f"Deleted {count} rows from {table} older than {days_to_keep} days")
-
-        self.conn.commit()
-
-        # Reclaim space
-        self.cursor.execute("VACUUM")
+            table_deleted = self._batched_delete(
+                table, 'timestamp', cutoff, batch_size
+            )
+            if table_deleted > 0:
+                deleted[table] = table_deleted
 
         total = sum(deleted.values())
-        logger.info(f"Cleanup complete: {total} total rows deleted, database vacuumed")
+
+        if total > 0:
+            logger.info(f"Cleanup complete: {total} total rows deleted")
+            # Only VACUUM if we deleted a lot (it's expensive)
+            if total > 50000:
+                logger.info("Running VACUUM to reclaim space...")
+                self.cursor.execute("VACUUM")
+                logger.info("VACUUM complete")
+        else:
+            logger.info("Cleanup complete: no old data to remove")
 
         return deleted
+
+    def _batched_delete(self, table: str, time_column: str, cutoff: str, batch_size: int) -> int:
+        """
+        Delete rows in batches to avoid long locks.
+
+        Args:
+            table: Table name
+            time_column: Column to filter on (snapshot_time or timestamp)
+            cutoff: ISO timestamp cutoff
+            batch_size: Rows per batch
+
+        Returns:
+            Total rows deleted
+        """
+        import time
+        logger = logging.getLogger(__name__)
+
+        total_deleted = 0
+
+        while True:
+            # Delete a batch using ROWID for efficiency
+            self.cursor.execute(f"""
+                DELETE FROM {table} 
+                WHERE rowid IN (
+                    SELECT rowid FROM {table} 
+                    WHERE {time_column} < ? 
+                    LIMIT ?
+                )
+            """, (cutoff, batch_size))
+
+            rows_affected = self.cursor.rowcount
+            self.conn.commit()
+
+            if rows_affected == 0:
+                break
+
+            total_deleted += rows_affected
+            logger.debug(f"Deleted batch: {rows_affected} from {table} (total: {total_deleted})")
+
+            # Small sleep to let main loop get writes through
+            time.sleep(0.1)
+
+        if total_deleted > 0:
+            logger.info(f"Deleted {total_deleted} rows from {table}")
+
+        return total_deleted
 
     def get_stats(self) -> Dict:
         """Get combined statistics from all storage modules."""

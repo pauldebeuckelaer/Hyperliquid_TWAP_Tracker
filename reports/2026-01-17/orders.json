@@ -1,0 +1,440 @@
+{
+  "date": "2026-01-17",
+  "generated_at": "2026-01-18T18:27:02.358498",
+  "orders": {
+    "total": 27121,
+    "by_status": {
+      "active": 79,
+      "canceled": 11712,
+      "completed": 15330
+    }
+  },
+  "started_today": {
+    "total": 101,
+    "by_side": {
+      "BUY": 68,
+      "SELL": 33
+    },
+    "by_product": {
+      "PERP": 86,
+      "SPOT": 15
+    },
+    "top_coins": [
+      {
+        "symbol": "BTC",
+        "count": 15,
+        "buys": 10,
+        "sells": 5,
+        "size_usd": 6571755.39
+      },
+      {
+        "symbol": "HYPE",
+        "count": 16,
+        "buys": 14,
+        "sells": 2,
+        "size_usd": 783034.6
+      },
+      {
+        "symbol": "PUMP",
+        "count": 8,
+        "buys": 6,
+        "sells": 2,
+        "size_usd": 746483.05
+      },
+      {
+        "symbol": "PAXG",
+        "count": 1,
+        "buys": 1,
+        "sells": 0,
+        "size_usd": 500398.96
+      },
+      {
+        "symbol": "ETH",
+        "count": 4,
+        "buys": 3,
+        "sells": 1,
+        "size_usd": 339682.7
+      },
+      {
+        "symbol": "ADA",
+        "count": 1,
+        "buys": 1,
+        "sells": 0,
+        "size_usd": 182513.38
+      },
+      {
+        "symbol": "LINK",
+        "count": 1,
+        "buys": 0,
+        "sells": 1,
+        "size_usd": 164425.13
+      },
+      {
+        "symbol": "XPL",
+        "count": 1,
+        "buys": 1,
+        "sells": 0,
+        "size_usd": 149664.19
+      },
+      {
+        "symbol": "SOL",
+        "count": 5,
+        "buys": 4,
+        "sells": 1,
+        "size_usd": 110783.59
+      },
+      {
+        "symbol": "XRP",
+        "count": 2,
+        "buys": 1,
+        "sells": 1,
+        "size_usd": 96946.09
+      }
+    ],
+    "top_addresses": [
+      {
+        "address": "0x3bcae23e...",
+        "full_address": "0x3bcae23e8c380dab4732e9a159c0456f12d866f3",
+        "count": 1,
+        "buys": 1,
+        "sells": 0,
+        "size_usd": 2385111.31
+      },
+      {
+        "address": "0x32af4c34...",
+        "full_address": "0x32af4c34c603cb9e1480aa79d0369a46e07cfa5c",
+        "count": 3,
+        "buys": 3,
+        "sells": 0,
+        "size_usd": 1465055.71
+      },
+      {
+        "address": "0x5faed492...",
+        "full_address": "0x5faed49291db46f90e9af7331e41046e65776e5f",
+        "count": 4,
+        "buys": 2,
+        "sells": 2,
+        "size_usd": 1231979.03
+      },
+      {
+        "address": "0xd3ac49f8...",
+        "full_address": "0xd3ac49f89a1f2767c448ab2b90726c8479dedf5d",
+        "count": 1,
+        "buys": 0,
+        "sells": 1,
+        "size_usd": 733225.19
+      },
+      {
+        "address": "0x76c2cd1b...",
+        "full_address": "0x76c2cd1b8a249f465f8445c455cb78e0eed36f1e",
+        "count": 9,
+        "buys": 6,
+        "sells": 3,
+        "size_usd": 699874.32
+      },
+      {
+        "address": "0x5b676c5b...",
+        "full_address": "0x5b676c5b03f38557e6f21257732608d019cec66a",
+        "count": 1,
+        "buys": 0,
+        "sells": 1,
+        "size_usd": 648861.33
+      },
+      {
+        "address": "0xf2c22ab1...",
+        "full_address": "0xf2c22ab19bdcffd36d2320af938438199b7055d2",
+        "count": 3,
+        "buys": 3,
+        "sells": 0,
+        "size_usd": 605440.32
+      },
+      {
+        "address": "0xfc079a49...",
+        "full_address": "0xfc079a49e371976f559bea0cd1c1f87a5f5b9464",
+        "count": 2,
+        "buys": 2,
+        "sells": 0,
+        "size_usd": 500398.96
+      },
+      {
+        "address": "0xc35bf47a...",
+        "full_address": "0xc35bf47aca839e371eb70fc5d16a5b747ad4d8dd",
+        "count": 2,
+        "buys": 2,
+        "sells": 0,
+        "size_usd": 414283.63
+      },
+      {
+        "address": "0x3cce108f...",
+        "full_address": "0x3cce108f30e46eb0dc6257e31044f9aebf89427c",
+        "count": 2,
+        "buys": 0,
+        "sells": 2,
+        "size_usd": 199548.58
+      }
+    ]
+  },
+  "completed_today": {
+    "total": 59,
+    "avg_duration_minutes": 110.7,
+    "avg_actual_minutes": 100.7,
+    "top_coins": [
+      {
+        "symbol": "BTC",
+        "count": 7,
+        "avg_duration_minutes": 71.7,
+        "size_usd": 3445184.53
+      },
+      {
+        "symbol": "ADA",
+        "count": 1,
+        "avg_duration_minutes": 120.0,
+        "size_usd": 182513.38
+      },
+      {
+        "symbol": "LINK",
+        "count": 1,
+        "avg_duration_minutes": 120.0,
+        "size_usd": 164425.13
+      },
+      {
+        "symbol": "HYPE",
+        "count": 5,
+        "avg_duration_minutes": 102.0,
+        "size_usd": 141577.16
+      },
+      {
+        "symbol": "ETH",
+        "count": 1,
+        "avg_duration_minutes": 30.0,
+        "size_usd": 108419.07
+      },
+      {
+        "symbol": "PUMP",
+        "count": 6,
+        "avg_duration_minutes": 55.0,
+        "size_usd": 84184.45
+      },
+      {
+        "symbol": "XRP",
+        "count": 1,
+        "avg_duration_minutes": 60.0,
+        "size_usd": 76947.92
+      },
+      {
+        "symbol": "SOL",
+        "count": 4,
+        "avg_duration_minutes": 97.5,
+        "size_usd": 64011.53
+      },
+      {
+        "symbol": "UPUMP",
+        "count": 2,
+        "avg_duration_minutes": 285.0,
+        "size_usd": 42916.96
+      },
+      {
+        "symbol": "BNB",
+        "count": 1,
+        "avg_duration_minutes": 30.0,
+        "size_usd": 37505.17
+      }
+    ]
+  },
+  "canceled_today": {
+    "total": 4,
+    "avg_progress_at_cancel": 34.6,
+    "quick_cancels": 2,
+    "quick_cancel_rate": 0.5,
+    "top_coins": [
+      {
+        "symbol": "BERA",
+        "count": 1,
+        "avg_progress_at_cancel": 33.3,
+        "size_usd": 27775.23
+      },
+      {
+        "symbol": "WIF",
+        "count": 1,
+        "avg_progress_at_cancel": 98.7,
+        "size_usd": 14078.55
+      },
+      {
+        "symbol": "HYPE",
+        "count": 2,
+        "avg_progress_at_cancel": 3.2,
+        "size_usd": 12156.14
+      }
+    ]
+  },
+  "active_orders": {
+    "total": 79,
+    "long_running": 0,
+    "top_coins": [
+      {
+        "symbol": "BTC",
+        "count": 18,
+        "buys": 11,
+        "sells": 7,
+        "size_usd": 4206652.3
+      },
+      {
+        "symbol": "HYPE",
+        "count": 18,
+        "buys": 14,
+        "sells": 4,
+        "size_usd": 2382586.19
+      },
+      {
+        "symbol": "ETH",
+        "count": 5,
+        "buys": 4,
+        "sells": 1,
+        "size_usd": 952052.26
+      },
+      {
+        "symbol": "PUMP",
+        "count": 1,
+        "buys": 0,
+        "sells": 1,
+        "size_usd": 648861.33
+      },
+      {
+        "symbol": "ZEC",
+        "count": 3,
+        "buys": 0,
+        "sells": 3,
+        "size_usd": 168921.1
+      },
+      {
+        "symbol": "XPL",
+        "count": 1,
+        "buys": 1,
+        "sells": 0,
+        "size_usd": 149664.19
+      },
+      {
+        "symbol": "SOL",
+        "count": 2,
+        "buys": 1,
+        "sells": 1,
+        "size_usd": 122643.55
+      },
+      {
+        "symbol": "FARTCOIN",
+        "count": 2,
+        "buys": 2,
+        "sells": 0,
+        "size_usd": 108950.0
+      },
+      {
+        "symbol": "ICP",
+        "count": 1,
+        "buys": 1,
+        "sells": 0,
+        "size_usd": 59769.5
+      },
+      {
+        "symbol": "BERA",
+        "count": 2,
+        "buys": 1,
+        "sells": 1,
+        "size_usd": 35466.77
+      }
+    ],
+    "top_addresses": [
+      {
+        "address": "0x32af4c34...",
+        "full_address": "0x32af4c34c603cb9e1480aa79d0369a46e07cfa5c",
+        "count": 3,
+        "buys": 3,
+        "sells": 0,
+        "size_usd": 1465055.71
+      },
+      {
+        "address": "0x5faed492...",
+        "full_address": "0x5faed49291db46f90e9af7331e41046e65776e5f",
+        "count": 4,
+        "buys": 2,
+        "sells": 2,
+        "size_usd": 1231979.03
+      },
+      {
+        "address": "0x2474c64e...",
+        "full_address": "0x2474c64e65bd5c95169c28c31459714a8ded5114",
+        "count": 3,
+        "buys": 0,
+        "sells": 3,
+        "size_usd": 1101992.24
+      },
+      {
+        "address": "0x5b930659...",
+        "full_address": "0x5b9306593ae710a66832c4101e019e3e96f65d0a",
+        "count": 2,
+        "buys": 1,
+        "sells": 1,
+        "size_usd": 790398.83
+      },
+      {
+        "address": "0xb4cf36fb...",
+        "full_address": "0xb4cf36fb56684ea2b7b3f9d39ee961ece793f411",
+        "count": 2,
+        "buys": 2,
+        "sells": 0,
+        "size_usd": 708161.38
+      },
+      {
+        "address": "0x5b676c5b...",
+        "full_address": "0x5b676c5b03f38557e6f21257732608d019cec66a",
+        "count": 1,
+        "buys": 0,
+        "sells": 1,
+        "size_usd": 648861.33
+      },
+      {
+        "address": "0xf2c22ab1...",
+        "full_address": "0xf2c22ab19bdcffd36d2320af938438199b7055d2",
+        "count": 2,
+        "buys": 2,
+        "sells": 0,
+        "size_usd": 562059.35
+      },
+      {
+        "address": "0xc35bf47a...",
+        "full_address": "0xc35bf47aca839e371eb70fc5d16a5b747ad4d8dd",
+        "count": 2,
+        "buys": 2,
+        "sells": 0,
+        "size_usd": 414283.63
+      },
+      {
+        "address": "0xb676a78f...",
+        "full_address": "0xb676a78f19227ffe9a97db93263fce675e547dbf",
+        "count": 4,
+        "buys": 1,
+        "sells": 3,
+        "size_usd": 331572.99
+      },
+      {
+        "address": "0x3819661b...",
+        "full_address": "0x3819661bfe87018b62c302c128b8fb7cf2958ebc",
+        "count": 3,
+        "buys": 0,
+        "sells": 3,
+        "size_usd": 266779.47
+      }
+    ],
+    "oldest": {
+      "order_hash": "0x30e231b10b5d6b...",
+      "symbol": "BTC",
+      "side": "BUY",
+      "size": 0.31432,
+      "first_seen_at": "2026-01-17T14:06:53.213729",
+      "days_running": 0.14
+    }
+  },
+  "anomalies": {
+    "stuck_orders": [],
+    "high_cancel_rate_addresses": []
+  }
+}

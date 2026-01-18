@@ -1,0 +1,320 @@
+{
+  "date": "2025-12-20",
+  "generated_at": "2026-01-18T18:51:02.661922",
+  "events": {
+    "total": 1604,
+    "by_type": {
+      "canceled": 298,
+      "completed": 506,
+      "new": 800
+    },
+    "completion_rate": 0.629,
+    "cancellation_rate": 0.371
+  },
+  "new_orders": {
+    "total": 800,
+    "by_side": {
+      "BUY": 466,
+      "SELL": 334
+    },
+    "by_product": {
+      "PERP": 750,
+      "SPOT": 50
+    },
+    "top_coins": [
+      {
+        "symbol": "HYPE",
+        "count": 186,
+        "buys": 128,
+        "sells": 58,
+        "size_usd": 8007637.34
+      },
+      {
+        "symbol": "BTC",
+        "count": 72,
+        "buys": 56,
+        "sells": 16,
+        "size_usd": 20407109.26
+      },
+      {
+        "symbol": "RESOLV",
+        "count": 48,
+        "buys": 7,
+        "sells": 41,
+        "size_usd": 1735804.78
+      },
+      {
+        "symbol": "SOL",
+        "count": 43,
+        "buys": 30,
+        "sells": 13,
+        "size_usd": 2551168.52
+      },
+      {
+        "symbol": "ETH",
+        "count": 43,
+        "buys": 26,
+        "sells": 17,
+        "size_usd": 5936075.74
+      },
+      {
+        "symbol": "ZEC",
+        "count": 41,
+        "buys": 18,
+        "sells": 23,
+        "size_usd": 4169249.62
+      },
+      {
+        "symbol": "XPL",
+        "count": 33,
+        "buys": 12,
+        "sells": 21,
+        "size_usd": 12401432.24
+      },
+      {
+        "symbol": "UNI",
+        "count": 19,
+        "buys": 10,
+        "sells": 9,
+        "size_usd": 1384775.25
+      },
+      {
+        "symbol": "FARTCOIN",
+        "count": 19,
+        "buys": 14,
+        "sells": 5,
+        "size_usd": 374433.05
+      },
+      {
+        "symbol": "xyz:AAPL",
+        "count": 17,
+        "buys": 9,
+        "sells": 8,
+        "size_usd": 0
+      }
+    ],
+    "top_addresses": [
+      {
+        "address": "0xb30348ac...",
+        "full_address": "0xb30348ac172b8e6cef9ba93a283ea517064a9e4f",
+        "count": 3,
+        "buys": 3,
+        "sells": 0,
+        "size_usd": 23708219.9
+      },
+      {
+        "address": "0x10a3c90a...",
+        "full_address": "0x10a3c90abf09cd253a5e3f1f13346cddb8e8854a",
+        "count": 10,
+        "buys": 6,
+        "sells": 4,
+        "size_usd": 21209867.51
+      },
+      {
+        "address": "0x56aad9c2...",
+        "full_address": "0x56aad9c275a3cfe1dfa943bfb234b7d884276bb0",
+        "count": 4,
+        "buys": 1,
+        "sells": 3,
+        "size_usd": 16737046.56
+      },
+      {
+        "address": "0x55ce17df...",
+        "full_address": "0x55ce17df136f86dc04c5a87fc72cb5c70876fafd",
+        "count": 22,
+        "buys": 7,
+        "sells": 15,
+        "size_usd": 11043093.95
+      },
+      {
+        "address": "0x5faed492...",
+        "full_address": "0x5faed49291db46f90e9af7331e41046e65776e5f",
+        "count": 4,
+        "buys": 4,
+        "sells": 0,
+        "size_usd": 8091591.0
+      },
+      {
+        "address": "0x89bc21cf...",
+        "full_address": "0x89bc21cf0c2da44e2afccdb9493be950c78a7358",
+        "count": 3,
+        "buys": 1,
+        "sells": 2,
+        "size_usd": 4992471.66
+      },
+      {
+        "address": "0xeee0d806...",
+        "full_address": "0xeee0d806e4f0a427277433d6b580619918770b53",
+        "count": 2,
+        "buys": 1,
+        "sells": 1,
+        "size_usd": 4408774.6
+      },
+      {
+        "address": "0xae78adab...",
+        "full_address": "0xae78adaba70f18c15418001263504af373884520",
+        "count": 9,
+        "buys": 7,
+        "sells": 2,
+        "size_usd": 3623124.58
+      },
+      {
+        "address": "0x519c721d...",
+        "full_address": "0x519c721de735f7c9e6146d167852e60d60496a47",
+        "count": 2,
+        "buys": 2,
+        "sells": 0,
+        "size_usd": 3585907.61
+      },
+      {
+        "address": "0xf967239d...",
+        "full_address": "0xf967239debef10dbc78e9bbbb2d8a16b72a614eb",
+        "count": 4,
+        "buys": 0,
+        "sells": 4,
+        "size_usd": 2719078.06
+      }
+    ],
+    "coins_missing_price": [
+      "xyz:AAPL"
+    ]
+  },
+  "completed_orders": {
+    "total": 506,
+    "avg_duration_minutes": 72.2,
+    "avg_elapsed_minutes": 71.3,
+    "top_coins": [
+      {
+        "symbol": "HYPE",
+        "count": 124,
+        "avg_elapsed_minutes": 61.8
+      },
+      {
+        "symbol": "RESOLV",
+        "count": 42,
+        "avg_elapsed_minutes": 39.8
+      },
+      {
+        "symbol": "BTC",
+        "count": 41,
+        "avg_elapsed_minutes": 152.2
+      },
+      {
+        "symbol": "ZEC",
+        "count": 29,
+        "avg_elapsed_minutes": 18.6
+      },
+      {
+        "symbol": "SOL",
+        "count": 22,
+        "avg_elapsed_minutes": 107.1
+      },
+      {
+        "symbol": "ETH",
+        "count": 19,
+        "avg_elapsed_minutes": 176.4
+      },
+      {
+        "symbol": "XPL",
+        "count": 16,
+        "avg_elapsed_minutes": 9.4
+      },
+      {
+        "symbol": "xyz:AAPL",
+        "count": 14,
+        "avg_elapsed_minutes": 46.9
+      },
+      {
+        "symbol": "ZORA",
+        "count": 11,
+        "avg_elapsed_minutes": 22.6
+      },
+      {
+        "symbol": "WLFI",
+        "count": 10,
+        "avg_elapsed_minutes": 21.0
+      }
+    ]
+  },
+  "canceled_orders": {
+    "total": 298,
+    "avg_progress_at_cancel": 39.9,
+    "quick_cancels": 39,
+    "quick_cancel_rate": 0.131,
+    "top_coins": [
+      {
+        "symbol": "HYPE",
+        "count": 62,
+        "avg_progress_at_cancel": 38.6
+      },
+      {
+        "symbol": "BTC",
+        "count": 36,
+        "avg_progress_at_cancel": 45.1
+      },
+      {
+        "symbol": "ETH",
+        "count": 27,
+        "avg_progress_at_cancel": 39.2
+      },
+      {
+        "symbol": "SOL",
+        "count": 20,
+        "avg_progress_at_cancel": 52.2
+      },
+      {
+        "symbol": "XPL",
+        "count": 16,
+        "avg_progress_at_cancel": 28.8
+      },
+      {
+        "symbol": "ZEC",
+        "count": 13,
+        "avg_progress_at_cancel": 43.4
+      },
+      {
+        "symbol": "SUI",
+        "count": 11,
+        "avg_progress_at_cancel": 63.6
+      },
+      {
+        "symbol": "FARTCOIN",
+        "count": 11,
+        "avg_progress_at_cancel": 52.4
+      },
+      {
+        "symbol": "UNI",
+        "count": 10,
+        "avg_progress_at_cancel": 28.6
+      },
+      {
+        "symbol": "BNB",
+        "count": 8,
+        "avg_progress_at_cancel": 42.5
+      }
+    ]
+  },
+  "anomalies": {
+    "high_cancellation_rate": false,
+    "cancellation_rate": 0.371,
+    "buy_sell_imbalance": false,
+    "buy_pct": 0.583,
+    "sell_pct": 0.417,
+    "address_concentration": [
+      {
+        "address": "0x8a544ab7...",
+        "full_address": "0x8a544ab75107efd541c9072a0efebb87cc4292f3",
+        "count": 118,
+        "pct_of_total": 14.75
+      },
+      {
+        "address": "0x4f67680e...",
+        "full_address": "0x4f67680ed589c995177481778d48a754703b5b79",
+        "count": 42,
+        "pct_of_total": 5.25
+      }
+    ],
+    "quick_cancel_rate": 0.131,
+    "high_quick_cancel_rate": false
+  }
+}

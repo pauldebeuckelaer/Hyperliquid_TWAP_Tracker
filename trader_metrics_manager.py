@@ -61,7 +61,7 @@ class WhaleMetricsManager:
             "NIGGO", "LIQD", "FUND", "STEEL", "HWTR",
             "SWAP", "BERA", "DEPIN", "GENESY", "TILT",
             # New additions
-            "RANK", "PURRO", "HOLD", "RAT", "MANLET", "WHYPI"
+            "RANK", "PURRO", "HOLD", "RAT", "MANLET", "WHYPI", "PENIS", "RISK", "HAR"
         })
 
         self.whitelisted_high_value_tokens = self.config.get('whitelisted_high_value_tokens', {
@@ -676,6 +676,286 @@ class WhaleMetricsManager:
         logger.info(f"⏱️ Async whale check: {len(new_addresses)} addresses in {elapsed:.2f}s ({added} whales found)")
 
         return added
+
+    async def fetch_whale_data_async(
+            self,
+            address: str,
+            session: aiohttp.ClientSession
+    ) -> Optional[Dict]:
+        """
+        Async version of fetch_whale_data.
+        Fetches perp, spot, vault data in PARALLEL.
+        """
+        try:
+            portfolio_data = {
+                "perp_value": 0,
+                "spot_value": 0,
+                "vault_value": 0,
+                "total_portfolio_value": 0,
+                "margin_used": 0,
+                "leverage_ratio": 0,
+                "num_positions": 0,
+            }
+            positions = []
+            spot_balances = []
+            vaults = []
+
+            # Fetch all 3 data sources in parallel
+            state_result, spot_result, vault_result = await asyncio.gather(
+                self.hl_client.get_user_state_async(address, session),
+                self.hl_client.get_spot_clearinghouse_state_async(address, session),
+                self.hl_client.get_user_vault_equities_async(address, session),
+                return_exceptions=True
+            )
+
+            # 1. Process perp positions
+            if state_result and not isinstance(state_result, Exception):
+                try:
+                    state = cast(Dict, state_result)
+                    margin_summary = state.get("marginSummary", {})
+                    portfolio_data["perp_value"] = float(margin_summary.get("accountValue", 0))
+                    portfolio_data["margin_used"] = float(margin_summary.get("totalMarginUsed", 0))
+
+                    for pos_data in state.get("assetPositions", []):
+                        position = pos_data.get("position", {})
+                        size = float(position.get("szi", 0))
+
+                        if size != 0:
+                            positions.append({
+                                "coin": position.get("coin", ""),
+                                "size": size,
+                                "side": "LONG" if size > 0 else "SHORT",
+                                "entry_price": float(position.get("entryPx", 0)),
+                                "liquidation_price": float(position.get("liquidationPx") or 0),
+                                "leverage": float(position.get("leverage", {}).get("value", 1)),
+                                "margin_used": float(position.get("marginUsed", 0)),
+                                "unrealized_pnl": float(position.get("unrealizedPnl", 0))
+                            })
+
+                    portfolio_data["num_positions"] = len(positions)
+                except Exception as e:
+                    logger.warning(f"Failed to parse perp state for {address[:10]}...: {e}")
+
+            # 2. Process spot balances
+            if spot_result and not isinstance(spot_result, Exception):
+                try:
+                    spot_state = cast(Dict, spot_result)
+                    for balance in spot_state.get("balances", []):
+                        bal_total = float(balance.get("total", 0))
+                        coin = balance.get("coin", "")
+
+                        if bal_total == 0:
+                            continue
+
+                        if coin in ["USDC", "USDT", "USD", "FEUSD", "USDC.e", "USDT0", "USDE", "USDH"]:
+                            if bal_total > self.dust_threshold:
+                                portfolio_data["spot_value"] += bal_total
+                                spot_balances.append({
+                                    "coin": coin,
+                                    "amount": bal_total,
+                                    "value": bal_total,
+                                    "price": 1.0
+                                })
+                        else:
+                            price = self.hl_client.get_token_price(coin)
+                            if price:
+                                should_include, reason = self._should_include_token(coin, price, bal_total)
+                                if should_include:
+                                    token_value = bal_total * price
+                                    portfolio_data["spot_value"] += token_value
+                                    spot_balances.append({
+                                        "coin": coin,
+                                        "amount": bal_total,
+                                        "value": token_value,
+                                        "price": price
+                                    })
+                except Exception as e:
+                    logger.warning(f"Failed to parse spot state for {address[:10]}...: {e}")
+
+            # 3. Process vault holdings
+            if vault_result and not isinstance(vault_result, Exception):
+                try:
+                    vault_equities = cast(List, vault_result)
+                    for vault_eq in vault_equities:
+                        equity = float(vault_eq.get("equity", 0))
+                        if equity > 0:
+                            portfolio_data["vault_value"] += equity
+                            vaults.append({
+                                "vault_address": vault_eq.get("vaultAddress", ""),
+                                "value": equity
+                            })
+                except Exception as e:
+                    logger.warning(f"Failed to parse vaults for {address[:10]}...: {e}")
+
+            # Calculate totals
+            portfolio_data["total_portfolio_value"] = (
+                    portfolio_data["perp_value"] +
+                    portfolio_data["spot_value"] +
+                    portfolio_data["vault_value"]
+            )
+
+            # Leverage ratio
+            if portfolio_data["total_portfolio_value"] > 0:
+                position_value = sum(abs(p["size"] * p["entry_price"]) for p in positions)
+                portfolio_data["leverage_ratio"] = round(
+                    position_value / portfolio_data["total_portfolio_value"], 2
+                )
+
+            return {
+                "portfolio_data": portfolio_data,
+                "positions": positions,
+                "spot_balances": spot_balances,
+                "vaults": vaults
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching data for {address[:10]}...: {e}")
+            self.errors_count += 1
+            return None
+
+    async def take_snapshot_async(
+            self,
+            address: str,
+            session: aiohttp.ClientSession
+    ) -> bool:
+        """
+        Async version of take_snapshot.
+        """
+        data = await self.fetch_whale_data_async(address, session)
+        if not data:
+            return False
+
+        portfolio_value = data["portfolio_data"]["total_portfolio_value"]
+
+        # Check if still above threshold
+        if portfolio_value < self.min_portfolio_value:
+            self.storage.update_whale_status(address, is_active=False)
+            logger.info(f"Whale dropped below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+            return False
+
+        # Ensure whale is marked active
+        self.storage.update_whale_status(address, is_active=True)
+
+        # Save snapshot
+        snapshot_time = datetime.now().isoformat()
+
+        self.storage.save_whale_snapshot(
+            address=address,
+            snapshot_time=snapshot_time,
+            portfolio_data=data["portfolio_data"],
+            positions=data["positions"],
+            spot_balances=data["spot_balances"],
+            vaults=data["vaults"]
+        )
+
+        self.snapshots_taken += 1
+        return True
+
+    async def run_hourly_snapshot_async(self, batch_size: int = 20) -> Dict:
+        """
+        Async version of run_hourly_snapshot.
+        Processes whales in parallel batches.
+        """
+        import time
+        start_time = time.time()
+        logger.info("Starting hourly whale snapshot (async)...")
+
+        active_whales = self.storage.get_active_whale_addresses()
+        total = len(active_whales)
+
+        if total == 0:
+            logger.warning("No active whales to snapshot")
+            return {"total": 0, "success": 0, "failed": 0, "dropped": 0}
+
+        logger.info(f"Snapshotting {total} active whales in batches of {batch_size}...")
+
+        success = 0
+        failed = 0
+        dropped = 0
+
+        async with aiohttp.ClientSession() as session:
+            # Process in batches to avoid overwhelming the API
+            for i in range(0, total, batch_size):
+                batch = active_whales[i:i + batch_size]
+
+                # Process batch in parallel
+                tasks = [self.take_snapshot_async(addr, session) for addr in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                for addr, result in zip(batch, results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Error snapshotting {addr[:10]}...: {result}")
+                        failed += 1
+                        self.errors_count += 1
+                    elif result:
+                        success += 1
+                    else:
+                        # Either error or dropped below threshold
+                        if addr not in self.storage.get_active_whale_addresses():
+                            dropped += 1
+                        else:
+                            failed += 1
+
+                    self.addresses_processed += 1
+
+                # Progress logging
+                processed = min(i + batch_size, total)
+                logger.info(f"Progress: {processed}/{total} ({success} success, {failed} failed, {dropped} dropped)")
+
+                # Rate limit: wait between batches
+                await asyncio.sleep(1.0)
+
+        elapsed = time.time() - start_time
+
+        logger.info(
+            f"Hourly snapshot complete: "
+            f"{success}/{total} success, {failed} failed, {dropped} dropped "
+            f"({elapsed:.1f}s)"
+        )
+
+        return {
+            "total": total,
+            "success": success,
+            "failed": failed,
+            "dropped": dropped,
+            "elapsed_seconds": elapsed
+        }
+
+    async def check_inactive_whales_async(self) -> int:
+        """
+        Async version of check_inactive_whales.
+        Checks all inactive whales in parallel.
+        """
+        all_whales = self.storage.get_all_whale_addresses()
+        inactive = [w for w in all_whales if not w['is_active']]
+
+        if not inactive:
+            return 0
+
+        logger.info(f"Checking {len(inactive)} inactive whales (async)...")
+
+        async with aiohttp.ClientSession() as session:
+            tasks = [
+                self._get_portfolio_value_async(w['address'], session)
+                for w in inactive
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        reactivated = 0
+        for whale, result in zip(inactive, results):
+            if isinstance(result, Exception):
+                continue
+
+            portfolio_value = cast(float, result)
+            if portfolio_value >= self.min_portfolio_value:
+                self.storage.update_whale_status(whale['address'], is_active=True)
+                logger.info(f"Reactivated whale: {whale['address'][:10]}... (${portfolio_value:,.0f})")
+                reactivated += 1
+
+        if reactivated > 0:
+            logger.info(f"Reactivated {reactivated} whales")
+
+        return reactivated
 
     def get_summary(self) -> Dict:
         """

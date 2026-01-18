@@ -1,0 +1,189 @@
+{
+  "date": "2025-12-20",
+  "generated_at": "2026-01-18T18:51:03.868041",
+  "overview": {
+    "unique_whales": 155,
+    "unique_coins": 128,
+    "total_snapshots": 16968,
+    "avg_leverage": 9.76,
+    "total_margin_used": 837200555.263205,
+    "total_unrealized_pnl": 102202439.865677
+  },
+  "top_coins": [
+    {
+      "coin": "BTC",
+      "whale_count": 61,
+      "longs": 40,
+      "shorts": 21,
+      "notional_value": 226378737.25,
+      "avg_leverage": 25.46
+    },
+    {
+      "coin": "HYPE",
+      "whale_count": 80,
+      "longs": 51,
+      "shorts": 29,
+      "notional_value": 68900379.81,
+      "avg_leverage": 8.01
+    },
+    {
+      "coin": "ETH",
+      "whale_count": 58,
+      "longs": 23,
+      "shorts": 35,
+      "notional_value": 54864749.38,
+      "avg_leverage": 18.43
+    },
+    {
+      "coin": "SOL",
+      "whale_count": 34,
+      "longs": 6,
+      "shorts": 28,
+      "notional_value": 45785442.46,
+      "avg_leverage": 18.03
+    },
+    {
+      "coin": "XRP",
+      "whale_count": 26,
+      "longs": 3,
+      "shorts": 23,
+      "notional_value": 18314444.18,
+      "avg_leverage": 19.62
+    },
+    {
+      "coin": "FARTCOIN",
+      "whale_count": 20,
+      "longs": 8,
+      "shorts": 12,
+      "notional_value": 10459711.64,
+      "avg_leverage": 8.0
+    },
+    {
+      "coin": "PUMP",
+      "whale_count": 11,
+      "longs": 5,
+      "shorts": 6,
+      "notional_value": 9273223.86,
+      "avg_leverage": 6.45
+    },
+    {
+      "coin": "ADA",
+      "whale_count": 12,
+      "longs": 2,
+      "shorts": 10,
+      "notional_value": 7243681.47,
+      "avg_leverage": 10.0
+    },
+    {
+      "coin": "ZEC",
+      "whale_count": 28,
+      "longs": 12,
+      "shorts": 16,
+      "notional_value": 7129752.9,
+      "avg_leverage": 6.61
+    },
+    {
+      "coin": "UNI",
+      "whale_count": 14,
+      "longs": 9,
+      "shorts": 5,
+      "notional_value": 5750850.44,
+      "avg_leverage": 9.07
+    },
+    {
+      "coin": "DOGE",
+      "whale_count": 11,
+      "longs": 0,
+      "shorts": 11,
+      "notional_value": 5392264.76,
+      "avg_leverage": 10.0
+    },
+    {
+      "coin": "WLFI",
+      "whale_count": 14,
+      "longs": 7,
+      "shorts": 7,
+      "notional_value": 3810908.61,
+      "avg_leverage": 4.5
+    },
+    {
+      "coin": "XPL",
+      "whale_count": 14,
+      "longs": 6,
+      "shorts": 8,
+      "notional_value": 3351748.52,
+      "avg_leverage": 8.5
+    },
+    {
+      "coin": "LDO",
+      "whale_count": 8,
+      "longs": 3,
+      "shorts": 5,
+      "notional_value": 3026303.94,
+      "avg_leverage": 9.38
+    },
+    {
+      "coin": "ASTER",
+      "whale_count": 8,
+      "longs": 5,
+      "shorts": 3,
+      "notional_value": 2901055.8,
+      "avg_leverage": 4.12
+    }
+  ],
+  "sentiment": {
+    "long": {
+      "whale_count": 112,
+      "notional_value": 275896129.06,
+      "total_pnl": -12135498.32
+    },
+    "short": {
+      "whale_count": 99,
+      "notional_value": 236189867.27,
+      "total_pnl": 16257045.43
+    },
+    "long_ratio": 0.539,
+    "short_ratio": 0.461
+  },
+  "risk_overview": {
+    "high_leverage_positions": 143,
+    "very_high_leverage_positions": 54,
+    "biggest_losers": [
+      {
+        "address": "0x8af700ba841f30e0a3fcb0ee4c4a9d223e1efa05",
+        "coin": "BTC",
+        "side": "LONG",
+        "unrealized_pnl": -9476735.27,
+        "leverage": 40.0
+      },
+      {
+        "address": "0x0f991873aab3e14191978946d48f30f624ae9867",
+        "coin": "HYPE",
+        "side": "LONG",
+        "unrealized_pnl": -726140.28,
+        "leverage": 3.0
+      },
+      {
+        "address": "0x68349f6e14d75666b816bc4d930b53ccc9f02e4b",
+        "coin": "ASTER",
+        "side": "LONG",
+        "unrealized_pnl": -576116.47,
+        "leverage": 2.0
+      },
+      {
+        "address": "0x939f95036d2e7b6d7419ec072bf9d967352204d2",
+        "coin": "HYPE",
+        "side": "LONG",
+        "unrealized_pnl": -547718.14,
+        "leverage": 10.0
+      },
+      {
+        "address": "0xac26cf5f3c46b5e102048c65b977d2551b72a9c7",
+        "coin": "HYPE",
+        "side": "LONG",
+        "unrealized_pnl": -389056.06,
+        "leverage": 10.0
+      }
+    ]
+  }
+}

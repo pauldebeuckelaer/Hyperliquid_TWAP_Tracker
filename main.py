@@ -14,7 +14,7 @@ import json
 import threading
 import asyncio
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from logging_config import setup_logging, get_module_logger
 from api_client.hypurrscan_client import HypurrScanClient
@@ -24,6 +24,8 @@ from trackers.market_data_tracker import MarketDataTracker
 from coin_registry import init_dynamic_registry
 from storage import SQLiteBackend
 from trader_metrics_manager import WhaleMetricsManager
+
+from generators.daily_summary import generate_daily_summaries
 
 logger = get_module_logger(__name__)
 
@@ -120,13 +122,13 @@ class TWAPBot:
                 config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
             )
 
-            # Check if any inactive whales should be reactivated
-            reactivated = thread_manager.check_inactive_whales()
+            # Check if any inactive whales should be reactivated (async)
+            reactivated = asyncio.run(thread_manager.check_inactive_whales_async())
             if reactivated > 0:
                 logger.info(f"Reactivated {reactivated} whales")
 
-            # Just snapshot - no discovery (that happens in _on_new_addresses now)
-            result = thread_manager.run_hourly_snapshot()
+            # Run hourly snapshot (async)
+            result = asyncio.run(thread_manager.run_hourly_snapshot_async())
             logger.info(f"Hourly snapshot complete: {result['success']}/{result['total']} whales")
 
             thread_storage.close()
@@ -225,6 +227,18 @@ class TWAPBot:
                     logger.info("Running daily database cleanup...")
                     self._run_daily_cleanup()
                     last_cleanup_date = current_date
+
+                    # Generate previous day's summaries
+                    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+                    try:
+                        storage = SQLiteBackend(self.db_path)
+                        generate_daily_summaries(storage, yesterday)
+                        storage.close()
+                    except Exception as e:
+                        logger.error(f"Failed to generate daily summaries: {e}")
+
+                    last_cleanup_date = current_date
+
 
                 # Maintain consistent interval
                 elapsed = time.time() - loop_start
