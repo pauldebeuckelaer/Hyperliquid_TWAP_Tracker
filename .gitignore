@@ -12,3 +12,5 @@ logs/
 *.log
 __pycache__/
 *.pyc
+# Reports
+reports/
