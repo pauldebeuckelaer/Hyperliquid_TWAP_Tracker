@@ -194,8 +194,8 @@ class TWAPBot:
         last_cleanup_date = None  # Track daily cleanup
 
         # Whale snapshot every hour
-        #metrics_check_cycles = int(3600 / FETCH_INTERVAL) if self.hyperliquid_enabled else 0
-        metrics_check_cycles = 5
+        metrics_check_cycles = int(3600 / FETCH_INTERVAL) if self.hyperliquid_enabled else 0
+        #metrics_check_cycles = 5
 
         while self.running:
             try:
