@@ -123,9 +123,9 @@ class TWAPBot:
             )
 
             # Check if any inactive whales should be reactivated (async)
-            reactivated = asyncio.run(thread_manager.check_inactive_whales_async())
-            if reactivated > 0:
-                logger.info(f"Reactivated {reactivated} whales")
+            #reactivated = asyncio.run(thread_manager.check_inactive_whales_async())
+            #if reactivated > 0:
+                #logger.info(f"Reactivated {reactivated} whales")
 
             # Run hourly snapshot (async)
             result = asyncio.run(thread_manager.run_hourly_snapshot_async())
