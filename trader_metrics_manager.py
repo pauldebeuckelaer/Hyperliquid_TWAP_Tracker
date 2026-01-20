@@ -394,10 +394,17 @@ class WhaleMetricsManager:
             return False
 
         portfolio_value = data["portfolio_data"]["total_portfolio_value"]
+        perp_value = data["portfolio_data"]["perp_value"]
+        spot_value = data["portfolio_data"]["spot_value"]
+        vault_value = data["portfolio_data"]["vault_value"]
 
         # Check if still above threshold
         if portfolio_value < self.min_portfolio_value:
-            # Mark as inactive but keep in database
+            # SAFETY: All zeros means API failed, not empty portfolio
+            if perp_value == 0 and spot_value == 0 and vault_value == 0:
+                logger.warning(f"Skipping deactivation for {address[:10]}... - API returned all zeros")
+                return False
+
             self.storage.update_whale_status(address, is_active=False)
             logger.info(f"Whale dropped below threshold: {address[:10]}... (${portfolio_value:,.0f})")
             return False
@@ -826,30 +833,20 @@ class WhaleMetricsManager:
             return False
 
         portfolio_value = data["portfolio_data"]["total_portfolio_value"]
+        perp_value = data["portfolio_data"]["perp_value"]
+        spot_value = data["portfolio_data"]["spot_value"]
+        vault_value = data["portfolio_data"]["vault_value"]
 
         # Check if still above threshold
         if portfolio_value < self.min_portfolio_value:
+            # SANITY CHECK: If ALL values are 0, likely API failure - don't deactivate
+            if perp_value == 0 and spot_value == 0 and vault_value == 0:
+                logger.warning(f"Skipping deactivation for {address[:10]}... - likely API failure (all zeros)")
+                return False
+
             self.storage.update_whale_status(address, is_active=False)
             logger.info(f"Whale dropped below threshold: {address[:10]}... (${portfolio_value:,.0f})")
             return False
-
-        # Ensure whale is marked active
-        self.storage.update_whale_status(address, is_active=True)
-
-        # Save snapshot
-        snapshot_time = datetime.now().isoformat()
-
-        self.storage.save_whale_snapshot(
-            address=address,
-            snapshot_time=snapshot_time,
-            portfolio_data=data["portfolio_data"],
-            positions=data["positions"],
-            spot_balances=data["spot_balances"],
-            vaults=data["vaults"]
-        )
-
-        self.snapshots_taken += 1
-        return True
 
     async def run_hourly_snapshot_async(self, batch_size: int = 20) -> Dict:
         """

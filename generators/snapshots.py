@@ -275,9 +275,7 @@ def _get_activity_stats(storage, start_time: str, end_time: str) -> Dict:
 def _get_address_stats(storage, start_time: str, end_time: str) -> Dict:
     """Calculate address statistics."""
     storage.cursor.execute("""
-        SELECT 
-            SUM(unique_addresses),
-            AVG(unique_addresses)
+        SELECT AVG(unique_addresses)
         FROM snapshots 
         WHERE timestamp BETWEEN ? AND ?
     """, (start_time, end_time))
@@ -285,6 +283,5 @@ def _get_address_stats(storage, start_time: str, end_time: str) -> Dict:
     row = storage.cursor.fetchone()
 
     return {
-        "total_unique": row[0] or 0,
-        "avg_per_snapshot": round(row[1] or 0, 1)
+        "avg_per_snapshot": round(row[0] or 0, 1)
     }
