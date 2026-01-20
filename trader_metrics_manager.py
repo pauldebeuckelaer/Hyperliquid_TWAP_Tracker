@@ -864,7 +864,7 @@ class WhaleMetricsManager:
             logger.warning("No active whales to snapshot")
             return {"total": 0, "success": 0, "failed": 0, "dropped": 0}
 
-        logger.info(f"Snapshotting {total} active whales sequentially (0.3s delay)...")
+        logger.info(f"Snapshotting {total} active whales sequentially (2s delay)...")
 
         success = 0
         failed = 0
@@ -898,7 +898,7 @@ class WhaleMetricsManager:
                         logger.info(f"Progress: {i + 1}/{total} ({success} success, {failed} failed) - ETA: {eta:.0f}s")
 
                     # Rate limit: wait between each call
-                    await asyncio.sleep(0.6)
+                    await asyncio.sleep(2)
 
                 except Exception as e:
                     logger.error(f"Error snapshotting {addr[:10]}...: {e}")
