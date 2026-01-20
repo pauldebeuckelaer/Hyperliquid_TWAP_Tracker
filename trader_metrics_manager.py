@@ -848,6 +848,24 @@ class WhaleMetricsManager:
             logger.info(f"Whale dropped below threshold: {address[:10]}... (${portfolio_value:,.0f})")
             return False
 
+        # Ensure whale is marked active
+        self.storage.update_whale_status(address, is_active=True)
+
+        # Save snapshot
+        snapshot_time = datetime.now().isoformat()
+
+        self.storage.save_whale_snapshot(
+            address=address,
+            snapshot_time=snapshot_time,
+            portfolio_data=data["portfolio_data"],
+            positions=data["positions"],
+            spot_balances=data["spot_balances"],
+            vaults=data["vaults"]
+        )
+
+        self.snapshots_taken += 1
+        return True
+
     async def run_hourly_snapshot_async(self, batch_size: int = 20) -> Dict:
         """
         Async version of run_hourly_snapshot.
