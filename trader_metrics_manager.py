@@ -898,7 +898,7 @@ class WhaleMetricsManager:
                         logger.info(f"Progress: {i + 1}/{total} ({success} success, {failed} failed) - ETA: {eta:.0f}s")
 
                     # Rate limit: wait between each call
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.6)
 
                 except Exception as e:
                     logger.error(f"Error snapshotting {addr[:10]}...: {e}")
