@@ -1177,6 +1177,7 @@ class HyperliquidClient:
                             logger.error(f"❌ HTTP error for {request_type}: {response.status} - {text}")
                             if attempt == retry_count:
                                 return None
+                            await asyncio.sleep(2)
                             continue
 
                         result = await response.json()
