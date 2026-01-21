@@ -866,14 +866,18 @@ class WhaleMetricsManager:
         self.snapshots_taken += 1
         return True
 
-    async def run_hourly_snapshot_async(self, batch_size: int = 20) -> Dict:
+    async def run_hourly_snapshot_async(self, batch_size: int = 10, batch_delay: float = 3.0) -> Dict:
         """
         Async version of run_hourly_snapshot.
-        Processes whales sequentially with delays to avoid rate limiting.
+        Processes whales in batches to balance speed vs rate limiting.
+
+        Args:
+            batch_size: Number of whales to process in parallel (default 10)
+            batch_delay: Seconds to wait between batches (default 3.0)
         """
         import time
         start_time = time.time()
-        logger.info("Starting hourly whale snapshot (async)...")
+        logger.info(f"Starting hourly whale snapshot (async, batch_size={batch_size})...")
 
         active_whales = self.storage.get_active_whale_addresses()
         total = len(active_whales)
@@ -882,17 +886,22 @@ class WhaleMetricsManager:
             logger.warning("No active whales to snapshot")
             return {"total": 0, "success": 0, "failed": 0, "dropped": 0}
 
-        logger.info(f"Snapshotting {total} active whales sequentially (2s delay)...")
+        logger.info(f"Snapshotting {total} active whales in batches of {batch_size}...")
 
         success = 0
         failed = 0
         dropped = 0
 
         async with aiohttp.ClientSession() as session:
-            for i, addr in enumerate(active_whales):
-                try:
-                    result = await self.take_snapshot_async(addr, session)
+            for i in range(0, total, batch_size):
+                batch = active_whales[i:i + batch_size]
 
+                # Process batch in parallel
+                tasks = [self.take_snapshot_async(addr, session) for addr in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Process results
+                for addr, result in zip(batch, results):
                     if isinstance(result, Exception):
                         logger.error(f"Error snapshotting {addr[:10]}...: {result}")
                         failed += 1
@@ -900,28 +909,25 @@ class WhaleMetricsManager:
                     elif result:
                         success += 1
                     else:
-                        # Either error or dropped below threshold
+                        # Check if whale was dropped (deactivated)
                         if addr not in self.storage.get_active_whale_addresses():
                             dropped += 1
                         else:
                             failed += 1
 
-                    self.addresses_processed += 1
+                self.addresses_processed += len(batch)
 
-                    # Progress logging every 100 addresses
-                    if (i + 1) % 100 == 0:
-                        elapsed_so_far = time.time() - start_time
-                        rate = (i + 1) / elapsed_so_far
-                        eta = (total - i - 1) / rate if rate > 0 else 0
-                        logger.info(f"Progress: {i + 1}/{total} ({success} success, {failed} failed) - ETA: {eta:.0f}s")
+                # Progress logging every 100 addresses
+                processed = i + len(batch)
+                if processed % 100 < batch_size:
+                    elapsed_so_far = time.time() - start_time
+                    rate = processed / elapsed_so_far if elapsed_so_far > 0 else 0
+                    eta = (total - processed) / rate if rate > 0 else 0
+                    logger.info(f"Progress: {processed}/{total} ({success} success, {failed} failed) - ETA: {eta:.0f}s")
 
-                    # Rate limit: wait between each call
-                    await asyncio.sleep(2)
-
-                except Exception as e:
-                    logger.error(f"Error snapshotting {addr[:10]}...: {e}")
-                    failed += 1
-                    self.errors_count += 1
+                # Delay between batches (skip after last batch)
+                if i + batch_size < total:
+                    await asyncio.sleep(batch_delay)
 
         elapsed = time.time() - start_time
 
