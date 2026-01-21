@@ -557,6 +557,16 @@ class WhaleMetricsManager:
             return_exceptions=True  # Don't fail if one call fails
         )
 
+        # Log API failures
+        if isinstance(state_result, Exception):
+            logger.debug(f"Perp API failed for {address}: {state_result}")
+        if isinstance(spot_result, Exception):
+            logger.debug(f"Spot API failed for {address}: {spot_result}")
+        if isinstance(vault_result, Exception):
+            logger.debug(f"Vault API failed for {address}: {vault_result}")
+
+
+
         # Process perp value
         if state_result and not isinstance(state_result, Exception):
             try:
@@ -830,6 +840,7 @@ class WhaleMetricsManager:
         """
         data = await self.fetch_whale_data_async(address, session)
         if not data:
+            logger.warning(f"fetch_whale_data_async returned None for {address}")
             return False
 
         portfolio_value = data["portfolio_data"]["total_portfolio_value"]
@@ -841,11 +852,11 @@ class WhaleMetricsManager:
         if portfolio_value < self.min_portfolio_value:
             # SANITY CHECK: If ALL values are 0, likely API failure - don't deactivate
             if perp_value == 0 and spot_value == 0 and vault_value == 0:
-                logger.warning(f"Skipping deactivation for {address[:10]}... - likely API failure (all zeros)")
+                logger.warning(f"Skipping deactivation for {address} - likely API failure (all zeros)")
                 return False
 
             self.storage.update_whale_status(address, is_active=False)
-            logger.info(f"Whale dropped below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+            logger.info(f"Whale dropped below threshold: {address} (${portfolio_value:,.0f})")
             return False
 
         # Ensure whale is marked active
