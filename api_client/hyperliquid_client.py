@@ -1202,6 +1202,7 @@ class HyperliquidClient:
             if close_session:
                 await session.close()
 
+        logger.error(f"❌ _make_request_async fell through to final return None for {request_type}")
         return None
 
     async def get_user_state_async(

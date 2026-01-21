@@ -34,7 +34,7 @@
       },
       {
         "path": "logs/main.log",
-        "modules": ["main", "__main__", "trader_metrics_manager"]
+        "modules": ["main", "__main__", "trader_metrics_manager", "api_client.hyperliquid_client"]
       }
     ],
     "modules": {
