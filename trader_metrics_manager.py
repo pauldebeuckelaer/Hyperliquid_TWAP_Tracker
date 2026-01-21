@@ -866,7 +866,7 @@ class WhaleMetricsManager:
         self.snapshots_taken += 1
         return True
 
-    async def run_hourly_snapshot_async(self, batch_size: int = 10, batch_delay: float = 3.0) -> Dict:
+    async def run_hourly_snapshot_async(self, batch_size: int = 3, batch_delay: float = 5.0) -> Dict:
         """
         Async version of run_hourly_snapshot.
         Processes whales in batches to balance speed vs rate limiting.
