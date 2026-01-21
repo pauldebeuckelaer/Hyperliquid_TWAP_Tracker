@@ -725,6 +725,22 @@ class WhaleMetricsManager:
                 return_exceptions=True
             )
 
+            # DEBUG: Log what we got back
+            if isinstance(state_result, Exception):
+                logger.warning(f"Perp API EXCEPTION for {address}: {state_result}")
+            elif not state_result:
+                logger.warning(f"Perp API EMPTY for {address}: {state_result}")
+            else:
+                margin_summary = state_result.get("marginSummary", {})
+                account_value = margin_summary.get("accountValue", 0)
+                logger.debug(f"Perp API OK for {address}: accountValue={account_value}")
+
+            if isinstance(spot_result, Exception):
+                logger.warning(f"Spot API EXCEPTION for {address}: {spot_result}")
+
+            if isinstance(vault_result, Exception):
+                logger.warning(f"Vault API EXCEPTION for {address}: {vault_result}")
+
             # 1. Process perp positions
             if state_result and not isinstance(state_result, Exception):
                 try:
