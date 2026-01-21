@@ -6,13 +6,14 @@ Tracks TWAP orders for ALL coins on Hyperliquid
 Single fetch, single tracker, 1-minute snapshots
 NOW WITH SQLITE STORAGE (including trader metrics)
 NOW WITH MARKET DATA SNAPSHOTS
+REFACTORED: Incremental whale snapshots (no threading)
 """
 import time
 import signal
 import sys
 import json
-import threading
 import asyncio
+import aiohttp
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
@@ -32,6 +33,10 @@ logger = get_module_logger(__name__)
 # Timing - single interval for everything
 FETCH_INTERVAL = 60  # All coins every 60 seconds
 
+# Whale snapshot settings
+WHALES_PER_CYCLE = 20  # How many whales to snapshot each cycle
+WHALE_DELAY = 1.0  # Seconds between each whale API call
+
 
 class TWAPBot:
     """TWAP tracker for all coins on Hyperliquid"""
@@ -41,10 +46,15 @@ class TWAPBot:
 
         self.config = config
         self.running = False
-        self._snapshot_running = False
         self.db_path = Path('data/twap.db')
 
         self._pending_address_checks: set = set()
+
+        # Whale snapshot state (incremental)
+        self._whale_snapshot_index = 0
+        self._whale_snapshot_active_list = []
+        self._whale_snapshot_stats = {"success": 0, "failed": 0, "dropped": 0}
+        self._whale_snapshot_start_time = None
 
         # HypurrScan client for TWAP data
         self.hypurr_client = HypurrScanClient(config.get('hypurr_data', {}))
@@ -111,31 +121,116 @@ class TWAPBot:
             logger.error(f"Error fetching data: {e}")
             logger.exception(e)
 
-    def _run_whale_snapshot(self):
-        """Run whale snapshot in background thread"""
-        try:
-            # Create thread-local connection
-            thread_storage = SQLiteBackend(self.db_path)
-            thread_manager = WhaleMetricsManager(
-                self.hyperliquid_client,
-                thread_storage,
-                config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
+    def _start_new_whale_snapshot_cycle(self):
+        """Initialize a new whale snapshot cycle"""
+        storage = SQLiteBackend(self.db_path)
+        self._whale_snapshot_active_list = storage.get_active_whale_addresses()
+        storage.close()
+
+        self._whale_snapshot_index = 0
+        self._whale_snapshot_stats = {"success": 0, "failed": 0, "dropped": 0}
+        self._whale_snapshot_start_time = time.time()
+
+        total = len(self._whale_snapshot_active_list)
+        cycles_needed = (total + WHALES_PER_CYCLE - 1) // WHALES_PER_CYCLE
+        logger.info(f"Starting whale snapshot cycle: {total} whales, ~{cycles_needed} cycles to complete")
+
+    def _run_whale_snapshot_batch(self):
+        """
+        Process a batch of whales (called each main loop cycle).
+        Returns True if snapshot cycle is complete, False if more work remains.
+        """
+        if not self._whale_snapshot_active_list:
+            self._start_new_whale_snapshot_cycle()
+            if not self._whale_snapshot_active_list:
+                logger.warning("No active whales to snapshot")
+                return True
+
+        total = len(self._whale_snapshot_active_list)
+        start_idx = self._whale_snapshot_index
+        end_idx = min(start_idx + WHALES_PER_CYCLE, total)
+
+        batch = self._whale_snapshot_active_list[start_idx:end_idx]
+
+        if not batch:
+            # Cycle complete
+            elapsed = time.time() - self._whale_snapshot_start_time
+            stats = self._whale_snapshot_stats
+            logger.info(
+                f"Whale snapshot cycle complete: "
+                f"{stats['success']}/{total} success, {stats['failed']} failed, {stats['dropped']} dropped "
+                f"({elapsed:.1f}s total)"
             )
+            # Reset for next cycle
+            self._whale_snapshot_active_list = []
+            self._whale_snapshot_index = 0
+            return True
 
-            # Check if any inactive whales should be reactivated (async)
-            #reactivated = asyncio.run(thread_manager.check_inactive_whales_async())
-            #if reactivated > 0:
-                #logger.info(f"Reactivated {reactivated} whales")
+        logger.debug(f"Snapshotting whales {start_idx + 1}-{end_idx}/{total}...")
 
-            # Run hourly snapshot (async)
-            result = asyncio.run(thread_manager.run_hourly_snapshot_async())
-            logger.info(f"Hourly snapshot complete: {result['success']}/{result['total']} whales")
+        # Run async batch
+        try:
+            batch_stats = asyncio.run(self._snapshot_batch_async(batch))
 
-            thread_storage.close()
+            self._whale_snapshot_stats["success"] += batch_stats["success"]
+            self._whale_snapshot_stats["failed"] += batch_stats["failed"]
+            self._whale_snapshot_stats["dropped"] += batch_stats["dropped"]
+
+            self._whale_snapshot_index = end_idx
+
+            # Progress logging every 100 whales
+            if end_idx % 100 < WHALES_PER_CYCLE:
+                elapsed = time.time() - self._whale_snapshot_start_time
+                stats = self._whale_snapshot_stats
+                remaining = total - end_idx
+                rate = end_idx / elapsed if elapsed > 0 else 0
+                eta = remaining / rate if rate > 0 else 0
+                logger.info(
+                    f"Whale snapshot progress: {end_idx}/{total} "
+                    f"({stats['success']} success, {stats['failed']} failed) - ETA: {eta:.0f}s"
+                )
+
         except Exception as e:
-            logger.error(f"Snapshot error: {e}")
-        finally:
-            self._snapshot_running = False
+            logger.error(f"Error in whale snapshot batch: {e}")
+            self._whale_snapshot_index = end_idx  # Skip this batch, continue
+
+        return False
+
+    async def _snapshot_batch_async(self, addresses: list) -> dict:
+        """Snapshot a batch of whale addresses with delay between each"""
+        stats = {"success": 0, "failed": 0, "dropped": 0}
+
+        storage = SQLiteBackend(self.db_path)
+        manager = WhaleMetricsManager(
+            self.hyperliquid_client,
+            storage,
+            config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
+        )
+
+        async with aiohttp.ClientSession() as session:
+            for i, address in enumerate(addresses):
+                try:
+                    result = await manager.take_snapshot_async(address, session)
+
+                    if result:
+                        stats["success"] += 1
+                    else:
+                        # Check if dropped (deactivated)
+                        if address not in storage.get_active_whale_addresses():
+                            stats["dropped"] += 1
+                        else:
+                            stats["failed"] += 1
+
+                except Exception as e:
+                    logger.error(f"Error snapshotting {address}: {e}")
+                    stats["failed"] += 1
+
+                # Delay between whales (skip after last one)
+                if i < len(addresses) - 1:
+                    await asyncio.sleep(WHALE_DELAY)
+
+        storage.close()
+        return stats
 
     def _on_new_addresses(self, addresses: set):
         """Collect new addresses for async whale check after loop completes"""
@@ -193,10 +288,6 @@ class TWAPBot:
         loop_count = 0
         last_cleanup_date = None  # Track daily cleanup
 
-        # Whale snapshot every hour
-        #metrics_check_cycles = int(3600 / FETCH_INTERVAL) if self.hyperliquid_enabled else 0
-        metrics_check_cycles = 5
-
         while self.running:
             try:
                 loop_start = time.time()
@@ -205,7 +296,7 @@ class TWAPBot:
                 # Fetch all coins (single API call)
                 self._fetch_all_coins()
 
-                # NEW: Process pending whale checks (async, all in parallel)
+                # Process pending whale checks (async, all in parallel)
                 if self.hyperliquid_enabled:
                     self._process_pending_addresses()
 
@@ -213,14 +304,9 @@ class TWAPBot:
                 if self.market_tracker:
                     self.market_tracker.take_snapshot()
 
-                # Periodic whale snapshots (hourly, in background thread)
-                if self.hyperliquid_enabled and metrics_check_cycles > 0 and loop_count % metrics_check_cycles == 0:
-                    if not self._snapshot_running:
-                        self._snapshot_running = True
-                        logger.info("Starting whale snapshot in background...")
-                        threading.Thread(target=self._run_whale_snapshot, daemon=True).start()
-                    else:
-                        logger.warning("Snapshot still running, skipping this cycle")
+                # Incremental whale snapshots (every cycle, no threading!)
+                if self.hyperliquid_enabled:
+                    self._run_whale_snapshot_batch()
 
                 # Daily cleanup (runs once when date changes)
                 current_date = datetime.now(timezone.utc).date()
@@ -237,9 +323,6 @@ class TWAPBot:
                         storage.close()
                     except Exception as e:
                         logger.error(f"Failed to generate daily summaries: {e}")
-
-                    last_cleanup_date = current_date
-
 
                 # Maintain consistent interval
                 elapsed = time.time() - loop_start
@@ -289,6 +372,9 @@ class TWAPBot:
         if self.market_tracker:
             market_stats = self.market_tracker.get_stats()
             logger.info(f"Market snapshots taken: {market_stats['snapshot_count']}")
+
+        # Whale snapshot stats
+        logger.info(f"Whale snapshot stats: {self._whale_snapshot_stats}")
 
         logger.info("=" * 70)
 
