@@ -854,6 +854,21 @@ class WhaleMetricsManager:
         """
         Async version of take_snapshot.
         """
+        # Skip if snapshotted within last 45 minutes
+        self.storage.cursor.execute("""
+            SELECT snapshot_time FROM portfolio_snapshots 
+            WHERE address = ? 
+            ORDER BY snapshot_time DESC LIMIT 1
+        """, (address,))
+        last_snap = self.storage.cursor.fetchone()
+
+        if last_snap:
+            last_time = datetime.fromisoformat(last_snap[0])
+            elapsed = (datetime.now() - last_time).total_seconds()
+            if elapsed < 2700:  # 45 minutes
+                logger.debug(f"Skipping {address[:10]}... - snapshotted {elapsed / 60:.0f}m ago")
+                return True  # Return True so it's not counted as failed
+
         data = await self.fetch_whale_data_async(address, session)
         if not data:
             logger.warning(f"fetch_whale_data_async returned None for {address}")
@@ -863,6 +878,31 @@ class WhaleMetricsManager:
         perp_value = data["portfolio_data"]["perp_value"]
         spot_value = data["portfolio_data"]["spot_value"]
         vault_value = data["portfolio_data"]["vault_value"]
+
+        # Sanity check: detect spot API failure (spot vanishes but perp unchanged)
+        self.storage.cursor.execute("""
+                SELECT spot_value, perp_value
+                FROM portfolio_snapshots 
+                WHERE address = ? 
+                ORDER BY snapshot_time DESC LIMIT 1
+            """, (address,))
+        prev_snap = self.storage.cursor.fetchone()
+
+        if prev_snap:
+            prev_spot, prev_vault, prev_perp = prev_snap
+            if prev_perp > 0:
+                perp_change_pct = abs(perp_value - prev_perp) / prev_perp
+                if perp_change_pct < 0.05:  # Perp unchanged = likely API failure
+                    # Spot vanished
+                    if prev_spot > 100000 and spot_value < 1000:
+                        logger.warning(
+                            f"Skipping snapshot for {address[:10]}... - likely spot API failure (${prev_spot:,.0f} → ${spot_value:,.0f})")
+                        return True
+                    # Vault vanished
+                    if prev_vault > 100000 and vault_value < 1000:
+                        logger.warning(
+                            f"Skipping snapshot for {address[:10]}... - likely vault API failure (${prev_vault:,.0f} → ${vault_value:,.0f})")
+                        return True
 
         # Check if still above threshold
         if portfolio_value < self.min_portfolio_value:

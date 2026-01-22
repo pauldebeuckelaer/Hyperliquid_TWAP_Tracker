@@ -124,6 +124,26 @@ class TWAPBot:
     def _start_new_whale_snapshot_cycle(self):
         """Initialize a new whale snapshot cycle"""
         storage = SQLiteBackend(self.db_path)
+
+        # CLEANUP: Deactivate whales with no snapshot in 48+ hours (no API calls)
+        storage.cursor.execute("""
+            UPDATE whale_addresses 
+            SET is_active = 0, last_updated = ?
+            WHERE is_active = 1 
+            AND address IN (
+                SELECT w.address 
+                FROM whale_addresses w
+                LEFT JOIN portfolio_snapshots p ON w.address = p.address
+                GROUP BY w.address
+                HAVING MAX(p.snapshot_time) < datetime('now', '-48 hours') 
+                   OR MAX(p.snapshot_time) IS NULL
+            )
+        """, (datetime.now().isoformat(),))
+        deactivated = storage.cursor.rowcount
+        if deactivated > 0:
+            storage.conn.commit()
+            logger.info(f"Deactivated {deactivated} stale whales (no snapshot in 48h)")
+
         self._whale_snapshot_active_list = storage.get_active_whale_addresses()
         storage.close()
 
