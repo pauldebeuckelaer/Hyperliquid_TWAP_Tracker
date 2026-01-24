@@ -865,7 +865,7 @@ class WhaleMetricsManager:
         if last_snap:
             last_time = datetime.fromisoformat(last_snap[0])
             elapsed = (datetime.now() - last_time).total_seconds()
-            if elapsed < 2700:  # 45 minutes
+            if elapsed < 3600:  # 60 minutes
                 logger.debug(f"Skipping {address[:10]}... - snapshotted {elapsed / 60:.0f}m ago")
                 return True  # Return True so it's not counted as failed
 
@@ -881,7 +881,7 @@ class WhaleMetricsManager:
 
         # Sanity check: detect spot API failure (spot vanishes but perp unchanged)
         self.storage.cursor.execute("""
-                SELECT spot_value, perp_value
+                SELECT spot_value, vault_value, perp_value
                 FROM portfolio_snapshots 
                 WHERE address = ? 
                 ORDER BY snapshot_time DESC LIMIT 1
@@ -933,7 +933,7 @@ class WhaleMetricsManager:
         self.snapshots_taken += 1
         return True
 
-    async def run_hourly_snapshot_async(self, batch_size: int = 3, batch_delay: float = 5.0) -> Dict:
+    async def run_hourly_snapshot_async(self, batch_size: int = 1, batch_delay: float = 10.0) -> Dict:
         """
         Async version of run_hourly_snapshot.
         Processes whales in batches to balance speed vs rate limiting.
