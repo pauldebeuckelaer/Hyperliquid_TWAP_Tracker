@@ -325,8 +325,8 @@ class TWAPBot:
                     self.market_tracker.take_snapshot()
 
                 # Incremental whale snapshots (every cycle, no threading!)
-                if self.hyperliquid_enabled:
-                    self._run_whale_snapshot_batch()
+                #if self.hyperliquid_enabled:
+                    #self._run_whale_snapshot_batch()
 
                 # Daily cleanup (runs once when date changes)
                 current_date = datetime.now(timezone.utc).date()
