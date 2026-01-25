@@ -13,6 +13,10 @@ Single tracker instance managing multiple coins with:
 - Unified address history (stored in SQLite)
 - Full depth tracking (new/completed/canceled orders, state changes)
 - Progress tracking (elapsed time, progress %, time remaining)
+
+EVENT-DRIVEN CALLBACKS:
+- on_order_start: Called when new TWAP order detected
+- on_order_end: Called when order completes or cancels
 """
 import logging
 from datetime import datetime
@@ -118,7 +122,12 @@ class AllCoinsStateTracker:
         # Load addresses from database
         self.all_addresses_seen: Set[str] = set(self.db.get_all_addresses())
 
+        # Legacy callback (for address discovery)
         self.on_new_addresses = None
+
+        # NEW: Event-driven snapshot callbacks
+        self.on_order_start = None  # Called with (address, symbol, order_dict)
+        self.on_order_end = None  # Called with (address, symbol, order_dict, end_type)
 
         logger.info("=" * 70)
         logger.info("All Coins TWAP State Tracker Initialized (SQLite)")
@@ -266,6 +275,45 @@ class AllCoinsStateTracker:
 
             # Save to SQLite (replaces _save_coin_to_json)
             self._save_to_sqlite(symbol, coin_state, new_snapshot, changes)
+
+            # =========================================================
+            # EVENT-DRIVEN CALLBACKS - Fire after detecting changes
+            # =========================================================
+
+            # Fire on_order_start for new orders
+            if changes['new_orders'] and self.on_order_start:
+                for order in changes['new_orders']:
+                    try:
+                        self.on_order_start(
+                            order.full_address,
+                            symbol,
+                            self._order_to_dict(order)
+                        )
+                    except Exception as e:
+                        logger.error(f"Error in on_order_start callback: {e}")
+
+            # Fire on_order_end for completed/canceled orders
+            if self.on_order_end:
+                # Completed orders
+                for order in changes['completed_orders']:
+                    try:
+                        self.on_order_end(
+                            order.full_address,
+                            symbol,
+                            self._order_to_dict(order),
+                            'completed'
+                        )
+                    except Exception as e:
+                        logger.error(f"Error in on_order_end callback (completed): {e}")
+
+                # Canceled orders
+                for order in changes['canceled_orders']:
+                    try:
+                        addr = order['full_address'] if isinstance(order, dict) else order.full_address
+                        order_dict = order if isinstance(order, dict) else self._order_to_dict(order)
+                        self.on_order_end(addr, symbol, order_dict, 'canceled')
+                    except Exception as e:
+                        logger.error(f"Error in on_order_end callback (canceled): {e}")
 
         # Batch commit all coin snapshots (single commit instead of per-coin)
         try:

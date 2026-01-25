@@ -6,7 +6,11 @@ Tracks TWAP orders for ALL coins on Hyperliquid
 Single fetch, single tracker, 1-minute snapshots
 NOW WITH SQLITE STORAGE (including trader metrics)
 NOW WITH MARKET DATA SNAPSHOTS
-REFACTORED: Incremental whale snapshots (no threading)
+
+REFACTORED: Event-driven whale snapshots
+- Snapshot on order START (if portfolio >= $50K)
+- Snapshot on order END (completed/canceled)
+- No more hourly polling of all whales
 """
 import time
 import signal
@@ -34,8 +38,7 @@ logger = get_module_logger(__name__)
 FETCH_INTERVAL = 60  # All coins every 60 seconds
 
 # Whale snapshot settings
-WHALES_PER_CYCLE = 20  # How many whales to snapshot each cycle
-WHALE_DELAY = 1.0  # Seconds between each whale API call
+WHALE_MIN_PORTFOLIO = 50000  # Minimum portfolio value to snapshot
 
 
 class TWAPBot:
@@ -48,13 +51,21 @@ class TWAPBot:
         self.running = False
         self.db_path = Path('data/twap.db')
 
-        self._pending_address_checks: set = set()
+        # Event-driven snapshot queues
+        self._pending_order_starts: list = []  # [(address, symbol, order_dict), ...]
+        self._pending_order_ends: list = []  # [(address, symbol, order_dict, end_type), ...]
 
-        # Whale snapshot state (incremental)
-        self._whale_snapshot_index = 0
-        self._whale_snapshot_active_list = []
-        self._whale_snapshot_stats = {"success": 0, "failed": 0, "dropped": 0}
-        self._whale_snapshot_start_time = None
+        # Skip first cycle (existing orders appear as "new" on startup)
+        self._first_cycle = True
+
+        # Stats for event-driven snapshots
+        self._snapshot_stats = {
+            "start_snapshots": 0,
+            "end_snapshots": 0,
+            "below_threshold": 0,
+            "skipped_warmup": 0,
+            "errors": 0
+        }
 
         # HypurrScan client for TWAP data
         self.hypurr_client = HypurrScanClient(config.get('hypurr_data', {}))
@@ -72,7 +83,10 @@ class TWAPBot:
             self.hyperliquid_client = HyperliquidClient(hyperliquid_config)
             init_dynamic_registry(self.hyperliquid_client)
             logger.info("Hyperliquid client initialized")
-            self.tracker.on_new_addresses = self._on_new_addresses
+
+            # Wire up event-driven callbacks
+            self.tracker.on_order_start = self._on_order_start
+            self.tracker.on_order_end = self._on_order_end
 
             # Market data tracker
             self.market_tracker = MarketDataTracker(self.hyperliquid_client, self.db_path)
@@ -85,7 +99,156 @@ class TWAPBot:
         signal.signal(signal.SIGINT, self._shutdown_handler)
         signal.signal(signal.SIGTERM, self._shutdown_handler)
 
-        logger.info("TWAP Tracker initialized")
+        logger.info("TWAP Tracker initialized (event-driven snapshots)")
+
+    def _on_order_start(self, address: str, symbol: str, order: dict):
+        """Queue order start for async processing"""
+        self._pending_order_starts.append((address, symbol, order))
+        logger.debug(f"Queued order START: {address[:10]}... {symbol} {order.get('side')}")
+
+    def _on_order_end(self, address: str, symbol: str, order: dict, end_type: str):
+        """Queue order end for async processing"""
+        self._pending_order_ends.append((address, symbol, order, end_type))
+        logger.debug(f"Queued order END: {address[:10]}... {symbol} ({end_type})")
+
+    async def _process_order_events(self):
+        """
+        Process queued order events - snapshot whales only.
+
+        Flow:
+        - Order START: Check portfolio >= $50K, then snapshot
+        - Order END: Snapshot if we snapshotted at start (tracked whale)
+        """
+        if not self._pending_order_starts and not self._pending_order_ends:
+            return
+
+        starts = self._pending_order_starts.copy()
+        ends = self._pending_order_ends.copy()
+        self._pending_order_starts.clear()
+        self._pending_order_ends.clear()
+
+        # Skip first cycle - existing orders appear as "new" on startup
+        if self._first_cycle:
+            self._first_cycle = False
+            self._snapshot_stats["skipped_warmup"] = len(starts)
+            logger.info(
+                f"⏭️  Warm-up: Skipping {len(starts)} order starts (existing orders). "
+                f"Processing {len(ends)} order ends."
+            )
+            starts = []  # Clear starts, but still process ends
+
+        if not starts and not ends:
+            return
+
+        # Dedupe addresses BEFORE API calls (save API calls)
+        # Keep first occurrence per address
+        unique_starts = {}
+        for address, symbol, order in starts:
+            if address not in unique_starts:
+                unique_starts[address] = (symbol, order)
+
+        unique_ends = {}
+        for address, symbol, order, end_type in ends:
+            if address not in unique_ends:
+                unique_ends[address] = (symbol, order, end_type)
+
+        if starts:
+            logger.info(
+                f"Processing {len(unique_starts)} unique addresses "
+                f"(from {len(starts)} order starts), {len(unique_ends)} order ends"
+            )
+        elif ends:
+            logger.info(f"Processing {len(unique_ends)} order ends")
+
+        storage = SQLiteBackend(self.db_path)
+        manager = WhaleMetricsManager(
+            self.hyperliquid_client,
+            storage,
+            config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
+        )
+
+        # Track which addresses we've snapshotted this cycle (to avoid duplicates)
+        snapshotted_this_cycle = set()
+
+        async with aiohttp.ClientSession() as session:
+            # =========================================================
+            # Process ORDER STARTS - check if whale, then snapshot
+            # =========================================================
+            for address, (symbol, order) in unique_starts.items():
+                if address in snapshotted_this_cycle:
+                    continue
+
+                try:
+                    # Check portfolio value
+                    portfolio_value = await manager._get_portfolio_value_async(address, session)
+
+                    if portfolio_value >= WHALE_MIN_PORTFOLIO:
+                        # Take snapshot
+                        success = await manager.take_snapshot_async(address, session)
+
+                        if success:
+                            snapshotted_this_cycle.add(address)
+                            self._snapshot_stats["start_snapshots"] += 1
+                            logger.info(
+                                f"📸 START: {address[:10]}... ${portfolio_value:,.0f} | "
+                                f"{symbol} {order.get('side')} {order.get('size'):,.0f} "
+                                f"({order.get('duration_minutes')}m)"
+                            )
+                        else:
+                            self._snapshot_stats["errors"] += 1
+                            logger.warning(f"Failed to snapshot {address[:10]}...")
+                    else:
+                        self._snapshot_stats["below_threshold"] += 1
+                        logger.debug(
+                            f"Below threshold: {address[:10]}... ${portfolio_value:,.0f} < ${WHALE_MIN_PORTFOLIO:,}"
+                        )
+
+                except Exception as e:
+                    self._snapshot_stats["errors"] += 1
+                    logger.error(f"Error processing order start {address[:10]}...: {e}")
+
+            # =========================================================
+            # Process ORDER ENDS - snapshot if already tracked
+            # =========================================================
+            # Get current active whales (addresses we've snapshotted before)
+            active_whales = set(storage.get_active_whale_addresses())
+
+            for address, (symbol, order, end_type) in unique_ends.items():
+                if address in snapshotted_this_cycle:
+                    continue
+
+                try:
+                    # Only snapshot if we already know this is a whale
+                    # (means we snapshotted them at order start)
+                    if address in active_whales:
+                        success = await manager.take_snapshot_async(address, session)
+
+                        if success:
+                            snapshotted_this_cycle.add(address)
+                            self._snapshot_stats["end_snapshots"] += 1
+
+                            emoji = "✅" if end_type == "completed" else "❌"
+                            logger.info(
+                                f"📸 END {emoji}: {address[:10]}... | "
+                                f"{symbol} {order.get('side')} {end_type}"
+                            )
+                        else:
+                            self._snapshot_stats["errors"] += 1
+                    else:
+                        logger.debug(f"Skipping END snapshot for non-whale: {address[:10]}...")
+
+                except Exception as e:
+                    self._snapshot_stats["errors"] += 1
+                    logger.error(f"Error processing order end {address[:10]}...: {e}")
+
+        storage.close()
+
+        # Log summary if we did anything
+        if snapshotted_this_cycle:
+            logger.info(
+                f"Event snapshots complete: {len(snapshotted_this_cycle)} addresses | "
+                f"Stats: {self._snapshot_stats}"
+            )
 
     def _fetch_all_coins(self):
         """Fetch and process TWAP data for ALL coins - single API call"""
@@ -107,7 +270,7 @@ class TWAPBot:
                         prices = {k: float(v) for k, v in all_mids.items() if not k.startswith('@')}
                         logger.debug(f"Fetched prices for {len(prices)} assets")
 
-                # Update tracker
+                # Update tracker (this fires event callbacks)
                 self.tracker.update(twap_data, prices=prices)
 
                 # Clean up stale orders
@@ -120,171 +283,6 @@ class TWAPBot:
         except Exception as e:
             logger.error(f"Error fetching data: {e}")
             logger.exception(e)
-
-    def _start_new_whale_snapshot_cycle(self):
-        """Initialize a new whale snapshot cycle"""
-        storage = SQLiteBackend(self.db_path)
-
-        # CLEANUP: Deactivate whales with no snapshot in 48+ hours (no API calls)
-        storage.cursor.execute("""
-            UPDATE whale_addresses 
-            SET is_active = 0, last_updated = ?
-            WHERE is_active = 1 
-            AND address IN (
-                SELECT w.address 
-                FROM whale_addresses w
-                LEFT JOIN portfolio_snapshots p ON w.address = p.address
-                GROUP BY w.address
-                HAVING MAX(p.snapshot_time) < datetime('now', '-48 hours') 
-                   OR MAX(p.snapshot_time) IS NULL
-            )
-        """, (datetime.now().isoformat(),))
-        deactivated = storage.cursor.rowcount
-        if deactivated > 0:
-            storage.conn.commit()
-            logger.info(f"Deactivated {deactivated} stale whales (no snapshot in 48h)")
-
-        self._whale_snapshot_active_list = storage.get_active_whale_addresses()
-        storage.close()
-
-        self._whale_snapshot_index = 0
-        self._whale_snapshot_stats = {"success": 0, "failed": 0, "dropped": 0}
-        self._whale_snapshot_start_time = time.time()
-
-        total = len(self._whale_snapshot_active_list)
-        cycles_needed = (total + WHALES_PER_CYCLE - 1) // WHALES_PER_CYCLE
-        logger.info(f"Starting whale snapshot cycle: {total} whales, ~{cycles_needed} cycles to complete")
-
-    def _run_whale_snapshot_batch(self):
-        """
-        Process a batch of whales (called each main loop cycle).
-        Returns True if snapshot cycle is complete, False if more work remains.
-        """
-        if not self._whale_snapshot_active_list:
-            self._start_new_whale_snapshot_cycle()
-            if not self._whale_snapshot_active_list:
-                logger.warning("No active whales to snapshot")
-                return True
-
-        total = len(self._whale_snapshot_active_list)
-        start_idx = self._whale_snapshot_index
-        end_idx = min(start_idx + WHALES_PER_CYCLE, total)
-
-        batch = self._whale_snapshot_active_list[start_idx:end_idx]
-
-        if not batch:
-            # Cycle complete
-            elapsed = time.time() - self._whale_snapshot_start_time
-            stats = self._whale_snapshot_stats
-            logger.info(
-                f"Whale snapshot cycle complete: "
-                f"{stats['success']}/{total} success, {stats['failed']} failed, {stats['dropped']} dropped "
-                f"({elapsed:.1f}s total)"
-            )
-            # Reset for next cycle
-            self._whale_snapshot_active_list = []
-            self._whale_snapshot_index = 0
-            return True
-
-        logger.debug(f"Snapshotting whales {start_idx + 1}-{end_idx}/{total}...")
-
-        # Run async batch
-        try:
-            batch_stats = asyncio.run(self._snapshot_batch_async(batch))
-
-            self._whale_snapshot_stats["success"] += batch_stats["success"]
-            self._whale_snapshot_stats["failed"] += batch_stats["failed"]
-            self._whale_snapshot_stats["dropped"] += batch_stats["dropped"]
-
-            self._whale_snapshot_index = end_idx
-
-            # Progress logging every 100 whales
-            if end_idx % 100 < WHALES_PER_CYCLE:
-                elapsed = time.time() - self._whale_snapshot_start_time
-                stats = self._whale_snapshot_stats
-                remaining = total - end_idx
-                rate = end_idx / elapsed if elapsed > 0 else 0
-                eta = remaining / rate if rate > 0 else 0
-                logger.info(
-                    f"Whale snapshot progress: {end_idx}/{total} "
-                    f"({stats['success']} success, {stats['failed']} failed) - ETA: {eta:.0f}s"
-                )
-
-        except Exception as e:
-            logger.error(f"Error in whale snapshot batch: {e}")
-            self._whale_snapshot_index = end_idx  # Skip this batch, continue
-
-        return False
-
-    async def _snapshot_batch_async(self, addresses: list) -> dict:
-        """Snapshot a batch of whale addresses with delay between each"""
-        stats = {"success": 0, "failed": 0, "dropped": 0}
-
-        storage = SQLiteBackend(self.db_path)
-        manager = WhaleMetricsManager(
-            self.hyperliquid_client,
-            storage,
-            config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
-        )
-
-        async with aiohttp.ClientSession() as session:
-            for i, address in enumerate(addresses):
-                try:
-                    result = await manager.take_snapshot_async(address, session)
-
-                    if result:
-                        stats["success"] += 1
-                    else:
-                        # Check if dropped (deactivated)
-                        if address not in storage.get_active_whale_addresses():
-                            stats["dropped"] += 1
-                        else:
-                            stats["failed"] += 1
-
-                except Exception as e:
-                    logger.error(f"Error snapshotting {address}: {e}")
-                    stats["failed"] += 1
-
-                # Delay between whales (skip after last one)
-                if i < len(addresses) - 1:
-                    await asyncio.sleep(WHALE_DELAY)
-
-        storage.close()
-        return stats
-
-    def _on_new_addresses(self, addresses: set):
-        """Collect new addresses for async whale check after loop completes"""
-        if not self.hyperliquid_enabled or not addresses:
-            return
-        # Just collect them - don't block the loop
-        self._pending_address_checks.update(addresses)
-
-    def _process_pending_addresses(self):
-        """Process collected addresses asynchronously (all in parallel)"""
-        if not self._pending_address_checks:
-            return
-
-        addresses = self._pending_address_checks.copy()
-        self._pending_address_checks.clear()
-
-        try:
-            storage = SQLiteBackend(self.db_path)
-            manager = WhaleMetricsManager(
-                self.hyperliquid_client,
-                storage,
-                config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
-            )
-
-            # Run async whale check
-            added = asyncio.run(manager.register_addresses_async(addresses))
-
-            if added > 0:
-                logger.info(f"Discovered {added} new whale(s) from {len(addresses)} addresses")
-
-            storage.close()
-
-        except Exception as e:
-            logger.error(f"Error processing addresses: {e}")
 
     def _run_daily_cleanup(self):
         """Run database cleanup to remove old data"""
@@ -303,6 +301,7 @@ class TWAPBot:
     def start(self):
         """Start the tracking loop"""
         logger.info(f"Starting TWAP tracking loop (interval: {FETCH_INTERVAL}s)")
+        logger.info(f"Event-driven snapshots: portfolio >= ${WHALE_MIN_PORTFOLIO:,}")
 
         self.running = True
         loop_count = 0
@@ -314,19 +313,16 @@ class TWAPBot:
                 loop_count += 1
 
                 # Fetch all coins (single API call)
+                # This triggers on_order_start/on_order_end callbacks
                 self._fetch_all_coins()
 
-                # Process pending whale checks (async, all in parallel)
+                # Process queued order events (async)
                 if self.hyperliquid_enabled:
-                    self._process_pending_addresses()
+                    asyncio.run(self._process_order_events())
 
                 # Market data snapshot every cycle
                 if self.market_tracker:
                     self.market_tracker.take_snapshot()
-
-                # Incremental whale snapshots (every cycle, no threading!)
-                #if self.hyperliquid_enabled:
-                    #self._run_whale_snapshot_batch()
 
                 # Daily cleanup (runs once when date changes)
                 current_date = datetime.now(timezone.utc).date()
@@ -393,8 +389,8 @@ class TWAPBot:
             market_stats = self.market_tracker.get_stats()
             logger.info(f"Market snapshots taken: {market_stats['snapshot_count']}")
 
-        # Whale snapshot stats
-        logger.info(f"Whale snapshot stats: {self._whale_snapshot_stats}")
+        # Event-driven snapshot stats
+        logger.info(f"Event-driven snapshot stats: {self._snapshot_stats}")
 
         logger.info("=" * 70)
 
@@ -419,7 +415,7 @@ def load_config(config_file: str = "twap_config.json") -> dict:
 
 def main():
     """Main entry point"""
-    print("TWAP State Tracker - All Coins (SQLite)")
+    print("TWAP State Tracker - All Coins (Event-Driven)")
     print("=" * 50)
 
     try:

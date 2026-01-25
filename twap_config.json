@@ -39,7 +39,7 @@
     ],
     "modules": {
       "api_client.hypurrscan_client": "INFO",
-      "api_client.hyperliquid_client": "DEBUG",
+      "api_client.hyperliquid_client": "WARNING",
       "trackers.state_tracker": "INFO",
       "trackers.market_data_tracker": "INFO",
       "trader_metrics_manager": "DEBUG",
