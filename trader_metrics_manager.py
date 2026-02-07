@@ -148,14 +148,14 @@ class WhaleMetricsManager:
 
             if portfolio_value >= self.min_portfolio_value:
                 self.storage.add_whale_address(address)
-                logger.info(f"Added whale: {address[:10]}... (${portfolio_value:,.0f})")
+                logger.info(f"Added whale: {address} (${portfolio_value:,.0f})")
                 return True
             else:
-                logger.debug(f"Below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+                logger.debug(f"Below threshold: {address} (${portfolio_value:,.0f})")
                 return False
 
         except Exception as e:
-            logger.warning(f"Error checking address {address[:10]}...: {e}")
+            logger.warning(f"Error checking address {address}: {e}")
             return False
 
     def register_addresses(self, addresses: Set[str]):
@@ -182,10 +182,10 @@ class WhaleMetricsManager:
 
                 if portfolio_value >= self.min_portfolio_value:
                     self.storage.add_whale_address(addr)
-                    logger.info(f"Added whale: {addr[:10]}... (${portfolio_value:,.0f})")
+                    logger.info(f"Added whale: {addr} (${portfolio_value:,.0f})")
                     added += 1
             except Exception as e:
-                logger.warning(f"Error checking {addr[:10]}...: {e}")
+                logger.warning(f"Error checking {addr}: {e}")
 
         if added > 0:
             logger.info(f"Added {added} new whales from {len(new_addresses)} candidates")
@@ -297,7 +297,7 @@ class WhaleMetricsManager:
                 portfolio_data["num_positions"] = len(positions)
 
             except Exception as e:
-                logger.warning(f"Failed to get perp state for {address[:10]}...: {e}")
+                logger.warning(f"Failed to get perp state for {address}: {e}")
 
             # 2. Spot balances
             try:
@@ -335,7 +335,7 @@ class WhaleMetricsManager:
                                     })
 
             except Exception as e:
-                logger.warning(f"Failed to get spot state for {address[:10]}...: {e}")
+                logger.warning(f"Failed to get spot state for {address}: {e}")
 
             # 3. Vault holdings
             try:
@@ -351,7 +351,7 @@ class WhaleMetricsManager:
                             })
 
             except Exception as e:
-                logger.warning(f"Failed to get vaults for {address[:10]}...: {e}")
+                logger.warning(f"Failed to get vaults for {address}: {e}")
 
             # Calculate totals
             portfolio_data["total_portfolio_value"] = (
@@ -375,7 +375,7 @@ class WhaleMetricsManager:
             }
 
         except Exception as e:
-            logger.error(f"Error fetching data for {address[:10]}...: {e}")
+            logger.error(f"Error fetching data for {address}: {e}")
             self.errors_count += 1
             return None
 
@@ -402,11 +402,11 @@ class WhaleMetricsManager:
         if portfolio_value < self.min_portfolio_value:
             # SAFETY: All zeros means API failed, not empty portfolio
             if perp_value == 0 and spot_value == 0 and vault_value == 0:
-                logger.warning(f"Skipping deactivation for {address[:10]}... - API returned all zeros")
+                logger.warning(f"Skipping deactivation for {address} - API returned all zeros")
                 return False
 
             self.storage.update_whale_status(address, is_active=False)
-            logger.info(f"Whale dropped below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+            logger.info(f"Whale dropped below threshold: {address} (${portfolio_value:,.0f})")
             return False
 
         # Ensure whale is marked active
@@ -470,7 +470,7 @@ class WhaleMetricsManager:
                     logger.info(f"Progress: {i + 1}/{total} ({success} success, {failed} failed, {dropped} dropped)")
 
             except Exception as e:
-                logger.error(f"Error snapshotting {address[:10]}...: {e}")
+                logger.error(f"Error snapshotting {address}: {e}")
                 failed += 1
                 self.errors_count += 1
 
@@ -504,7 +504,7 @@ class WhaleMetricsManager:
 
         if portfolio_value >= self.min_portfolio_value:
             self.storage.update_whale_status(address, is_active=True)
-            logger.info(f"Reactivated whale: {address[:10]}... (${portfolio_value:,.0f})")
+            logger.info(f"Reactivated whale: {address} (${portfolio_value:,.0f})")
             return True
 
         return False
@@ -628,14 +628,14 @@ class WhaleMetricsManager:
 
             if portfolio_value >= self.min_portfolio_value:
                 self.storage.add_whale_address(address)
-                logger.info(f"Added whale: {address[:10]}... (${portfolio_value:,.0f})")
+                logger.info(f"Added whale: {address} (${portfolio_value:,.0f})")
                 return True
             else:
-                logger.debug(f"Below threshold: {address[:10]}... (${portfolio_value:,.0f})")
+                logger.debug(f"Below threshold: {address} (${portfolio_value:,.0f})")
                 return False
 
         except Exception as e:
-            logger.warning(f"Error checking address {address[:10]}...: {e}")
+            logger.warning(f"Error checking address {address}: {e}")
             return False
 
     async def register_addresses_async(self, addresses: set) -> int:
@@ -679,14 +679,14 @@ class WhaleMetricsManager:
         added = 0
         for addr, result in zip(new_addresses, results):
             if isinstance(result, Exception):
-                logger.warning(f"Error checking {addr[:10]}...: {result}")
+                logger.warning(f"Error checking {addr}: {result}")
                 continue
 
             portfolio_value = cast(float, result)
 
             if portfolio_value >= self.min_portfolio_value:
                 self.storage.add_whale_address(addr)
-                logger.info(f"Added whale: {addr[:10]}... (${portfolio_value:,.0f})")
+                logger.info(f"Added whale: {addr} (${portfolio_value:,.0f})")
                 added += 1
 
         elapsed = time.time() - start
@@ -767,7 +767,7 @@ class WhaleMetricsManager:
 
                     portfolio_data["num_positions"] = len(positions)
                 except Exception as e:
-                    logger.warning(f"Failed to parse perp state for {address[:10]}...: {e}")
+                    logger.warning(f"Failed to parse perp state for {address}: {e}")
 
             # 2. Process spot balances
             if spot_result and not isinstance(spot_result, Exception):
@@ -803,7 +803,7 @@ class WhaleMetricsManager:
                                         "price": price
                                     })
                 except Exception as e:
-                    logger.warning(f"Failed to parse spot state for {address[:10]}...: {e}")
+                    logger.warning(f"Failed to parse spot state for {address}: {e}")
 
             # 3. Process vault holdings
             if vault_result and not isinstance(vault_result, Exception):
@@ -818,7 +818,7 @@ class WhaleMetricsManager:
                                 "value": equity
                             })
                 except Exception as e:
-                    logger.warning(f"Failed to parse vaults for {address[:10]}...: {e}")
+                    logger.warning(f"Failed to parse vaults for {address}: {e}")
 
             # Calculate totals
             portfolio_data["total_portfolio_value"] = (
@@ -842,7 +842,7 @@ class WhaleMetricsManager:
             }
 
         except Exception as e:
-            logger.error(f"Error fetching data for {address[:10]}...: {e}")
+            logger.error(f"Error fetching data for {address}: {e}")
             self.errors_count += 1
             return None
 
@@ -866,7 +866,7 @@ class WhaleMetricsManager:
             last_time = datetime.fromisoformat(last_snap[0])
             elapsed = (datetime.now() - last_time).total_seconds()
             if elapsed < 3600:  # 60 minutes
-                logger.debug(f"Skipping {address[:10]}... - snapshotted {elapsed / 60:.0f}m ago")
+                logger.debug(f"Skipping {address} - snapshotted {elapsed / 60:.0f}m ago")
                 return True  # Return True so it's not counted as failed
 
         data = await self.fetch_whale_data_async(address, session)
@@ -896,12 +896,12 @@ class WhaleMetricsManager:
                     # Spot vanished
                     if prev_spot > 100000 and spot_value < 1000:
                         logger.warning(
-                            f"Skipping snapshot for {address[:10]}... - likely spot API failure (${prev_spot:,.0f} → ${spot_value:,.0f})")
+                            f"Skipping snapshot for {address} - likely spot API failure (${prev_spot:,.0f} → ${spot_value:,.0f})")
                         return True
                     # Vault vanished
                     if prev_vault > 100000 and vault_value < 1000:
                         logger.warning(
-                            f"Skipping snapshot for {address[:10]}... - likely vault API failure (${prev_vault:,.0f} → ${vault_value:,.0f})")
+                            f"Skipping snapshot for {address} - likely vault API failure (${prev_vault:,.0f} → ${vault_value:,.0f})")
                         return True
 
         # Check if still above threshold
@@ -970,7 +970,7 @@ class WhaleMetricsManager:
                 # Process results
                 for addr, result in zip(batch, results):
                     if isinstance(result, Exception):
-                        logger.error(f"Error snapshotting {addr[:10]}...: {result}")
+                        logger.error(f"Error snapshotting {addr}: {result}")
                         failed += 1
                         self.errors_count += 1
                     elif result:
@@ -1040,7 +1040,7 @@ class WhaleMetricsManager:
             portfolio_value = cast(float, result)
             if portfolio_value >= self.min_portfolio_value:
                 self.storage.update_whale_status(whale['address'], is_active=True)
-                logger.info(f"Reactivated whale: {whale['address'][:10]}... (${portfolio_value:,.0f})")
+                logger.info(f"Reactivated whale: {whale['address']} (${portfolio_value:,.0f})")
                 reactivated += 1
 
         if reactivated > 0:

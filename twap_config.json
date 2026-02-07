@@ -26,7 +26,7 @@
   "logging": {
     "root_level": "INFO",
     "console": true,
-    "console_modules": ["trackers.state_tracker"],
+    "console_modules": ["__main__"],
     "files": [
       {
         "path": "logs/allcoins_tracker.log",
@@ -34,14 +34,38 @@
       },
       {
         "path": "logs/main.log",
-        "modules": ["main", "__main__", "trader_metrics_manager", "api_client.hyperliquid_client"]
+        "modules": ["main", "__main__"]
+      },
+      {
+        "path": "logs/whale_events.log",
+        "modules": ["trackers.whale_event_detector"]
+      },
+      {
+        "path": "logs/liquidation_coins.log",
+        "modules": ["trackers.liquidation_tracker.coins"]
+      },
+      {
+        "path": "logs/liquidation_addresses.log",
+        "modules": ["trackers.liquidation_tracker.addresses"]
+      },
+      {
+        "path": "logs/tier_manager.log",
+        "modules": ["trackers.tier_manager"]
+      },
+      {
+        "path": "logs/trader_metrics.log",
+        "modules": ["trader_metrics_manager"]
       }
+
     ],
     "modules": {
       "api_client.hypurrscan_client": "INFO",
       "api_client.hyperliquid_client": "WARNING",
       "trackers.state_tracker": "INFO",
       "trackers.market_data_tracker": "INFO",
+      "trackers.liquidation_tracker": "INFO",
+      "trackers.tier_manager": "DEBUG",
+      "trackers.whale_event_detector": "DEBUG",
       "trader_metrics_manager": "DEBUG",
       "coin_registry": "DEBUG",
       "__main__": "DEBUG"

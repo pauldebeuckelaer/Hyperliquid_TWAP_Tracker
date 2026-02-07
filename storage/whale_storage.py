@@ -5,20 +5,48 @@ Whale Storage
 Storage for whale portfolio tracking data.
 
 Tables:
-- whale_addresses: Master list of tracked whales (>$50K portfolio)
+- whale_addresses: Master list of tracked whales with tier assignment
+- vip_addresses: Hand-picked whales for priority tracking
 - portfolio_snapshots: Hourly portfolio summaries
 - perp_snapshots: Hourly perp position details
 - spot_snapshots: Hourly spot balance details
 - vault_snapshots: Hourly vault holding details
+
+Tier System:
+- VIP: Hand-picked addresses (every 1 min)
+- Tier 1: Position $5M+ (every 1 min)
+- Tier 2: Position $1M-5M (every 5 min)
+- Tier 3: Position $500K-1M (every 15 min)
+- Tier 4: Position $250K-500K (every 30 min)
+- Tier 5: Position $100K-250K (every 60 min)
 """
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from .base import BaseStorage
 
 logger = logging.getLogger(__name__)
+
+# Tier thresholds (position value in USD)
+TIER_THRESHOLDS = {
+    1: 5_000_000,  # $5M+
+    2: 1_000_000,  # $1M-5M
+    3: 500_000,  # $500K-1M
+    4: 250_000,  # $250K-500K
+    5: 100_000,  # $100K-250K
+}
+
+# Tier fetch frequencies (in cycles, 1 cycle = 1 minute)
+TIER_FREQUENCIES = {
+    'vip': 1,  # Every cycle
+    1: 1,  # Every cycle
+    2: 5,  # Every 5 cycles
+    3: 15,  # Every 15 cycles
+    4: 30,  # Every 30 cycles
+    5: 60,  # Every 60 cycles
+}
 
 
 class WhaleStorage(BaseStorage):
@@ -27,13 +55,26 @@ class WhaleStorage(BaseStorage):
     def _create_tables(self):
         """Create whale tracking tables."""
 
-        # Whale addresses - master list of tracked whales
+        # VIP addresses - hand-picked whales for priority tracking
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vip_addresses (
+                address TEXT PRIMARY KEY,
+                nickname TEXT,
+                notes TEXT,
+                added_date TEXT NOT NULL
+            )
+        """)
+
+        # Whale addresses - master list of tracked whales with tier
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS whale_addresses (
                 address TEXT PRIMARY KEY,
                 first_seen TEXT NOT NULL,
                 last_updated TEXT,
-                is_active INTEGER DEFAULT 1
+                is_active INTEGER DEFAULT 1,
+                tier INTEGER DEFAULT NULL,
+                position_value REAL DEFAULT 0,
+                last_tier_update TEXT
             )
         """)
 
@@ -99,18 +140,32 @@ class WhaleStorage(BaseStorage):
     def _create_indexes(self):
         """Create whale tracking indexes."""
         indexes = [
+            # VIP indexes
+            "CREATE INDEX IF NOT EXISTS idx_vip_addresses_nickname ON vip_addresses(nickname)",
+
+            # Whale address indexes
             "CREATE INDEX IF NOT EXISTS idx_whale_addresses_active ON whale_addresses(is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_whale_addresses_tier ON whale_addresses(tier)",
+            "CREATE INDEX IF NOT EXISTS idx_whale_addresses_active_tier ON whale_addresses(is_active, tier)",
+
+            # Portfolio indexes
             "CREATE INDEX IF NOT EXISTS idx_portfolio_time ON portfolio_snapshots(snapshot_time)",
             "CREATE INDEX IF NOT EXISTS idx_portfolio_address ON portfolio_snapshots(address)",
             "CREATE INDEX IF NOT EXISTS idx_portfolio_address_time ON portfolio_snapshots(address, snapshot_time)",
+
+            # Perp indexes
             "CREATE INDEX IF NOT EXISTS idx_perp_time ON perp_snapshots(snapshot_time)",
             "CREATE INDEX IF NOT EXISTS idx_perp_address ON perp_snapshots(address)",
             "CREATE INDEX IF NOT EXISTS idx_perp_coin ON perp_snapshots(coin)",
             "CREATE INDEX IF NOT EXISTS idx_perp_address_time ON perp_snapshots(address, snapshot_time)",
+
+            # Spot indexes
             "CREATE INDEX IF NOT EXISTS idx_spot_time ON spot_snapshots(snapshot_time)",
             "CREATE INDEX IF NOT EXISTS idx_spot_address ON spot_snapshots(address)",
             "CREATE INDEX IF NOT EXISTS idx_spot_coin ON spot_snapshots(coin)",
             "CREATE INDEX IF NOT EXISTS idx_spot_address_time ON spot_snapshots(address, snapshot_time)",
+
+            # Vault indexes
             "CREATE INDEX IF NOT EXISTS idx_vault_time ON vault_snapshots(snapshot_time)",
             "CREATE INDEX IF NOT EXISTS idx_vault_address ON vault_snapshots(address)",
             "CREATE INDEX IF NOT EXISTS idx_vault_address_time ON vault_snapshots(address, snapshot_time)",
@@ -118,7 +173,331 @@ class WhaleStorage(BaseStorage):
         self._execute_index_list(indexes)
 
     # =========================================================================
-    # WHALE ADDRESS METHODS
+    # VIP ADDRESS METHODS
+    # =========================================================================
+
+    def add_vip_address(self, address: str, nickname: str = None, notes: str = None) -> bool:
+        """
+        Add an address to VIP list.
+
+        Args:
+            address: Wallet address
+            nickname: Optional friendly name (e.g., "ETH Whale", "HYPE Degen")
+            notes: Optional notes about this whale
+
+        Returns:
+            True if added, False if already exists
+        """
+        timestamp = datetime.now().isoformat()
+        try:
+            self.cursor.execute("""
+                INSERT INTO vip_addresses (address, nickname, notes, added_date)
+                VALUES (?, ?, ?, ?)
+            """, (address, nickname, notes, timestamp))
+            self.conn.commit()
+            logger.info(f"Added VIP: {nickname or address[:10]}... ({address[:10]}...)")
+            return True
+        except Exception as e:
+            logger.debug(f"VIP already exists or error: {e}")
+            return False
+
+    def remove_vip_address(self, address: str) -> bool:
+        """
+        Remove an address from VIP list.
+
+        Args:
+            address: Wallet address
+
+        Returns:
+            True if removed, False if not found
+        """
+        self.cursor.execute("DELETE FROM vip_addresses WHERE address = ?", (address,))
+        self.conn.commit()
+        removed = self.cursor.rowcount > 0
+        if removed:
+            logger.info(f"Removed VIP: {address[:10]}...")
+        return removed
+
+    def update_vip_address(self, address: str, nickname: str = None, notes: str = None) -> bool:
+        """
+        Update VIP address details.
+
+        Args:
+            address: Wallet address
+            nickname: New nickname (None to keep existing)
+            notes: New notes (None to keep existing)
+
+        Returns:
+            True if updated, False if not found
+        """
+        updates = []
+        params = []
+
+        if nickname is not None:
+            updates.append("nickname = ?")
+            params.append(nickname)
+
+        if notes is not None:
+            updates.append("notes = ?")
+            params.append(notes)
+
+        if not updates:
+            return False
+
+        params.append(address)
+        query = f"UPDATE vip_addresses SET {', '.join(updates)} WHERE address = ?"
+
+        self.cursor.execute(query, params)
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+
+    def get_vip_addresses(self) -> List[Dict]:
+        """
+        Get all VIP addresses with metadata.
+
+        Returns:
+            List of dicts with address, nickname, notes, added_date
+        """
+        self.cursor.execute("""
+            SELECT address, nickname, notes, added_date
+            FROM vip_addresses
+            ORDER BY added_date DESC
+        """)
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_vip_address_list(self) -> List[str]:
+        """
+        Get just the VIP addresses (no metadata).
+
+        Returns:
+            List of address strings
+        """
+        self.cursor.execute("SELECT address FROM vip_addresses")
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def is_vip(self, address: str) -> bool:
+        """Check if an address is in the VIP list."""
+        self.cursor.execute("SELECT 1 FROM vip_addresses WHERE address = ?", (address,))
+        return self.cursor.fetchone() is not None
+
+    def get_vip_count(self) -> int:
+        """Get count of VIP addresses."""
+        self.cursor.execute("SELECT COUNT(*) FROM vip_addresses")
+        return self.cursor.fetchone()[0]
+
+    # =========================================================================
+    # TIER MANAGEMENT METHODS
+    # =========================================================================
+
+    def calculate_tier(self, position_value: float) -> Optional[int]:
+        """
+        Calculate tier based on position value.
+
+        Args:
+            position_value: Total position value in USD
+
+        Returns:
+            Tier number (1-5) or None if below all thresholds
+        """
+        for tier in sorted(TIER_THRESHOLDS.keys()):
+            threshold = TIER_THRESHOLDS[tier]
+            if position_value >= threshold:
+                return tier
+        return None
+
+    def update_address_tier(self, address: str, position_value: float) -> Optional[int]:
+        """
+        Update an address's tier based on position value.
+
+        Args:
+            address: Wallet address
+            position_value: Current total position value
+
+        Returns:
+            New tier (1-5) or None if below threshold
+        """
+        tier = self.calculate_tier(position_value)
+        timestamp = datetime.now().isoformat()
+
+        # Upsert into whale_addresses
+        self.cursor.execute("""
+            INSERT INTO whale_addresses (address, first_seen, last_updated, is_active, tier, position_value, last_tier_update)
+            VALUES (?, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT(address) DO UPDATE SET
+                last_updated = ?,
+                is_active = 1,
+                tier = ?,
+                position_value = ?,
+                last_tier_update = ?
+        """, (address, timestamp, timestamp, tier, position_value, timestamp,
+              timestamp, tier, position_value, timestamp))
+        self.conn.commit()
+
+        return tier
+
+    def bulk_update_tiers(self, address_positions: Dict[str, float]) -> Dict[str, int]:
+        """
+        Bulk update tiers for multiple addresses.
+
+        Args:
+            address_positions: Dict of address -> position_value
+
+        Returns:
+            Dict of address -> tier for addresses that made the cut
+        """
+        timestamp = datetime.now().isoformat()
+        results = {}
+
+        for address, position_value in address_positions.items():
+            tier = self.calculate_tier(position_value)
+            if tier is not None:
+                results[address] = tier
+
+            self.cursor.execute("""
+                INSERT INTO whale_addresses (address, first_seen, last_updated, is_active, tier, position_value, last_tier_update)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(address) DO UPDATE SET
+                    last_updated = ?,
+                    is_active = ?,
+                    tier = ?,
+                    position_value = ?,
+                    last_tier_update = ?
+            """, (address, timestamp, timestamp, 1 if tier else 0, tier, position_value, timestamp,
+                  timestamp, 1 if tier else 0, tier, position_value, timestamp))
+
+        self.conn.commit()
+        logger.info(f"Bulk updated tiers for {len(address_positions)} addresses, {len(results)} in tiers")
+        return results
+
+    def get_addresses_by_tier(self, tier: int) -> List[str]:
+        """
+        Get all addresses in a specific tier.
+
+        Args:
+            tier: Tier number (1-5)
+
+        Returns:
+            List of addresses
+        """
+        self.cursor.execute("""
+            SELECT address FROM whale_addresses
+            WHERE tier = ? AND is_active = 1
+            ORDER BY position_value DESC
+        """, (tier,))
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def get_addresses_by_tiers(self, tiers: List[int]) -> List[str]:
+        """
+        Get all addresses in multiple tiers.
+
+        Args:
+            tiers: List of tier numbers
+
+        Returns:
+            List of addresses
+        """
+        placeholders = ','.join('?' * len(tiers))
+        self.cursor.execute(f"""
+            SELECT address FROM whale_addresses
+            WHERE tier IN ({placeholders}) AND is_active = 1
+            ORDER BY tier ASC, position_value DESC
+        """, tiers)
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def get_addresses_for_cycle(self, cycle_number: int) -> Dict[str, List[str]]:
+        """
+        Get addresses to fetch for a given cycle number.
+
+        Logic:
+        - VIP + Tier 1: Every cycle
+        - Tier 2: Every 5 cycles (cycle % 5 == 0)
+        - Tier 3: Every 15 cycles (cycle % 15 == 0)
+        - Tier 4: Every 30 cycles (cycle % 30 == 0)
+        - Tier 5: Every 60 cycles (cycle % 60 == 0)
+
+        Args:
+            cycle_number: Current cycle (1-based, wraps at 60)
+
+        Returns:
+            Dict with 'vip', 'tier1', 'tier2', etc. keys and address lists
+        """
+        result = {
+            'vip': self.get_vip_address_list(),
+            'tier1': self.get_addresses_by_tier(1),
+            'tier2': [],
+            'tier3': [],
+            'tier4': [],
+            'tier5': [],
+        }
+
+        # Normalize cycle to 1-60 range
+        cycle = ((cycle_number - 1) % 60) + 1
+
+        if cycle % TIER_FREQUENCIES[2] == 0:
+            result['tier2'] = self.get_addresses_by_tier(2)
+
+        if cycle % TIER_FREQUENCIES[3] == 0:
+            result['tier3'] = self.get_addresses_by_tier(3)
+
+        if cycle % TIER_FREQUENCIES[4] == 0:
+            result['tier4'] = self.get_addresses_by_tier(4)
+
+        if cycle % TIER_FREQUENCIES[5] == 0:
+            result['tier5'] = self.get_addresses_by_tier(5)
+
+        return result
+
+    def get_all_addresses_for_cycle(self, cycle_number: int) -> List[str]:
+        """
+        Get flat list of all unique addresses to fetch for a cycle.
+
+        Args:
+            cycle_number: Current cycle number
+
+        Returns:
+            Deduplicated list of addresses
+        """
+        by_tier = self.get_addresses_for_cycle(cycle_number)
+
+        # Combine all, VIP first, then by tier
+        all_addresses = []
+        seen = set()
+
+        for key in ['vip', 'tier1', 'tier2', 'tier3', 'tier4', 'tier5']:
+            for addr in by_tier.get(key, []):
+                if addr not in seen:
+                    all_addresses.append(addr)
+                    seen.add(addr)
+
+        return all_addresses
+
+    def get_tier_stats(self) -> Dict:
+        """
+        Get statistics about tier distribution.
+
+        Returns:
+            Dict with counts per tier
+        """
+        stats = {'vip': self.get_vip_count()}
+
+        self.cursor.execute("""
+            SELECT tier, COUNT(*) as count, SUM(position_value) as total_value
+            FROM whale_addresses
+            WHERE is_active = 1 AND tier IS NOT NULL
+            GROUP BY tier
+            ORDER BY tier
+        """)
+
+        for row in self.cursor.fetchall():
+            stats[f'tier{row["tier"]}'] = {
+                'count': row['count'],
+                'total_value': row['total_value']
+            }
+
+        return stats
+
+    # =========================================================================
+    # WHALE ADDRESS METHODS (legacy compatibility + updates)
     # =========================================================================
 
     def add_whale_address(self, address: str) -> bool:
@@ -189,13 +568,13 @@ class WhaleStorage(BaseStorage):
     # =========================================================================
 
     def save_whale_snapshot(
-        self,
-        address: str,
-        snapshot_time: str,
-        portfolio_data: Dict,
-        positions: List[Dict],
-        spot_balances: List[Dict],
-        vaults: List[Dict]
+            self,
+            address: str,
+            snapshot_time: str,
+            portfolio_data: Dict,
+            positions: List[Dict],
+            spot_balances: List[Dict],
+            vaults: List[Dict]
     ):
         """
         Save a complete hourly snapshot for a whale.
@@ -297,11 +676,11 @@ class WhaleStorage(BaseStorage):
     # =========================================================================
 
     def get_portfolio_history(
-        self,
-        address: str,
-        start_time: str = None,
-        end_time: str = None,
-        limit: int = 168  # 1 week of hourly snapshots
+            self,
+            address: str,
+            start_time: str = None,
+            end_time: str = None,
+            limit: int = 168  # 1 week of hourly snapshots
     ) -> List[Dict]:
         """
         Get portfolio snapshot history for an address.
@@ -387,10 +766,10 @@ class WhaleStorage(BaseStorage):
         return result
 
     def get_coin_holders_history(
-        self,
-        coin: str,
-        snapshot_time: str = None,
-        limit: int = 100
+            self,
+            coin: str,
+            snapshot_time: str = None,
+            limit: int = 100
     ) -> List[Dict]:
         """
         Get all holders of a coin at a specific time (or latest).
@@ -488,12 +867,20 @@ class WhaleStorage(BaseStorage):
         """Get whale storage statistics."""
         stats = {}
 
+        # VIP stats
+        stats['vip_count'] = self.get_vip_count()
+
+        # Whale address stats
         self.cursor.execute("SELECT COUNT(*) FROM whale_addresses")
         stats['total_whales'] = self.cursor.fetchone()[0]
 
         self.cursor.execute("SELECT COUNT(*) FROM whale_addresses WHERE is_active = 1")
         stats['active_whales'] = self.cursor.fetchone()[0]
 
+        # Tier distribution
+        stats['tier_stats'] = self.get_tier_stats()
+
+        # Snapshot stats
         self.cursor.execute("SELECT COUNT(*) FROM portfolio_snapshots")
         stats['total_portfolio_snapshots'] = self.cursor.fetchone()[0]
 

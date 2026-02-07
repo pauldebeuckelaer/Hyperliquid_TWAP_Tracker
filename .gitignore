@@ -2,15 +2,24 @@
 data/twap.db
 data/twap.db-shm
 data/twap.db-wal
+
 # Data files
 data/json_logs/
 data/allcoins_json_logs/
 data/trader_metrics.json
 data/metrics_history/
+
 # Logs
 logs/
 *.log
+
+# Python
 __pycache__/
 *.pyc
+
 # Reports
 reports/
+
+# Credentials & secrets
+.env
+*.session

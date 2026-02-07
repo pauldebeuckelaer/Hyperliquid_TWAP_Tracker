@@ -2,15 +2,22 @@
 """
 TWAP State Tracker - All Coins
 ==============================
-Tracks TWAP orders for ALL coins on Hyperliquid
-Single fetch, single tracker, 1-minute snapshots
-NOW WITH SQLITE STORAGE (including trader metrics)
-NOW WITH MARKET DATA SNAPSHOTS
+Tracks TWAP orders for ALL coins on Hyperliquid.
+Single fetch, single tracker, 1-minute snapshots.
 
-REFACTORED: Event-driven whale snapshots
-- Snapshot on order START (if portfolio >= $50K)
-- Snapshot on order END (completed/canceled)
-- No more hourly polling of all whales
+Architecture:
+- TWAP tracking: Event-driven portfolio snapshots (WhaleMetricsManager)
+- Market data: Per-minute OI, funding, prices (MarketDataTracker)
+- Liquidation tracking: Tiered whale fetching (LiquidationTracker)
+- Event detection: VIP + Tier1 only (WhaleEventDetector)
+
+Tier System:
+- VIP: Hand-picked addresses (every 1 min)
+- Tier 1: $5M+ positions (every 1 min)
+- Tier 2: $1M-5M positions (every 5 min)
+- Tier 3: $500K-1M positions (every 15 min)
+- Tier 4: $250K-500K positions (every 30 min)
+- Tier 5: $100K-250K positions (every 60 min)
 """
 import time
 import signal
@@ -26,18 +33,22 @@ from api_client.hypurrscan_client import HypurrScanClient
 from api_client.hyperliquid_client import HyperliquidClient
 from trackers.state_tracker import AllCoinsStateTracker
 from trackers.market_data_tracker import MarketDataTracker
+from trackers.liquidation_tracker import LiquidationTracker
+from trackers.tier_manager import TierManager
+from trackers.whale_event_detector import WhaleEventDetector
 from coin_registry import init_dynamic_registry
 from storage import SQLiteBackend
 from trader_metrics_manager import WhaleMetricsManager
 
 from generators.daily_summary import generate_daily_summaries
+from telegram.telegram_alerter import TelegramAlerter
 
 logger = get_module_logger(__name__)
 
 # Timing - single interval for everything
 FETCH_INTERVAL = 60  # All coins every 60 seconds
 
-# Whale snapshot settings
+# Whale snapshot settings (for event-driven TWAP snapshots)
 WHALE_MIN_PORTFOLIO = 50000  # Minimum portfolio value to snapshot
 
 
@@ -51,9 +62,9 @@ class TWAPBot:
         self.running = False
         self.db_path = Path('data/twap.db')
 
-        # Event-driven snapshot queues
-        self._pending_order_starts: list = []  # [(address, symbol, order_dict), ...]
-        self._pending_order_ends: list = []  # [(address, symbol, order_dict, end_type), ...]
+        # Event-driven snapshot queues (for TWAP start/end)
+        self._pending_order_starts: list = []
+        self._pending_order_ends: list = []
 
         # Skip first cycle (existing orders appear as "new" on startup)
         self._first_cycle = True
@@ -70,7 +81,7 @@ class TWAPBot:
         # HypurrScan client for TWAP data
         self.hypurr_client = HypurrScanClient(config.get('hypurr_data', {}))
 
-        # All Coins Tracker (now with SQLite storage)
+        # All Coins Tracker (TWAP order tracking)
         self.tracker = AllCoinsStateTracker(
             exclude_coins=config.get('exclude_coins', [])
         )
@@ -84,22 +95,62 @@ class TWAPBot:
             init_dynamic_registry(self.hyperliquid_client)
             logger.info("Hyperliquid client initialized")
 
-            # Wire up event-driven callbacks
+            # Wire up event-driven callbacks for TWAP tracking
             self.tracker.on_order_start = self._on_order_start
             self.tracker.on_order_end = self._on_order_end
 
-            # Market data tracker
-            self.market_tracker = MarketDataTracker(self.hyperliquid_client, self.db_path)
+            # Initialize storage
+            self.storage = SQLiteBackend(self.db_path)
+
+            # =================================================================
+            # NEW TIERED ARCHITECTURE
+            # =================================================================
+
+            # Tier Manager - controls which addresses to fetch each cycle
+            self.tier_manager = TierManager(self.storage)
+
+            # Whale Event Detector - detects position/margin changes for VIP + Tier1
+            self.event_detector = WhaleEventDetector(self.tier_manager)
+
+            # Market Data Tracker - lightweight, just OI/funding/prices (1 API call)
+            self.market_tracker = MarketDataTracker(
+                self.hyperliquid_client,
+                self.storage
+            )
+
+            # Liquidation Tracker - tiered whale fetching + liquidation snapshots
+            self.liquidation_tracker = LiquidationTracker(
+                self.hyperliquid_client,
+                self.storage,
+                self.tier_manager,
+                self.event_detector,
+                config=hyperliquid_config.get('liquidation_tracker', {})
+            )
+
+            logger.info("Tiered tracking architecture initialized")
+
         else:
             self.hyperliquid_client = None
+            self.storage = None
+            self.tier_manager = None
+            self.event_detector = None
             self.market_tracker = None
+            self.liquidation_tracker = None
             logger.info("Hyperliquid client disabled")
 
         # Shutdown handler
         signal.signal(signal.SIGINT, self._shutdown_handler)
         signal.signal(signal.SIGTERM, self._shutdown_handler)
 
-        logger.info("TWAP Tracker initialized (event-driven snapshots)")
+        # Telegram alerter for system notifications
+        self.alerter = None
+        #try:
+            #self.alerter = TelegramAlerter()
+            #logger.info("Telegram alerter initialized")
+        #except ValueError as e:
+            #logger.warning(f"Telegram alerter disabled: {e}")
+
+        logger.info("TWAP Tracker initialized (tiered liquidation tracking)")
 
     def _on_order_start(self, address: str, symbol: str, order: dict):
         """Queue order start for async processing"""
@@ -118,6 +169,9 @@ class TWAPBot:
         Flow:
         - Order START: Check portfolio >= $50K, then snapshot
         - Order END: Snapshot if we snapshotted at start (tracked whale)
+
+        This populates portfolio_snapshots and perp_snapshots tables,
+        which the TierManager uses for tier assignment.
         """
         if not self._pending_order_starts and not self._pending_order_ends:
             return
@@ -135,13 +189,12 @@ class TWAPBot:
                 f"⏭️  Warm-up: Skipping {len(starts)} order starts (existing orders). "
                 f"Processing {len(ends)} order ends."
             )
-            starts = []  # Clear starts, but still process ends
+            starts = []
 
         if not starts and not ends:
             return
 
-        # Dedupe addresses BEFORE API calls (save API calls)
-        # Keep first occurrence per address
+        # Dedupe addresses BEFORE API calls
         unique_starts = {}
         for address, symbol, order in starts:
             if address not in unique_starts:
@@ -167,23 +220,19 @@ class TWAPBot:
             config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
         )
 
-        # Track which addresses we've snapshotted this cycle (to avoid duplicates)
+        # Track which addresses we've snapshotted this cycle
         snapshotted_this_cycle = set()
 
         async with aiohttp.ClientSession() as session:
-            # =========================================================
-            # Process ORDER STARTS - check if whale, then snapshot
-            # =========================================================
+            # Process ORDER STARTS
             for address, (symbol, order) in unique_starts.items():
                 if address in snapshotted_this_cycle:
                     continue
 
                 try:
-                    # Check portfolio value
                     portfolio_value = await manager._get_portfolio_value_async(address, session)
 
                     if portfolio_value >= WHALE_MIN_PORTFOLIO:
-                        # Take snapshot
                         success = await manager.take_snapshot_async(address, session)
 
                         if success:
@@ -196,21 +245,14 @@ class TWAPBot:
                             )
                         else:
                             self._snapshot_stats["errors"] += 1
-                            logger.warning(f"Failed to snapshot {address[:10]}...")
                     else:
                         self._snapshot_stats["below_threshold"] += 1
-                        logger.debug(
-                            f"Below threshold: {address[:10]}... ${portfolio_value:,.0f} < ${WHALE_MIN_PORTFOLIO:,}"
-                        )
 
                 except Exception as e:
                     self._snapshot_stats["errors"] += 1
                     logger.error(f"Error processing order start {address[:10]}...: {e}")
 
-            # =========================================================
-            # Process ORDER ENDS - snapshot if already tracked
-            # =========================================================
-            # Get current active whales (addresses we've snapshotted before)
+            # Process ORDER ENDS
             active_whales = set(storage.get_active_whale_addresses())
 
             for address, (symbol, order, end_type) in unique_ends.items():
@@ -218,8 +260,6 @@ class TWAPBot:
                     continue
 
                 try:
-                    # Only snapshot if we already know this is a whale
-                    # (means we snapshotted them at order start)
                     if address in active_whales:
                         success = await manager.take_snapshot_async(address, session)
 
@@ -234,8 +274,6 @@ class TWAPBot:
                             )
                         else:
                             self._snapshot_stats["errors"] += 1
-                    else:
-                        logger.debug(f"Skipping END snapshot for non-whale: {address[:10]}...")
 
                 except Exception as e:
                     self._snapshot_stats["errors"] += 1
@@ -243,7 +281,6 @@ class TWAPBot:
 
         storage.close()
 
-        # Log summary if we did anything
         if snapshotted_this_cycle:
             logger.info(
                 f"Event snapshots complete: {len(snapshotted_this_cycle)} addresses | "
@@ -255,22 +292,20 @@ class TWAPBot:
         try:
             logger.debug("Fetching all coins data...")
 
-            # Single fetch for everything via twap/*
             whale_data = self.hypurr_client.get_whale_activity(['*'])
             twap_data = whale_data.get('twap_data', {})
 
             if twap_data:
                 logger.debug(f"Received data for {len(twap_data)} coins")
 
-                # Fetch prices (single API call)
+                # Fetch prices
                 prices = {}
                 if self.hyperliquid_client:
                     all_mids = self.hyperliquid_client.get_all_mids()
                     if all_mids:
                         prices = {k: float(v) for k, v in all_mids.items() if not k.startswith('@')}
-                        logger.debug(f"Fetched prices for {len(prices)} assets")
 
-                # Update tracker (this fires event callbacks)
+                # Update tracker (fires event callbacks)
                 self.tracker.update(twap_data, prices=prices)
 
                 # Clean up stale orders
@@ -279,10 +314,20 @@ class TWAPBot:
                     logger.info(f"Cleaned up {cleaned} stale orders this cycle")
             else:
                 logger.warning("No TWAP data received")
+                self._send_alert(
+                    "API_WARNING",
+                    "HypurrScan returned empty TWAP data",
+                    {"endpoint": "twap/*"}
+                )
 
         except Exception as e:
             logger.error(f"Error fetching data: {e}")
             logger.exception(e)
+            self._send_alert(
+                "API_ERROR",
+                f"Failed to fetch TWAP data: {str(e)[:100]}",
+                {"exception_type": type(e).__name__}
+            )
 
     def _run_daily_cleanup(self):
         """Run database cleanup to remove old data"""
@@ -302,32 +347,88 @@ class TWAPBot:
         """Start the tracking loop"""
         logger.info(f"Starting TWAP tracking loop (interval: {FETCH_INTERVAL}s)")
         logger.info(f"Event-driven snapshots: portfolio >= ${WHALE_MIN_PORTFOLIO:,}")
+        logger.info("Tiered liquidation tracking: VIP+T1 every min, T2-T5 on schedule")
+
+        # Connect Telegram alerter
+        if self.alerter:
+            try:
+                self.alerter.connect()
+                self._send_alert(
+                    "STARTUP",
+                    "🟢 Whale tracker started (tiered architecture)",
+                    {"mode": "tiered", "interval": f"{FETCH_INTERVAL}s"}
+                )
+            except Exception as e:
+                logger.error(f"Failed to connect Telegram: {e}")
+                self.alerter = None
 
         self.running = True
-        loop_count = 0
-        last_cleanup_date = None  # Track daily cleanup
+        last_cleanup_date = None
+
+        # Initial tier refresh
+        if self.tier_manager:
+            logger.info("Performing initial tier refresh...")
+            self.tier_manager.refresh_tiers_from_snapshots()
 
         while self.running:
             try:
                 loop_start = time.time()
-                loop_count += 1
 
-                # Fetch all coins (single API call)
-                # This triggers on_order_start/on_order_end callbacks
+                # =============================================================
+                # CYCLE MANAGEMENT
+                # =============================================================
+
+                if self.tier_manager:
+                    # Increment cycle (1-60)
+                    cycle = self.tier_manager.increment_cycle()
+
+                    # Refresh tiers every 60 cycles (hourly)
+                    if self.tier_manager.should_refresh_tiers():
+                        logger.info("Hourly tier refresh triggered")
+                        self.tier_manager.refresh_tiers_from_snapshots()
+
+                    # Log cycle status every 10 cycles
+                    if cycle % 10 == 0:
+                        self.tier_manager.log_status()
+
+                # =============================================================
+                # TWAP TRACKING (existing event-driven system)
+                # =============================================================
+
+                # Fetch TWAP data (triggers on_order_start/on_order_end callbacks)
                 self._fetch_all_coins()
 
-                # Process queued order events (async)
+                # Process queued order events (portfolio snapshots)
                 if self.hyperliquid_enabled:
                     asyncio.run(self._process_order_events())
 
-                # Market data snapshot every cycle
-                if self.market_tracker:
-                    self.market_tracker.take_snapshot()
+                # =============================================================
+                # MARKET DATA SNAPSHOT (lightweight - 1 API call)
+                # =============================================================
 
-                # Daily cleanup (runs once when date changes)
+                if self.market_tracker:
+                    market_result = self.market_tracker.take_snapshot()
+                    prices = market_result.get('prices', {})
+                else:
+                    prices = {}
+
+                # =============================================================
+                # LIQUIDATION TRACKING (tiered - variable API calls)
+                # =============================================================
+
+                if self.liquidation_tracker:
+                    # Pass prices to avoid duplicate API call
+                    asyncio.run(self.liquidation_tracker.take_snapshot_async(prices=prices))
+
+                # =============================================================
+                # DAILY MAINTENANCE
+                # =============================================================
+
                 current_date = datetime.now(timezone.utc).date()
                 if last_cleanup_date != current_date:
-                    logger.info("Running daily database cleanup...")
+                    logger.info("Running daily maintenance...")
+
+                    # Database cleanup
                     self._run_daily_cleanup()
                     last_cleanup_date = current_date
 
@@ -340,14 +441,16 @@ class TWAPBot:
                     except Exception as e:
                         logger.error(f"Failed to generate daily summaries: {e}")
 
-                # Maintain consistent interval
+                # =============================================================
+                # TIMING
+                # =============================================================
+
                 elapsed = time.time() - loop_start
                 sleep_time = max(0.1, FETCH_INTERVAL - elapsed)
 
                 if elapsed > FETCH_INTERVAL:
                     logger.warning(
-                        f"Cycle {loop_count} took {elapsed:.1f}s, "
-                        f"exceeded {FETCH_INTERVAL}s target"
+                        f"Cycle took {elapsed:.1f}s, exceeded {FETCH_INTERVAL}s target"
                     )
 
                 time.sleep(sleep_time)
@@ -357,21 +460,53 @@ class TWAPBot:
             except Exception as e:
                 logger.error(f"Loop error: {e}")
                 logger.exception(e)
+                self._send_alert(
+                    "LOOP_ERROR",
+                    f"Main loop error: {str(e)[:100]}",
+                    {"exception_type": type(e).__name__}
+                )
                 time.sleep(FETCH_INTERVAL)
 
         logger.info("Tracking stopped")
+
+    def _send_alert(self, error_type: str, message: str, details: dict = None):
+        """Send alert via Telegram (fire-and-forget from sync context)"""
+        if not self.alerter:
+            return
+        try:
+            asyncio.run(self.alerter.send_alert(error_type, message, details))
+        except Exception as e:
+            logger.error(f"Failed to send alert: {e}")
 
     def _shutdown_handler(self, signum, frame):
         """Handle shutdown gracefully"""
         logger.info("Shutdown signal received")
         self.running = False
 
-        # Close database connection
-        logger.info("Closing database connection...")
+        if self.alerter:
+            try:
+                asyncio.run(self.alerter.send_alert(
+                    "SHUTDOWN",
+                    "🔴 Whale tracker stopped",
+                    {"signal": signum}
+                ))
+                asyncio.run(self.alerter.disconnect())
+            except Exception:
+                pass
+
+        # Close database connections
+        logger.info("Closing database connections...")
         self.tracker.close()
+        if self.storage:
+            self.storage.close()
 
         # Log final stats
+        self._log_final_stats()
+
+    def _log_final_stats(self):
+        """Log final statistics on shutdown"""
         stats = self.tracker.get_current_stats()
+
         logger.info("=" * 70)
         logger.info("FINAL STATS")
         logger.info("=" * 70)
@@ -380,6 +515,7 @@ class TWAPBot:
         logger.info(f"Total orders: {stats['total_orders']}")
         logger.info(f"Active orders: {stats['total_active_orders']}")
         logger.info(f"Addresses seen: {stats['all_time_addresses']}")
+
         if 'db_stats' in stats:
             db_stats = stats['db_stats']
             logger.info(f"Database size: {db_stats.get('db_size_mb', 0)} MB")
@@ -388,6 +524,21 @@ class TWAPBot:
         if self.market_tracker:
             market_stats = self.market_tracker.get_stats()
             logger.info(f"Market snapshots taken: {market_stats['snapshot_count']}")
+
+        # Liquidation tracker stats
+        if self.liquidation_tracker:
+            liq_stats = self.liquidation_tracker.get_stats()
+            logger.info(f"Liquidation snapshots taken: {liq_stats['snapshot_count']}")
+
+        # Tier manager stats
+        if self.tier_manager:
+            tier_stats = self.tier_manager.get_tier_stats()
+            logger.info(f"Tier distribution: {tier_stats}")
+
+        # Event detector stats
+        if self.event_detector:
+            event_stats = self.event_detector.get_stats()
+            logger.info(f"Event detector: {event_stats}")
 
         # Event-driven snapshot stats
         logger.info(f"Event-driven snapshot stats: {self._snapshot_stats}")
@@ -415,7 +566,7 @@ def load_config(config_file: str = "twap_config.json") -> dict:
 
 def main():
     """Main entry point"""
-    print("TWAP State Tracker - All Coins (Event-Driven)")
+    print("TWAP State Tracker - All Coins (Tiered Architecture)")
     print("=" * 50)
 
     try:
