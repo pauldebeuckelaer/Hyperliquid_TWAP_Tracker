@@ -1,3 +1,15 @@
+"""
+CHANGES TO storage/__init__.py
+==============================
+
+1. Add import for MarketCandleStorage
+2. Add MarketCandleStorage to SQLiteBackend inheritance
+3. Update cleanup_old_data() to aggregate before purging
+4. Remove liquidation_snapshots and whale_events from purge
+
+Below is the complete updated file.
+"""
+
 #!/usr/bin/env python3
 """
 Storage Module
@@ -8,17 +20,19 @@ Classes:
 - TwapStorage: TWAP orders, snapshots, events, addresses
 - WhaleStorage: Whale addresses, portfolio/perp/spot/vault snapshots
 - MarketStorage: Per-coin market data (prices, funding, OI, volume)
+- MarketCandleStorage: Aggregated 10-min candles for backtesting
 - LiquidationStorage: Whale liquidation exposure snapshots
 - WhaleEventStorage: Whale position/account change events
 - SQLiteBackend: Combined class for backward compatibility
 
 Usage:
     # New way (recommended) - use specific storage classes:
-    from storage import TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage, WhaleEventStorage
+    from storage import TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorage, LiquidationStorage, WhaleEventStorage
 
     twap_db = TwapStorage()
     whale_db = WhaleStorage()
     market_db = MarketStorage()
+    candle_db = MarketCandleStorage()
     liq_db = LiquidationStorage()
     event_db = WhaleEventStorage()
 
@@ -40,11 +54,12 @@ from .base import BaseStorage, DEFAULT_DB_PATH
 from .twap_storage import TwapStorage
 from .whale_storage import WhaleStorage
 from .market_storage import MarketStorage
+from .market_candle_storage import MarketCandleStorage
 from .liquidation_storage import LiquidationStorage
 from .whale_event_storage import WhaleEventStorage
 
 
-class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage, WhaleEventStorage):
+class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorage, LiquidationStorage, WhaleEventStorage):
     """
     Combined storage backend for backward compatibility.
 
@@ -81,10 +96,6 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
 
         # Create all tables from all parent classes
         self._create_all_tables()
-
-
-        # Create all tables from all parent classes
-        self._create_all_tables()
         self._create_all_indexes()
 
         logger = logging.getLogger(__name__)
@@ -95,6 +106,7 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
         TwapStorage._create_tables(self)
         WhaleStorage._create_tables(self)
         MarketStorage._create_tables(self)
+        MarketCandleStorage._create_tables(self)
         LiquidationStorage._create_tables(self)
         WhaleEventStorage._create_tables(self)
 
@@ -103,58 +115,65 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
         TwapStorage._create_indexes(self)
         WhaleStorage._create_indexes(self)
         MarketStorage._create_indexes(self)
+        MarketCandleStorage._create_indexes(self)
         LiquidationStorage._create_indexes(self)
         WhaleEventStorage._create_indexes(self)
 
-    def cleanup_old_data(self, days_to_keep: int = 7, batch_size: int = 5000) -> Dict[str, int]:
+    def cleanup_old_data(self, days_to_keep: int = 3, batch_size: int = 5000) -> Dict[str, int]:
         """
-        Delete data older than specified days to manage database size.
-        Uses batched deletes to avoid blocking the main loop.
+        Aggregate and clean up old market data.
+
+        Strategy:
+        - market_snapshots: Aggregate into 10-min candles, then purge (3 days)
+        - All other tables: KEEP FOREVER for backtesting
 
         Args:
-            days_to_keep: Number of days of data to retain (default: 7)
+            days_to_keep: Days of raw market_snapshots to retain (default: 3)
             batch_size: Rows to delete per batch (default: 5000)
 
         Returns:
-            Dict with count of deleted rows per table
+            Dict with aggregation and deletion counts
         """
         import time
         logger = logging.getLogger(__name__)
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
 
-        deleted = {}
+        result = {}
 
-        # Tables with 'snapshot_time' column
-        snapshot_time_tables = ['market_snapshots', 'liquidation_snapshots']
-        for table in snapshot_time_tables:
-            table_deleted = self._batched_delete(
-                table, 'snapshot_time', cutoff, batch_size
-            )
-            if table_deleted > 0:
-                deleted[table] = table_deleted
+        # =================================================================
+        # STEP 1: Aggregate market_snapshots into 10-min candles
+        # =================================================================
+        try:
+            candles_created = self.aggregate_market_snapshots(before_time=cutoff)
+            if candles_created > 0:
+                result['candles_created'] = candles_created
+                logger.info(f"Created {candles_created} candles from market_snapshots")
+        except Exception as e:
+            logger.error(f"Aggregation failed: {e} — skipping purge to avoid data loss")
+            return result
 
-        # Tables with 'timestamp' column
-        timestamp_tables = ['whale_events']
-        for table in timestamp_tables:
-            table_deleted = self._batched_delete(
-                table, 'timestamp', cutoff, batch_size
-            )
-            if table_deleted > 0:
-                deleted[table] = table_deleted
+        # =================================================================
+        # STEP 2: Purge raw market_snapshots (only table we purge)
+        # =================================================================
+        deleted = self._batched_delete(
+            'market_snapshots', 'snapshot_time', cutoff, batch_size
+        )
+        if deleted > 0:
+            result['market_snapshots_deleted'] = deleted
 
-        total = sum(deleted.values())
+        total_deleted = sum(v for k, v in result.items() if 'deleted' in k)
 
-        if total > 0:
-            logger.info(f"Cleanup complete: {total} total rows deleted")
-            # Only VACUUM if we deleted a lot (it's expensive)
-            if total > 50000:
+        if total_deleted > 0:
+            logger.info(f"Cleanup complete: {result}")
+            # Only VACUUM if we deleted a lot
+            if total_deleted > 50000:
                 logger.info("Running VACUUM to reclaim space...")
                 self.cursor.execute("VACUUM")
                 logger.info("VACUUM complete")
         else:
             logger.info("Cleanup complete: no old data to remove")
 
-        return deleted
+        return result
 
     def _batched_delete(self, table: str, time_column: str, cutoff: str, batch_size: int) -> int:
         """
@@ -248,6 +267,10 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, LiquidationStorage
         self.cursor.execute("SELECT COUNT(*) FROM market_snapshots")
         stats['total_market_snapshots'] = self.cursor.fetchone()[0]
 
+        # Candle stats
+        self.cursor.execute("SELECT COUNT(*) FROM market_candles")
+        stats['total_market_candles'] = self.cursor.fetchone()[0]
+
         # Liquidation stats
         self.cursor.execute("SELECT COUNT(*) FROM liquidation_snapshots")
         stats['total_liquidation_snapshots'] = self.cursor.fetchone()[0]
@@ -267,6 +290,7 @@ __all__ = [
     'TwapStorage',
     'WhaleStorage',
     'MarketStorage',
+    'MarketCandleStorage',
     'LiquidationStorage',
     'WhaleEventStorage',
     'SQLiteBackend',

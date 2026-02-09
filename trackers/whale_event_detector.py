@@ -71,7 +71,8 @@ class WhaleEventDetector:
     # These generate noise — hundreds of rapid position flips with no directional signal
     BLACKLISTED_ADDRESSES: Set[str] = {
         '0x687feda45b6847763f5bf5c01a2f6c1a3d727f5c',
-        '0x2025137a136bea7446deba681cbfc7cf1970840e',# HFT market maker — false event spam
+        '0x2025137a136bea7446deba681cbfc7cf1970840e',
+        '0xf9109ada2f73c62e9889b45453065f0d99260a2d',
     }
 
     # ================================
