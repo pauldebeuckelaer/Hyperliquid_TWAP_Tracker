@@ -301,9 +301,20 @@ class TWAPBot:
                 # Fetch prices
                 prices = {}
                 if self.hyperliquid_client:
+                    # Standard perp + spot prices
                     all_mids = self.hyperliquid_client.get_all_mids()
                     if all_mids:
                         prices = {k: float(v) for k, v in all_mids.items() if not k.startswith('@')}
+
+                    # ============================================================
+                    # NEW: HIP-3 prices (xyz, flx, vntl — tokenized stocks etc.)
+                    # ============================================================
+                    hip3_mids = self.hyperliquid_client.get_hip3_mids()
+                    if hip3_mids:
+                        hip3_prices = {k: float(v) for k, v in hip3_mids.items()}
+                        prices.update(hip3_prices)
+                        logger.info(f"Merged {len(hip3_prices)} HIP-3 prices into price feed")
+                    # ============================================================
 
                 # Update tracker (fires event callbacks)
                 self.tracker.update(twap_data, prices=prices)

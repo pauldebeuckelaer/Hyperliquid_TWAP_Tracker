@@ -279,9 +279,15 @@ ASSET_ID_TO_NAME = {
     215: 'MON',
     216: 'MET',
     217: 'MEGA',
-    218: 'CC',
-    219: 'ICP',
     220: 'AERO',
+    221: 'STABLE',
+    222: 'FOGO',
+    223: 'LIT',
+    224: 'XMR',
+    225: 'AXS',
+    226: 'DASH',
+    227: 'SKR',
+    228: 'AZTEC',
 
     # ========== SPOT MARKETS (10000+) ==========
     10000: 'PURR',
@@ -324,12 +330,12 @@ ASSET_ID_TO_NAME = {
 _hip3_market_map: Dict[str, Dict[int, str]] = {}
 
 # Range configuration for HIP-3 markets
-HIP3_RANGES = {
-    "xyz": (110000, 120000),  # 110000 + index
-    "flx": (120000, 130000),  # 120000 + index
-    "vntl": (130000, 140000),  # 130000 + index
-}
+# Dynamic range mapping — populated at runtime by init_hip3_registry()
+# Maps dex_name -> (range_start, range_end)
+_hip3_ranges: Dict[str, tuple] = {}
 
+# Reverse lookup: given a range_start, find which dex it belongs to
+_hip3_range_index: Dict[int, str] = {}
 
 # ============================================================================
 # DYNAMIC REGISTRY CLASS
@@ -473,65 +479,56 @@ class DynamicCoinRegistry:
 
     def _resolve_spot_token(self, asset_id: int) -> Optional[str]:
         """
-        Resolve a spot token asset_id to its name using dynamic data.
-
-        Asset ID ranges and their meaning:
-        - 10000-109999: Standard spot markets (10000 + market_index)
-        - 110000-119999: xyz: synthetic stocks (110000 + market_index)
-        - 120000-129999: flx: synthetic stocks (120000 + market_index)
-        - 130000-139999: vntl: venture tokens (130000 + market_index)
-
-        Args:
-            asset_id: Spot market asset ID (>= 10000)
-
-        Returns:
-            Token/market name or None if not found
+        Resolve a spot/HIP-3 token asset_id to its name.
+        Uses dynamically discovered HIP-3 ranges.
         """
-        # Check HIP-3 ranges first (xyz, flx, vntl)
-        if 130000 <= asset_id < 140000:
-            # vntl: range (venture tokens)
-            market_index = asset_id - 130000
-            prefix = "vntl"
-        elif 120000 <= asset_id < 130000:
-            # flx: range (synthetic stocks)
-            market_index = asset_id - 120000
-            prefix = "flx"
-        elif 110000 <= asset_id < 120000:
-            # xyz: range (synthetic stocks)
-            market_index = asset_id - 110000
-            prefix = "xyz"
-        elif 10000 <= asset_id < 110000:
-            # Standard spot range - no prefix
-            market_index = asset_id - 10000
+        # HIP-3 range (110000+)
+        if asset_id >= HIP3_START:
             prefix = None
-        else:
+            market_index = None
+
+            for dex_name, (range_start, range_end) in _hip3_ranges.items():
+                if range_start <= asset_id < range_end:
+                    prefix = dex_name
+                    market_index = asset_id - range_start
+                    break
+
+            if prefix is None:
+                # Unknown HIP-3 range — new dex deployed after init
+                return None
+
+            if prefix in _hip3_market_map:
+                if market_index in _hip3_market_map[prefix]:
+                    symbol = _hip3_market_map[prefix][market_index]
+                    result = f"{prefix}:{symbol}"
+                    logger.debug(
+                        f"HIP-3 resolved: asset_id {asset_id} -> "
+                        f"{prefix} index {market_index} -> {result}"
+                    )
+                    return result
+                else:
+                    logger.debug(f"HIP-3 market not found: {prefix} index {market_index}")
+                    return f"{prefix}_{market_index}"
+
+            return f"{prefix}_{market_index}"
+
+        # Standard spot range (10000-109999)
+        elif SPOT_START <= asset_id < HIP3_START:
+            market_index = asset_id - SPOT_START
+
+            if market_index in self._spot_market_map:
+                name = self._spot_market_map[market_index]
+                logger.debug(f"Resolved asset_id {asset_id} -> market_index {market_index} -> {name}")
+                return name
+
+            if market_index in self._spot_token_map:
+                name = self._spot_token_map[market_index]
+                logger.debug(f"Resolved asset_id {asset_id} via token map -> {name}")
+                return name
+
+            logger.debug(f"Could not resolve asset_id {asset_id} (market_index={market_index})")
             return None
 
-        # For HIP-3 markets (xyz, flx, vntl), try the HIP-3 map first
-        if prefix and prefix in _hip3_market_map:
-            if market_index in _hip3_market_map[prefix]:
-                symbol = _hip3_market_map[prefix][market_index]
-                result = f"{prefix}:{symbol}"
-                logger.debug(f"HIP-3 resolved: asset_id {asset_id} -> {prefix} index {market_index} -> {result}")
-                return result
-            else:
-                # HIP-3 market not in our map - return with prefix and index
-                logger.debug(f"HIP-3 market not found: {prefix} index {market_index}")
-                return f"{prefix}_{market_index}"
-
-        # For standard spot markets, look up in the market map
-        if market_index in self._spot_market_map:
-            name = self._spot_market_map[market_index]
-            logger.debug(f"Resolved asset_id {asset_id} -> market_index {market_index} -> {name}")
-            return name
-
-        # Fallback: try token map (less accurate but might work for some)
-        if market_index in self._spot_token_map:
-            name = self._spot_token_map[market_index]
-            logger.debug(f"Resolved asset_id {asset_id} via token map -> {name}")
-            return name
-
-        logger.debug(f"Could not resolve asset_id {asset_id} (market_index={market_index})")
         return None
 
     @property
@@ -571,57 +568,95 @@ _registry = DynamicCoinRegistry()
 
 def init_hip3_registry(hl_client) -> bool:
     """
-    Initialize HIP-3 market mappings from perpDexs endpoint.
+    Initialize HIP-3 market mappings DYNAMICALLY.
 
-    This loads the tokenized equity markets (xyz, flx, vntl) mappings
-    so we can resolve asset IDs like 120002 -> "flx:TSLA"
+    Step 1: perpDexs → discover dex names and assign ID ranges
+    Step 2: metaAndAssetCtxs per dex → get correct asset order for ID mapping
 
-    Args:
-        hl_client: HyperliquidClient instance with get_perp_dexs() method
-
-    Returns:
-        True if initialization succeeded, False otherwise
+    Each dex gets a 10K range starting at 110000:
+      - dex index 0 → 110000-119999
+      - dex index 1 → 120000-129999
+      - etc.
     """
-    global _hip3_market_map
+    global _hip3_market_map, _hip3_ranges, _hip3_range_index
 
     try:
+        # Step 1: Get dex names from perpDexs
         perp_dexs = hl_client.get_perp_dexs()
 
         if not perp_dexs:
             logger.warning("Failed to fetch perpDexs - HIP-3 resolution disabled")
             return False
 
-        loaded_count = 0
-
-        for dex in perp_dexs:
-            if dex is None:
+        # Collect dex names in order
+        # Discover dex names and assign ranges
+        for dex_index, dex in enumerate(perp_dexs):
+            if dex is None or not isinstance(dex, dict) or not dex.get("name"):
                 continue
 
-            name = dex.get("name")  # "xyz", "flx", "vntl"
-            assets = dex.get("assetToStreamingOiCap", [])
+            name = dex["name"]
+            range_start = HIP3_START + ((dex_index - 1) * 10000)
+            range_end = range_start + 10000
 
-            if name and assets:
+            _hip3_ranges[name] = (range_start, range_end)
+            _hip3_range_index[range_start] = name
+
+            logger.info(f"HIP-3 dex '{name}': range {range_start}-{range_end - 1}")
+
+        if not _hip3_ranges:
+            logger.warning("No named HIP-3 dexes found")
+            return False
+
+        # Step 2: Fetch metaAndAssetCtxs per dex for correct universe order
+        loaded_count = 0
+
+        for name, (range_start, range_end) in _hip3_ranges.items():
+            try:
+                result = hl_client._make_request("metaAndAssetCtxs", {"dex": name})
+
+                if not result or not isinstance(result, list) or len(result) < 2:
+                    logger.warning(f"No metaAndAssetCtxs data for dex '{name}'")
+                    _hip3_market_map[name] = {}
+                    continue
+
+                meta = result[0]
+                universe = meta.get("universe", [])
+
                 _hip3_market_map[name] = {}
 
-                for i, asset_entry in enumerate(assets):
-                    if isinstance(asset_entry, list) and len(asset_entry) >= 1:
-                        asset_name = asset_entry[0]  # "flx:TSLA"
-                        # Extract symbol after the colon
-                        if ":" in asset_name:
-                            symbol = asset_name.split(":")[-1]
-                        else:
-                            symbol = asset_name
-                        _hip3_market_map[name][i] = symbol
+                for i, asset in enumerate(universe):
+                    asset_name = asset.get("name")
+                    if asset_name:
+                        # Strip dex prefix if present (universe returns "xyz:COIN", we want "COIN")
+                        if asset_name.startswith(f"{name}:"):
+                            asset_name = asset_name[len(name) + 1:]
+                        _hip3_market_map[name][i] = asset_name
 
                 loaded_count += len(_hip3_market_map[name])
+
                 logger.info(
-                    f"Loaded {len(_hip3_market_map[name])} {name} markets: {list(_hip3_market_map[name].values())}")
+                    f"HIP-3 dex '{name}': {len(_hip3_market_map[name])} assets loaded "
+                    f"(universe order)"
+                )
+
+                # Log first 5 for verification
+                if logger.isEnabledFor(logging.DEBUG):
+                    samples = list(_hip3_market_map[name].items())[:5]
+                    logger.debug(f"  Sample: {samples}")
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch universe for dex '{name}': {e}")
+                _hip3_market_map[name] = {}
+                continue
 
         if loaded_count > 0:
-            logger.info(f"✅ HIP-3 registry initialized with {loaded_count} total markets")
+            logger.info(
+                f"✅ HIP-3 registry initialized: {loaded_count} assets across "
+                f"{len(_hip3_ranges)} dexes: {list(_hip3_ranges.keys())}"
+            )
             return True
         else:
-            logger.warning("perpDexs returned no markets")
+            logger.warning("No HIP-3 assets loaded")
             return False
 
     except Exception as e:
@@ -687,6 +722,7 @@ def get_registry_status() -> Dict:
     stats = _registry.get_stats()
     stats["hip3_loaded"] = len(_hip3_market_map) > 0
     stats["hip3_markets"] = {k: list(v.values()) for k, v in _hip3_market_map.items()}
+    stats["hip3_ranges"] = {k: f"{v[0]}-{v[1]-1}" for k, v in _hip3_ranges.items()}
     return stats
 
 
@@ -763,19 +799,17 @@ def is_hip3(asset_id: int) -> bool:
 
 def get_hip3_type(asset_id: int) -> Optional[str]:
     """
-    Get the HIP-3 market type for an asset ID.
-
-    Returns:
-        'xyz', 'flx', 'vntl', or None if not a HIP-3 market
+    Get the HIP-3 dex name for an asset ID.
+    Uses dynamically discovered ranges.
     """
-    if 110000 <= asset_id < 120000:
-        return "xyz"
-    elif 120000 <= asset_id < 130000:
-        return "flx"
-    elif 130000 <= asset_id < 140000:
-        return "vntl"
-    return None
+    if asset_id < HIP3_START:
+        return None
 
+    for dex_name, (range_start, range_end) in _hip3_ranges.items():
+        if range_start <= asset_id < range_end:
+            return dex_name
+
+    return None
 
 def is_hype(asset_id: int) -> bool:
     """Check if asset_id is HYPE (either SPOT or PERP)"""

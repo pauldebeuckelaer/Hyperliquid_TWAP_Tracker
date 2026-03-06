@@ -138,14 +138,29 @@ class AllCoinsStateTracker:
         logger.info("=" * 70)
 
     def _get_price(self, symbol: str, prices: Dict[str, float]) -> Optional[float]:
-        """Get price for symbol, resolving U-prefix spot derivatives"""
+        """
+        Get price for symbol, resolving U-prefix spot derivatives and HIP-3 names.
+
+        Price lookup order:
+        1. Exact match (works for standard perps like "BTC", "HYPE")
+        2. U-prefix resolution (UBTC -> BTC)
+        3. HIP-3 dex-prefixed match (NVDA -> xyz:NVDA, TSLA -> xyz:TSLA)
+        """
+        # 1. Direct match
         if symbol in prices:
             return prices[symbol]
 
+        # 2. U-prefix spot derivatives
         if symbol.startswith('U') and len(symbol) > 1 and symbol not in self.U_PREFIX_EXCEPTIONS:
             underlying = symbol[1:]
             if underlying in prices:
                 return prices[underlying]
+
+        # 3. HIP-3 dex-prefixed lookup (try common dex prefixes)
+        for prefix in ("xyz", "flx", "vntl"):
+            hip3_key = f"{prefix}:{symbol}"
+            if hip3_key in prices:
+                return prices[hip3_key]
 
         return None
 

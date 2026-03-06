@@ -1128,6 +1128,161 @@ class HyperliquidClient:
             'asset_ctxs': asset_ctxs
         }
 
+    # =========================================================================
+    # ADD METHOD 1: get_hip3_mids()
+    # =========================================================================
+    # Place after get_meta_and_asset_ctxs() in the Market Data section
+
+    def get_hip3_mids(self) -> Dict[str, str]:
+        """
+        Get mark prices for ALL active HIP-3 dexes (xyz, flx, vntl, etc.)
+
+        Returns prices in the same format as allMids: {"xyz:TSLA": "399.71", ...}
+        so they can be merged directly into the allMids price dict.
+
+        Uses perpDexs to discover active dex names, then fetches metaAndAssetCtxs
+        for each one.
+
+        Returns:
+            Dict of {"dex:ASSET": "price_string", ...}
+            Empty dict on error (never None — safe to merge)
+        """
+        hip3_prices = {}
+
+        try:
+            # Get list of active HIP-3 dexes
+            perp_dexs = self.get_perp_dexs()
+
+            if not perp_dexs:
+                logger.debug("No HIP-3 dexes found")
+                return hip3_prices
+
+            # Extract dex names
+            dex_names = []
+            for dex in perp_dexs:
+                if dex and isinstance(dex, dict):
+                    name = dex.get("name")
+                    if name:
+                        dex_names.append(name)
+
+            if not dex_names:
+                logger.debug("No named HIP-3 dexes found")
+                return hip3_prices
+
+            logger.debug(f"Fetching prices for {len(dex_names)} HIP-3 dexes: {dex_names}")
+
+            # Fetch metaAndAssetCtxs for each dex
+            for dex_name in dex_names:
+                try:
+                    result = self._make_request("metaAndAssetCtxs", {"dex": dex_name})
+
+                    if not result or not isinstance(result, list) or len(result) < 2:
+                        logger.debug(f"No data for HIP-3 dex '{dex_name}'")
+                        continue
+
+                    meta = result[0]
+                    ctxs = result[1]
+                    universe = meta.get("universe", [])
+
+                    for i, asset in enumerate(universe):
+                        name = asset.get("name")
+                        is_delisted = asset.get("isDelisted", False)
+
+                        if not name or is_delisted:
+                            continue
+
+                        if i < len(ctxs):
+                            mark_px = ctxs[i].get("markPx")
+                            if mark_px:
+                                # Key format: "xyz:TSLA" — matches coin_registry format
+                                full_key = f"{dex_name}:{name}"
+                                hip3_prices[full_key] = str(mark_px)
+
+                    active_count = sum(
+                        1 for a in universe if not a.get("isDelisted", False)
+                    )
+                    logger.info(
+                        f"HIP-3 '{dex_name}': {active_count} active assets, "
+                        f"{len([k for k in hip3_prices if k.startswith(dex_name)])} prices loaded"
+                    )
+
+                except Exception as e:
+                    logger.warning(f"Failed to fetch HIP-3 dex '{dex_name}': {e}")
+                    continue
+
+            logger.info(f"📊 HIP-3 total: {len(hip3_prices)} prices across {len(dex_names)} dexes")
+
+        except Exception as e:
+            logger.error(f"Error fetching HIP-3 mids: {e}")
+
+        return hip3_prices
+
+    # =========================================================================
+    # ADD METHOD 2: get_hip3_meta_and_asset_ctxs(dex)
+    # =========================================================================
+    # Place after get_hip3_mids()
+
+    def get_hip3_meta_and_asset_ctxs(self, dex: str) -> Optional[Dict]:
+        """
+        Get perp metadata + asset contexts for a specific HIP-3 dex.
+
+        Same structure as get_meta_and_asset_ctxs() but for builder-deployed
+        perp dexes (xyz, flx, vntl).
+
+        Args:
+            dex: Dex name (e.g., "xyz", "flx", "vntl")
+
+        Returns:
+            {
+                'dex': 'xyz',
+                'meta': {universe: [...], ...},
+                'asset_ctxs': {
+                    'xyz:TSLA': {funding, open_interest, day_ntl_vlm, mark_px, ...},
+                    'xyz:NVDA': {...},
+                    ...
+                }
+            }
+            or None on error
+        """
+        result = self._make_request("metaAndAssetCtxs", {"dex": dex})
+
+        if not result or not isinstance(result, list) or len(result) < 2:
+            logger.warning(f"Failed to get metaAndAssetCtxs for HIP-3 dex '{dex}'")
+            return None
+
+        meta = result[0]
+        raw_ctxs = result[1]
+        universe = meta.get("universe", [])
+
+        # Zip universe names with contexts — prefix with dex name
+        asset_ctxs = {}
+        for i, asset in enumerate(universe):
+            name = asset.get("name")
+            if name and i < len(raw_ctxs):
+                ctx = raw_ctxs[i]
+                full_key = f"{dex}:{name}"
+                asset_ctxs[full_key] = {
+                    'funding': float(ctx.get('funding') or 0),
+                    'open_interest': float(ctx.get('openInterest') or 0),
+                    'day_ntl_vlm': float(ctx.get('dayNtlVlm') or 0),
+                    'mark_px': float(ctx.get('markPx') or 0),
+                    'oracle_px': float(ctx.get('oraclePx') or 0),
+                    'mid_px': float(ctx.get('midPx') or 0) if ctx.get('midPx') else None,
+                    'prev_day_px': float(ctx.get('prevDayPx') or 0),
+                    'premium': float(ctx.get('premium') or 0) if ctx.get('premium') else None,
+                    'is_delisted': asset.get('isDelisted', False),
+                    'max_leverage': asset.get('maxLeverage', 0),
+                }
+
+        active = sum(1 for v in asset_ctxs.values() if not v.get('is_delisted'))
+        logger.info(f"📋 HIP-3 '{dex}': {active} active / {len(asset_ctxs)} total markets")
+
+        return {
+            'dex': dex,
+            'meta': meta,
+            'asset_ctxs': asset_ctxs
+        }
+
     # =============================================================================
     # ASYNC METHODS
     # =============================================================================
