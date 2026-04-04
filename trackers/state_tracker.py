@@ -157,7 +157,7 @@ class AllCoinsStateTracker:
                 return prices[underlying]
 
         # 3. HIP-3 dex-prefixed lookup (try common dex prefixes)
-        for prefix in ("xyz", "flx", "vntl"):
+        for prefix in ("xyz", "flx", "vntl", "hyna", "km", "cash", "abcd"):
             hip3_key = f"{prefix}:{symbol}"
             if hip3_key in prices:
                 return prices[hip3_key]

@@ -1195,7 +1195,8 @@ class HyperliquidClient:
                             mark_px = ctxs[i].get("markPx")
                             if mark_px:
                                 # Key format: "xyz:TSLA" — matches coin_registry format
-                                full_key = f"{dex_name}:{name}"
+                                clean_name = name.split(":", 1)[-1] if ":" in name else name
+                                full_key = f"{dex_name}:{clean_name}"
                                 hip3_prices[full_key] = str(mark_px)
 
                     active_count = sum(
@@ -1255,7 +1256,8 @@ class HyperliquidClient:
             name = asset.get("name")
             if name and i < len(raw_ctxs):
                 ctx = raw_ctxs[i]
-                full_key = f"{dex}:{name}"
+                clean_name = name.split(":", 1)[-1] if ":" in name else name
+                full_key = f"{dex}:{clean_name}"
                 asset_ctxs[full_key] = {
                     'funding': float(ctx.get('funding') or 0),
                     'open_interest': float(ctx.get('openInterest') or 0),
