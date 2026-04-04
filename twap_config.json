@@ -12,9 +12,13 @@
     "api_url": "https://api.hyperliquid.xyz",
     "timeout": 10,
     "rate_limit_delay": 0.5,
+    "liquidation_tracker": {
+      "hip3_tracking_enabled": true
+    },
     "metrics_collection": {
       "light_interval_hours": 6,
-      "deep_interval_hours": 24
+      "deep_interval_hours": 24,
+      "hip3_tracking_enabled": true
     }
   },
 

@@ -11,6 +11,7 @@ Features:
 - Event detection for VIP + Tier1 only
 - Saves to liquidation_snapshots table
 - Dedicated log files for coin-level and address-level liquidation data
+- HIP-3 position tracking (tokenized stocks, commodities, etc.)
 
 Usage:
     from liquidation_tracker import LiquidationTracker
@@ -75,11 +76,25 @@ class LiquidationTracker:
         self.batch_size = self.config.get('batch_size', 50)
         self.batch_delay = self.config.get('batch_delay', 0.5)
 
+        # =====================================================================
+        # HIP-3 CONFIG
+        # =====================================================================
+        self.hip3_tracking_enabled = self.config.get('hip3_tracking_enabled', False)
+        self.hip3_batch_size = self.config.get('hip3_batch_size', 50)
+        self.hip3_batch_delay = self.config.get('hip3_batch_delay', 0.5)
+        # =====================================================================
+
         # Stats
         self.snapshot_count = 0
         self.last_snapshot_time: Optional[datetime] = None
+        # HIP-3 stats
+        self._hip3_positions_found = 0
+        self._hip3_fetch_errors = 0
 
-        logger.info(f"LiquidationTracker initialized (batch_size={self.batch_size})")
+        if self.hip3_tracking_enabled:
+            logger.info(f"LiquidationTracker initialized (batch_size={self.batch_size}, HIP-3=ON)")
+        else:
+            logger.info(f"LiquidationTracker initialized (batch_size={self.batch_size}, HIP-3=OFF)")
 
     # =========================================================================
     # ASYNC API METHODS
@@ -159,15 +174,137 @@ class LiquidationTracker:
             logger.warning(f"Error fetching spot for {address[:10]}: {e}")
             return None
 
+    # =========================================================================
+    # HIP-3 ASYNC FETCH (NEW)
+    # =========================================================================
+
+    async def _get_user_hip3_state_async(
+            self,
+            session: aiohttp.ClientSession,
+            address: str,
+            dex: str
+    ) -> Optional[Dict]:
+        """
+        Fetch user's clearinghouseState for a specific HIP-3 dex.
+
+        Args:
+            session: aiohttp session
+            address: User address
+            dex: HIP-3 dex name (e.g., "xyz", "flx")
+
+        Returns:
+            {"address": address, "dex": dex, "state": <clearinghouseState>}
+            or None on error
+        """
+        payload = {"type": "clearinghouseState", "user": address, "dex": dex}
+
+        try:
+            async with session.post(
+                    self.api_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {"address": address, "dex": dex, "state": data}
+                else:
+                    logger.debug(f"HIP-3 '{dex}' fetch failed for {address[:10]}...: HTTP {response.status}")
+                    return None
+        except asyncio.TimeoutError:
+            logger.debug(f"HIP-3 '{dex}' timeout for {address[:10]}...")
+            return None
+        except Exception as e:
+            logger.debug(f"HIP-3 '{dex}' error for {address[:10]}...: {e}")
+            return None
+
+    async def _fetch_hip3_positions_batch(
+            self,
+            session: aiohttp.ClientSession,
+            addresses: List[str],
+            dex: str
+    ) -> Dict[str, List[Dict]]:
+        """
+        Fetch HIP-3 positions for a batch of addresses on a single dex.
+
+        Args:
+            session: aiohttp session
+            addresses: List of whale addresses
+            dex: HIP-3 dex name
+
+        Returns:
+            Dict of address -> list of raw position dicts.
+            Addresses with no positions are omitted.
+        """
+        positions_by_addr = {}
+
+        for i in range(0, len(addresses), self.hip3_batch_size):
+            batch = addresses[i:i + self.hip3_batch_size]
+
+            tasks = [self._get_user_hip3_state_async(session, addr, dex) for addr in batch]
+            results = await asyncio.gather(*tasks)
+
+            for result in results:
+                if not result:
+                    continue
+
+                address = result["address"]
+                state = result.get("state", {})
+                asset_positions = state.get("assetPositions", [])
+
+                for pos_data in asset_positions:
+                    position = pos_data.get("position", {})
+                    size = float(position.get("szi", 0))
+
+                    if size == 0:
+                        continue
+
+                    coin = position.get("coin", "")
+
+                    # Ensure dex prefix — API should return "xyz:TSLA" but
+                    # we add it defensively if missing
+                    if ":" not in coin:
+                        coin = f"{dex}:{coin}"
+
+                    if address not in positions_by_addr:
+                        positions_by_addr[address] = []
+
+                    positions_by_addr[address].append({
+                        "coin": coin,
+                        "szi": position.get("szi", "0"),
+                        "entryPx": position.get("entryPx", "0"),
+                        "liquidationPx": position.get("liquidationPx"),
+                        "leverage": position.get("leverage", {}),
+                        "marginUsed": position.get("marginUsed", "0"),
+                        "unrealizedPnl": position.get("unrealizedPnl", "0"),
+                        "positionValue": position.get("positionValue", "0"),
+                        "cumFunding": position.get("cumFunding", {}),
+                    })
+
+            # Delay between batches
+            if i + self.hip3_batch_size < len(addresses):
+                await asyncio.sleep(self.hip3_batch_delay)
+
+        return positions_by_addr
+
+    # =========================================================================
+    # MAIN FETCH METHOD (UPDATED)
+    # =========================================================================
+
     async def _fetch_whale_states_async(self, addresses: List[str]) -> List[Dict]:
         """
-        Fetch whale states (perp + spot) in batches.
+        Fetch whale states (perp + spot + HIP-3) in batches.
 
         Args:
             addresses: List of whale addresses to fetch
 
         Returns:
-            List of state dicts (excluding failures)
+            List of state dicts (excluding failures).
+            Each dict contains:
+            - address: str
+            - state: main perp clearinghouseState
+            - spot_usdc: float
+            - hip3_positions: list of raw position dicts (if HIP-3 enabled)
         """
         if not addresses:
             return []
@@ -177,6 +314,9 @@ class LiquidationTracker:
         total_batches = (len(addresses) + self.batch_size - 1) // self.batch_size
 
         async with aiohttp.ClientSession(connector=connector) as session:
+            # =================================================================
+            # STEP 1: Fetch main perp + spot states (existing logic)
+            # =================================================================
             for i in range(0, len(addresses), self.batch_size):
                 batch = addresses[i:i + self.batch_size]
                 batch_num = i // self.batch_size + 1
@@ -196,11 +336,56 @@ class LiquidationTracker:
                 for perp in perp_results:
                     if perp:
                         perp['spot_usdc'] = self._parse_spot_usdc(spot_by_addr.get(perp['address']))
+                        perp['hip3_positions'] = []  # Placeholder, filled in step 2
                         all_results.append(perp)
 
                 # Delay between batches (skip on last batch)
                 if i + self.batch_size < len(addresses):
                     await asyncio.sleep(self.batch_delay)
+
+            # =================================================================
+            # STEP 2: Fetch HIP-3 positions (NEW — additive)
+            # =================================================================
+            if self.hip3_tracking_enabled and all_results:
+                hip3_dexes = self.client.get_active_hip3_dexes()
+
+                if hip3_dexes:
+                    # Get addresses that succeeded in step 1
+                    fetched_addresses = [r['address'] for r in all_results]
+                    hip3_total_positions = 0
+
+                    for dex in hip3_dexes:
+                        try:
+                            positions_by_addr = await self._fetch_hip3_positions_batch(
+                                session, fetched_addresses, dex
+                            )
+
+                            if positions_by_addr:
+                                dex_pos_count = sum(len(v) for v in positions_by_addr.values())
+                                hip3_total_positions += dex_pos_count
+
+                                # Merge into existing results
+                                results_by_addr = {r['address']: r for r in all_results}
+                                for addr, positions in positions_by_addr.items():
+                                    if addr in results_by_addr:
+                                        results_by_addr[addr]['hip3_positions'].extend(positions)
+
+                                logger.debug(
+                                    f"HIP-3 '{dex}': {dex_pos_count} positions "
+                                    f"across {len(positions_by_addr)} whales"
+                                )
+
+                        except Exception as e:
+                            self._hip3_fetch_errors += 1
+                            logger.warning(f"HIP-3 '{dex}' batch fetch failed: {e}")
+                            continue
+
+                    if hip3_total_positions > 0:
+                        self._hip3_positions_found += hip3_total_positions
+                        logger.info(
+                            f"🏗️  HIP-3: {hip3_total_positions} positions found "
+                            f"across {len(hip3_dexes)} dexes"
+                        )
 
         success_rate = len(all_results) / len(addresses) * 100 if addresses else 0
         logger.debug(f"Fetched {len(all_results)}/{len(addresses)} whale states ({success_rate:.1f}% success)")
@@ -231,7 +416,7 @@ class LiquidationTracker:
         return 0.0
 
     # =========================================================================
-    # LIQUIDATION PARSING
+    # LIQUIDATION PARSING (REFACTORED)
     # =========================================================================
 
     def _calculate_distance_to_liq(self, current_price: float, liq_price: float, side: str) -> float:
@@ -258,13 +443,119 @@ class LiquidationTracker:
 
         return distance
 
+    def _add_position_to_exposure(
+            self,
+            coin_exposure: Dict,
+            address: str,
+            coin: str,
+            pos: Dict,
+            prices: Dict,
+            account_value: float,
+            total_margin_used: float,
+            withdrawable: float,
+            spot_usdc: float
+    ):
+        """
+        Add a single position to the coin_exposure aggregation.
+
+        Extracted to avoid duplicating logic for main perp and HIP-3 positions.
+
+        Args:
+            coin_exposure: Mutable dict being built up
+            address: Whale address
+            coin: Coin name (e.g., "BTC" or "xyz:TSLA")
+            pos: Raw position dict from API
+            prices: Price lookup dict
+            account_value: Whale's main perp account value
+            total_margin_used: Whale's total margin used
+            withdrawable: Whale's withdrawable amount
+            spot_usdc: Whale's spot USDC balance
+        """
+        size = float(pos.get('szi', 0))
+        if size == 0:
+            return
+
+        # Position data
+        entry_price = float(pos.get('entryPx', 0))
+        liq_price_str = pos.get('liquidationPx')
+        liq_price = float(liq_price_str) if liq_price_str else 0
+        position_value = float(pos.get('positionValue', 0))
+        margin_used = float(pos.get('marginUsed', 0))
+
+        # Leverage info
+        leverage_data = pos.get('leverage', {})
+        if isinstance(leverage_data, dict):
+            leverage = leverage_data.get('value', 0)
+        else:
+            leverage = 0
+
+        # PnL data
+        unrealized_pnl = float(pos.get('unrealizedPnl', 0))
+
+        # Funding data
+        cum_funding = pos.get('cumFunding', {})
+        funding_since_open = float(cum_funding.get('sinceOpen', 0))
+
+        side = 'LONG' if size > 0 else 'SHORT'
+        current_price = float(prices.get(coin, 0))
+
+        # Distance to liquidation
+        if current_price > 0 and liq_price > 0:
+            distance = self._calculate_distance_to_liq(current_price, liq_price, side)
+        else:
+            distance = 100.0
+
+        # PnL percentage (return on margin)
+        pnl_pct = (unrealized_pnl / margin_used * 100) if margin_used > 0 else 0
+
+        # Initialize coin entry if needed
+        if coin not in coin_exposure:
+            coin_exposure[coin] = {
+                'total_value': 0,
+                'long_value': 0,
+                'short_value': 0,
+                'positions': []
+            }
+
+        # Aggregate totals
+        coin_exposure[coin]['total_value'] += abs(position_value)
+
+        if side == 'LONG':
+            coin_exposure[coin]['long_value'] += position_value
+        else:
+            coin_exposure[coin]['short_value'] += abs(position_value)
+
+        # Add position details
+        coin_exposure[coin]['positions'].append({
+            'address': address,
+            'coin': coin,
+            'side': side,
+            'size': abs(size),
+            'value': abs(position_value),
+            'entry_price': entry_price,
+            'current_price': current_price,
+            'liq_price': liq_price,
+            'margin_used': margin_used,
+            'leverage': leverage,
+            'unrealized_pnl': unrealized_pnl,
+            'pnl_pct': pnl_pct,
+            'funding_since_open': funding_since_open,
+            'distance_to_liq': distance,
+            'account_value': account_value,
+            'account_margin_used': total_margin_used,
+            'account_withdrawable': withdrawable,
+            'spot_usdc': spot_usdc,
+        })
+
     def _parse_liquidation_exposure(self, whale_states: List[Dict], prices: Dict) -> Dict:
         """
         Parse whale states and aggregate liquidation exposure by coin.
 
+        Handles both main perp positions AND HIP-3 positions.
+
         Args:
             whale_states: List of whale state dicts from API
-            prices: Dict of coin -> price
+            prices: Dict of coin -> price (must include HIP-3 prices like "xyz:TSLA")
 
         Returns:
             Dict with per-coin exposure data including individual positions
@@ -275,15 +566,17 @@ class LiquidationTracker:
             state = whale_data.get('state', {})
             address = whale_data.get('address', '')
 
-            # Account level data
+            # Account level data (main perp dex)
             margin_summary = state.get('marginSummary', {})
             account_value = float(margin_summary.get('accountValue', 0))
             total_margin_used = float(margin_summary.get('totalMarginUsed', 0))
             withdrawable = float(state.get('withdrawable', 0))
 
-            # Account-level risk metrics
-            account_margin_ratio = total_margin_used / account_value if account_value > 0 else 0
+            spot_usdc = whale_data.get('spot_usdc', 0)
 
+            # =================================================================
+            # MAIN PERP POSITIONS (existing logic, now uses extracted method)
+            # =================================================================
             positions = state.get('assetPositions', [])
 
             for pos_data in positions:
@@ -296,77 +589,31 @@ class LiquidationTracker:
                 if size == 0:
                     continue
 
-                # Position data
-                entry_price = float(pos.get('entryPx', 0))
-                liq_price_str = pos.get('liquidationPx')
-                liq_price = float(liq_price_str) if liq_price_str else 0
-                position_value = float(pos.get('positionValue', 0))
-                margin_used = float(pos.get('marginUsed', 0))
+                self._add_position_to_exposure(
+                    coin_exposure, address, coin, pos, prices,
+                    account_value, total_margin_used, withdrawable,
+                    spot_usdc
+                )
 
-                # Leverage info
-                leverage_data = pos.get('leverage', {})
-                if isinstance(leverage_data, dict):
-                    leverage = leverage_data.get('value', 0)
-                else:
-                    leverage = 0
+            # =================================================================
+            # HIP-3 POSITIONS (NEW — additive)
+            # =================================================================
+            hip3_positions = whale_data.get('hip3_positions', [])
 
-                # PnL data
-                unrealized_pnl = float(pos.get('unrealizedPnl', 0))
+            for hip3_pos in hip3_positions:
+                coin = hip3_pos.get('coin', '')
+                if not coin:
+                    continue
 
-                # Funding data
-                cum_funding = pos.get('cumFunding', {})
-                funding_since_open = float(cum_funding.get('sinceOpen', 0))
+                size = float(hip3_pos.get('szi', 0))
+                if size == 0:
+                    continue
 
-                side = 'LONG' if size > 0 else 'SHORT'
-                current_price = float(prices.get(coin, 0))
-
-                # Distance to liquidation
-                if current_price > 0 and liq_price > 0:
-                    distance = self._calculate_distance_to_liq(current_price, liq_price, side)
-                else:
-                    distance = 100.0
-
-                # PnL percentage (return on margin)
-                pnl_pct = (unrealized_pnl / margin_used * 100) if margin_used > 0 else 0
-
-                # Initialize coin entry if needed
-                if coin not in coin_exposure:
-                    coin_exposure[coin] = {
-                        'total_value': 0,
-                        'long_value': 0,
-                        'short_value': 0,
-                        'positions': []
-                    }
-
-                # Aggregate totals
-                coin_exposure[coin]['total_value'] += abs(position_value)
-
-                if side == 'LONG':
-                    coin_exposure[coin]['long_value'] += position_value
-                else:
-                    coin_exposure[coin]['short_value'] += abs(position_value)
-
-                # Add position details
-                coin_exposure[coin]['positions'].append({
-                    'address': address,
-                    'coin': coin,
-                    'side': side,
-                    'size': abs(size),
-                    'value': abs(position_value),
-                    'entry_price': entry_price,
-                    'current_price': current_price,
-                    'liq_price': liq_price,
-                    'margin_used': margin_used,
-                    'leverage': leverage,
-                    'unrealized_pnl': unrealized_pnl,
-                    'pnl_pct': pnl_pct,
-                    'funding_since_open': funding_since_open,
-                    'distance_to_liq': distance,
-                    'account_value': account_value,
-                    'account_margin_used': total_margin_used,
-                    'account_withdrawable': withdrawable,
-                    'spot_usdc': whale_data.get('spot_usdc', 0),
-                })
+                self._add_position_to_exposure(
+                    coin_exposure, address, coin, hip3_pos, prices,
+                    account_value, total_margin_used, withdrawable,
+                    spot_usdc
+                )
 
         # Sort positions within each coin by distance to liquidation
         for coin in coin_exposure:
@@ -375,7 +622,7 @@ class LiquidationTracker:
         return coin_exposure
 
     # =========================================================================
-    # SNAPSHOT METHODS
+    # SNAPSHOT METHODS (UPDATED)
     # =========================================================================
 
     async def take_snapshot_async(self, prices: Dict = None) -> Dict:
@@ -384,6 +631,8 @@ class LiquidationTracker:
 
         Args:
             prices: Optional dict of coin -> price. If not provided, uses client.
+                    Should include HIP-3 prices (e.g., "xyz:TSLA": 399.71) if
+                    hip3_tracking_enabled is True.
 
         Returns:
             Dict with snapshot results
@@ -406,11 +655,12 @@ class LiquidationTracker:
 
         # Log what we're fetching
         tier_summary = {k: len(v) for k, v in addresses_by_tier.items() if v}
-        logger.info(f"📊 Liquidation snapshot (cycle {cycle}/60) | Addresses: {tier_summary}")
+        hip3_tag = " +HIP3" if self.hip3_tracking_enabled else ""
+        logger.info(f"📊 Liquidation snapshot (cycle {cycle}/60){hip3_tag} | Addresses: {tier_summary}")
 
         start_time = datetime.now()
 
-        # Fetch whale states
+        # Fetch whale states (now includes HIP-3 if enabled)
         whale_states = await self._fetch_whale_states_async(addresses)
 
         fetch_elapsed = (datetime.now() - start_time).total_seconds()
@@ -424,6 +674,20 @@ class LiquidationTracker:
             else:
                 prices = {}
                 logger.warning("Failed to get prices")
+
+        # =================================================================
+        # MERGE HIP-3 PRICES (NEW)
+        # =================================================================
+        if self.hip3_tracking_enabled:
+            try:
+                hip3_mids = self.client.get_hip3_mids()
+                if hip3_mids:
+                    hip3_prices = {k: float(v) for k, v in hip3_mids.items()}
+                    prices.update(hip3_prices)
+                    logger.debug(f"Merged {len(hip3_prices)} HIP-3 prices into liquidation price feed")
+            except Exception as e:
+                logger.warning(f"Failed to fetch HIP-3 prices for liquidation: {e}")
+        # =================================================================
 
         # Detect events (VIP + Tier1 only - handled inside detector)
         events = []
@@ -444,7 +708,7 @@ class LiquidationTracker:
         self.last_snapshot_time = timestamp
         self.snapshot_count += 1
 
-        return {
+        result = {
             'timestamp': timestamp.isoformat(),
             'cycle': cycle,
             'addresses_requested': len(addresses),
@@ -454,6 +718,16 @@ class LiquidationTracker:
             'events_detected': len(events),
             'events': events,
         }
+
+        # Add HIP-3 stats if enabled
+        if self.hip3_tracking_enabled:
+            hip3_pos_this_cycle = sum(
+                len(w.get('hip3_positions', []))
+                for w in whale_states
+            )
+            result['hip3_positions'] = hip3_pos_this_cycle
+
+        return result
 
     def take_snapshot(self, prices: Dict = None) -> Dict:
         """
@@ -511,7 +785,11 @@ class LiquidationTracker:
         warning_count = 0  # 5-10%
         watch_count = 0  # 10-20%
 
+        # Separate HIP-3 counts for visibility
+        hip3_count = 0
+
         for coin, data in coin_exposure.items():
+            is_hip3 = ':' in coin
             for pos in data['positions']:
                 dist = pos['distance_to_liq']
                 if dist < 5:
@@ -521,12 +799,17 @@ class LiquidationTracker:
                 elif dist <= 20:
                     watch_count += 1
 
+                if is_hip3:
+                    hip3_count += 1
+
         total_positions = danger_count + warning_count + watch_count
 
         if total_positions > 0:
+            hip3_tag = f" | 🏗️ {hip3_count} HIP-3" if hip3_count > 0 else ""
             logger.info(
                 f"🔥 Liquidation risk: {danger_count} DANGER (<5%), "
                 f"{warning_count} WARNING (5-10%), {watch_count} WATCH (10-20%)"
+                f"{hip3_tag}"
             )
 
     def _log_liquidation_coins(self, coin_exposure: Dict):
@@ -562,23 +845,24 @@ class LiquidationTracker:
 
         total_positions = sum(d['position_count'] for d in filtered.values())
 
-        liq_coins_logger.info("=" * 105)
+        # Widened COIN column from 8 to 12 for HIP-3 names like "xyz:TSLA"
+        liq_coins_logger.info("=" * 109)
         liq_coins_logger.info(
             f"LIQUIDATION EXPOSURE — {total_positions} positions within 20% across {len(filtered)} coins"
         )
-        liq_coins_logger.info("=" * 105)
+        liq_coins_logger.info("=" * 109)
         liq_coins_logger.info(
-            f"   {'COIN':<8} {'POS':>4}  {'TOTAL':>10}  {'LONG':>10}  {'SHORT':>10}  "
+            f"   {'COIN':<12} {'POS':>4}  {'TOTAL':>10}  {'LONG':>10}  {'SHORT':>10}  "
             f"{'CLOSEST':>8}  {'SIDE':<6}  {'ADDRESS'}"
         )
         liq_coins_logger.info(
-            f"   {'─' * 8} {'─' * 4}  {'─' * 10}  {'─' * 10}  {'─' * 10}  "
+            f"   {'─' * 12} {'─' * 4}  {'─' * 10}  {'─' * 10}  {'─' * 10}  "
             f"{'─' * 8}  {'─' * 6}  {'─' * 44}"
         )
 
         for coin, d in sorted_coins:
             liq_coins_logger.info(
-                f"   {coin:<8} {d['position_count']:>4}  "
+                f"   {coin:<12} {d['position_count']:>4}  "
                 f"{self._format_value(d['total_value']):>10}  "
                 f"{self._format_value(d['long_value']):>10}  "
                 f"{self._format_value(d['short_value']):>10}  "
@@ -611,18 +895,19 @@ class LiquidationTracker:
         # Sort by distance (closest first)
         danger_positions.sort(key=lambda x: x['distance_to_liq'])
 
-        liq_addrs_logger.info("=" * 145)
+        # Widened COIN column from 8 to 12 for HIP-3 names
+        liq_addrs_logger.info("=" * 149)
         liq_addrs_logger.info(
             f"LIQUIDATION ADDRESSES — {len(danger_positions)} positions within 20%"
         )
-        liq_addrs_logger.info("=" * 145)
+        liq_addrs_logger.info("=" * 149)
         liq_addrs_logger.info(
-            f"   {'DIST':>6}  {'COIN':<8} {'SIDE':<6}  {'VALUE':>10}  "
+            f"   {'DIST':>6}  {'COIN':<12} {'SIDE':<6}  {'VALUE':>10}  "
             f"{'ENTRY':>12} {'CURRENT':>12} {'LIQ':>12}  "
             f"{'PNL%':>8}  {'LEV':>5}  {'FUNDING':>10}  {'ADDRESS'}"
         )
         liq_addrs_logger.info(
-            f"   {'─' * 6}  {'─' * 8} {'─' * 6}  {'─' * 10}  "
+            f"   {'─' * 6}  {'─' * 12} {'─' * 6}  {'─' * 10}  "
             f"{'─' * 12} {'─' * 12} {'─' * 12}  "
             f"{'─' * 8}  {'─' * 5}  {'─' * 10}  {'─' * 44}"
         )
@@ -645,7 +930,7 @@ class LiquidationTracker:
 
             liq_addrs_logger.info(
                 f"   {pos['distance_to_liq']:>5.1f}%  "
-                f"{pos['coin']:<8} {pos['side']:<6}  "
+                f"{pos['coin']:<12} {pos['side']:<6}  "
                 f"{self._format_value(pos['value']):>10}  "
                 f"{self._format_price(pos['entry_price']):>12} "
                 f"{self._format_price(pos['current_price']):>12} "
@@ -664,9 +949,19 @@ class LiquidationTracker:
 
     def get_stats(self) -> Dict:
         """Get tracker statistics."""
-        return {
+        stats = {
             'snapshot_count': self.snapshot_count,
             'last_snapshot': self.last_snapshot_time.isoformat() if self.last_snapshot_time else None,
             'batch_size': self.batch_size,
             'batch_delay': self.batch_delay,
         }
+
+        # HIP-3 stats
+        if self.hip3_tracking_enabled:
+            stats['hip3_enabled'] = True
+            stats['hip3_positions_found_total'] = self._hip3_positions_found
+            stats['hip3_fetch_errors'] = self._hip3_fetch_errors
+        else:
+            stats['hip3_enabled'] = False
+
+        return stats

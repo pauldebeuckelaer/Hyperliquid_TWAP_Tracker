@@ -8,6 +8,11 @@ LOGGING STRATEGY:
 - INFO: Important initializations, summaries, cache refreshes
 - WARNING: Illiquid tokens, fallback attempts, degraded functionality, suspicious prices
 - ERROR: Complete failures, API errors
+
+HIP-3 INTEGRATION (Phase 1):
+- get_active_hip3_dexes(): Cached discovery of active HIP-3 dex names
+- get_user_state_hip3_async(): Fetch clearinghouseState for a specific HIP-3 dex
+- get_all_user_positions_async(): Unified fetch — main perp + all HIP-3 dexes in parallel
 """
 import logging
 import requests
@@ -50,6 +55,14 @@ class HyperliquidClient:
         self._spot_meta_cache_time = None
 
         self._token_name_cache = {}
+
+        # =====================================================================
+        # HIP-3 CACHES
+        # =====================================================================
+        self._hip3_dex_cache: Optional[List[str]] = None
+        self._hip3_dex_cache_time: Optional[datetime] = None
+        self._hip3_dex_cache_ttl = config.get('hip3_dex_cache_ttl', 3600)  # 1 hour
+        # =====================================================================
 
         logger.info(f"Hyperliquid client initialized: {self.api_url}")
 
@@ -1129,9 +1142,8 @@ class HyperliquidClient:
         }
 
     # =========================================================================
-    # ADD METHOD 1: get_hip3_mids()
+    # HIP-3 MARKET DATA METHODS (existing)
     # =========================================================================
-    # Place after get_meta_and_asset_ctxs() in the Market Data section
 
     def get_hip3_mids(self) -> Dict[str, str]:
         """
@@ -1150,23 +1162,11 @@ class HyperliquidClient:
         hip3_prices = {}
 
         try:
-            # Get list of active HIP-3 dexes
-            perp_dexs = self.get_perp_dexs()
-
-            if not perp_dexs:
-                logger.debug("No HIP-3 dexes found")
-                return hip3_prices
-
-            # Extract dex names
-            dex_names = []
-            for dex in perp_dexs:
-                if dex and isinstance(dex, dict):
-                    name = dex.get("name")
-                    if name:
-                        dex_names.append(name)
+            # Use cached dex list
+            dex_names = self.get_active_hip3_dexes()
 
             if not dex_names:
-                logger.debug("No named HIP-3 dexes found")
+                logger.debug("No active HIP-3 dexes found")
                 return hip3_prices
 
             logger.debug(f"Fetching prices for {len(dex_names)} HIP-3 dexes: {dex_names}")
@@ -1216,11 +1216,6 @@ class HyperliquidClient:
             logger.error(f"Error fetching HIP-3 mids: {e}")
 
         return hip3_prices
-
-    # =========================================================================
-    # ADD METHOD 2: get_hip3_meta_and_asset_ctxs(dex)
-    # =========================================================================
-    # Place after get_hip3_mids()
 
     def get_hip3_meta_and_asset_ctxs(self, dex: str) -> Optional[Dict]:
         """
@@ -1281,6 +1276,211 @@ class HyperliquidClient:
             'dex': dex,
             'meta': meta,
             'asset_ctxs': asset_ctxs
+        }
+
+    # =========================================================================
+    # HIP-3 WHALE TRACKING METHODS (NEW — Phase 1)
+    # =========================================================================
+
+    def get_active_hip3_dexes(self, force_refresh: bool = False) -> List[str]:
+        """
+        Get list of active HIP-3 dex names, cached for 1 hour.
+
+        Dex names change rarely (new deployments are infrequent), so
+        caching avoids a wasted API call every cycle.
+
+        Args:
+            force_refresh: Force refresh the cache
+
+        Returns:
+            List of dex name strings, e.g. ["xyz", "flx", "vntl"]
+            Empty list on error (never None — safe to iterate)
+        """
+        # Check cache
+        if (not force_refresh
+                and self._hip3_dex_cache is not None
+                and self._hip3_dex_cache_time is not None):
+            age = (datetime.now() - self._hip3_dex_cache_time).total_seconds()
+            if age < self._hip3_dex_cache_ttl:
+                logger.debug(f"📦 Using cached HIP-3 dex list (age: {age:.0f}s): {self._hip3_dex_cache}")
+                return self._hip3_dex_cache
+
+        # Fetch fresh
+        try:
+            perp_dexs = self.get_perp_dexs()
+
+            if not perp_dexs:
+                logger.debug("perpDexs returned empty — no HIP-3 dexes active")
+                self._hip3_dex_cache = []
+                self._hip3_dex_cache_time = datetime.now()
+                return []
+
+            dex_names = []
+            for dex in perp_dexs:
+                if dex and isinstance(dex, dict):
+                    name = dex.get("name")
+                    if name:
+                        dex_names.append(name)
+
+            self._hip3_dex_cache = dex_names
+            self._hip3_dex_cache_time = datetime.now()
+
+            logger.info(f"🏗️  HIP-3 dex list refreshed: {dex_names} ({len(dex_names)} active)")
+            return dex_names
+
+        except Exception as e:
+            logger.error(f"Error fetching HIP-3 dex list: {e}")
+            # Return stale cache if available
+            if self._hip3_dex_cache is not None:
+                logger.warning("Returning stale HIP-3 dex cache")
+                return self._hip3_dex_cache
+            return []
+
+    async def get_user_state_hip3_async(
+            self,
+            address: str,
+            dex: str,
+            session: aiohttp.ClientSession
+    ) -> Optional[Dict]:
+        """
+        Fetch user's clearinghouseState for a specific HIP-3 dex.
+
+        Same response format as regular clearinghouseState but only
+        contains positions on the specified HIP-3 dex.
+
+        Args:
+            address: User address in 0x format
+            dex: HIP-3 dex name (e.g., "xyz", "flx", "vntl")
+            session: Shared aiohttp session
+
+        Returns:
+            clearinghouseState dict with HIP-3 positions, or None on error.
+            Position coins will be in "dex:COIN" format (e.g., "xyz:TSLA").
+        """
+        return await self._make_request_async(
+            "clearinghouseState",
+            {"user": address, "dex": dex},
+            session
+        )
+
+    async def get_all_user_positions_async(
+            self,
+            address: str,
+            session: aiohttp.ClientSession,
+            hip3_dexes: Optional[List[str]] = None
+    ) -> Dict:
+        """
+        Fetch user positions across main perp dex AND all active HIP-3 dexes.
+
+        Makes parallel API calls and merges results into a single unified
+        response. HIP-3 position coins are automatically prefixed with
+        "dex:" (e.g., "xyz:TSLA").
+
+        This is the method to use when you want a complete picture of
+        a whale's perp exposure across all Hyperliquid markets.
+
+        Args:
+            address: User address in 0x format
+            session: Shared aiohttp session
+            hip3_dexes: Optional list of dex names. If None, uses cached list.
+
+        Returns:
+            {
+                "main_state": <clearinghouseState dict or None>,
+                "hip3_positions": [
+                    {"coin": "xyz:TSLA", "size": ..., "side": ..., ...},
+                    {"coin": "xyz:NVDA", "size": ..., "side": ..., ...},
+                    ...
+                ],
+                "hip3_margin_values": {
+                    "xyz": 1234.56,   # accountValue on xyz dex
+                    "flx": 0.0,
+                    ...
+                },
+                "dexes_fetched": ["xyz", "flx", "vntl"],
+                "dexes_failed": [],
+            }
+        """
+        if hip3_dexes is None:
+            hip3_dexes = self.get_active_hip3_dexes()
+
+        # Build tasks: main perp + each HIP-3 dex
+        tasks = [self.get_user_state_async(address, session)]
+        for dex in hip3_dexes:
+            tasks.append(self.get_user_state_hip3_async(address, dex, session))
+
+        # Fire all in parallel
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Parse results
+        main_state = results[0] if not isinstance(results[0], Exception) else None
+        if isinstance(results[0], Exception):
+            logger.warning(f"Main perp state failed for {address[:10]}...: {results[0]}")
+
+        hip3_positions = []
+        hip3_margin_values = {}
+        dexes_failed = []
+
+        for i, dex in enumerate(hip3_dexes):
+            hip3_result = results[i + 1]  # +1 because index 0 is main
+
+            if isinstance(hip3_result, Exception):
+                logger.debug(f"HIP-3 '{dex}' failed for {address[:10]}...: {hip3_result}")
+                dexes_failed.append(dex)
+                hip3_margin_values[dex] = 0.0
+                continue
+
+            if not hip3_result:
+                # Empty response — whale has no positions on this dex
+                hip3_margin_values[dex] = 0.0
+                continue
+
+            # Extract account value for this dex
+            margin_summary = hip3_result.get("marginSummary", {})
+            hip3_margin_values[dex] = float(margin_summary.get("accountValue", 0))
+
+            # Extract positions — coin names from HIP-3 already include "dex:" prefix
+            # e.g., the API returns coin="xyz:TSLA" for the xyz dex
+            for pos_data in hip3_result.get("assetPositions", []):
+                position = pos_data.get("position", {})
+                size = float(position.get("szi", 0))
+
+                if size == 0:
+                    continue
+
+                coin = position.get("coin", "")
+
+                # Safety: ensure dex prefix is present
+                # The API should return "xyz:TSLA" but if it returns just "TSLA",
+                # we add the prefix ourselves
+                if ":" not in coin:
+                    coin = f"{dex}:{coin}"
+
+                hip3_positions.append({
+                    "coin": coin,
+                    "dex": dex,
+                    "size": size,
+                    "side": "LONG" if size > 0 else "SHORT",
+                    "entry_price": float(position.get("entryPx", 0)),
+                    "liquidation_price": float(position.get("liquidationPx") or 0),
+                    "leverage": float(position.get("leverage", {}).get("value", 1)),
+                    "margin_used": float(position.get("marginUsed", 0)),
+                    "unrealized_pnl": float(position.get("unrealizedPnl", 0)),
+                    "position_value": float(position.get("positionValue", 0)),
+                })
+
+        if hip3_positions:
+            logger.debug(
+                f"🏗️  {address[:10]}...: {len(hip3_positions)} HIP-3 positions "
+                f"across {len(hip3_dexes) - len(dexes_failed)} dexes"
+            )
+
+        return {
+            "main_state": main_state,
+            "hip3_positions": hip3_positions,
+            "hip3_margin_values": hip3_margin_values,
+            "dexes_fetched": hip3_dexes,
+            "dexes_failed": dexes_failed,
         }
 
     # =============================================================================
@@ -1521,12 +1721,21 @@ class HyperliquidClient:
             "all_mids_cached": self._all_mids_cache is not None,
             "all_mids_age_seconds": None,
             "token_name_mappings": len(self._token_name_cache),
-            "cached_mappings": dict(self._token_name_cache)
+            "cached_mappings": dict(self._token_name_cache),
+            # HIP-3 cache stats
+            "hip3_dex_cached": self._hip3_dex_cache is not None,
+            "hip3_dex_list": self._hip3_dex_cache,
+            "hip3_dex_cache_age_seconds": None,
         }
 
         if self._all_mids_cache_time:
             stats["all_mids_age_seconds"] = (
                     datetime.now() - self._all_mids_cache_time
+            ).total_seconds()
+
+        if self._hip3_dex_cache_time:
+            stats["hip3_dex_cache_age_seconds"] = (
+                    datetime.now() - self._hip3_dex_cache_time
             ).total_seconds()
 
         return stats

@@ -7,6 +7,7 @@ Manages hourly snapshots of whale portfolios (>$50K).
 Features:
 - Hourly snapshots of portfolio composition
 - Tracks perp positions, spot balances, vault holdings
+- HIP-3 position tracking (tokenized stocks, commodities)
 - $50K minimum threshold (configurable)
 - ~1000 address target capacity
 - Liquidation price tracking
@@ -27,6 +28,7 @@ class WhaleMetricsManager:
 
     Takes hourly snapshots of whale portfolios including:
     - Perp positions with liquidation prices
+    - HIP-3 perp positions (tokenized stocks, etc.)
     - Spot balances
     - Vault holdings
     """
@@ -49,6 +51,12 @@ class WhaleMetricsManager:
 
         # Dust threshold for spot balances
         self.dust_threshold = self.config.get('dust_threshold', 5.0)
+
+        # =====================================================================
+        # HIP-3 CONFIG
+        # =====================================================================
+        self.hip3_tracking_enabled = self.config.get('hip3_tracking_enabled', False)
+        # =====================================================================
 
         # Stats counters
         self.snapshots_taken = 0
@@ -78,10 +86,12 @@ class WhaleMetricsManager:
         self.suspicious_dollar_range = self.config.get('suspicious_dollar_range', (0.995, 1.005))
         self.max_high_value_token_price = self.config.get('max_high_value_token_price', 150000)
 
+        hip3_status = "ON" if self.hip3_tracking_enabled else "OFF"
         logger.info(
             f"WhaleMetricsManager initialized: "
             f"min_portfolio=${self.min_portfolio_value:,}, "
-            f"blacklist={len(self.blacklisted_tokens)} tokens"
+            f"blacklist={len(self.blacklisted_tokens)} tokens, "
+            f"HIP-3={hip3_status}"
         )
 
     def _should_include_token(self, coin: str, price: float, amount: float) -> tuple:
@@ -545,17 +555,36 @@ class WhaleMetricsManager:
     ) -> float:
         """
         Async version of _get_portfolio_value.
-        Fetches perp, spot, and vault data in PARALLEL.
+        Fetches perp, spot, vault data in PARALLEL.
+        Includes HIP-3 margin values if enabled.
         """
         total = 0.0
 
         # Fetch all 3 data sources in parallel
-        state_result, spot_result, vault_result = await asyncio.gather(
+        tasks = [
             self.hl_client.get_user_state_async(address, session),
             self.hl_client.get_spot_clearinghouse_state_async(address, session),
             self.hl_client.get_user_vault_equities_async(address, session),
-            return_exceptions=True  # Don't fail if one call fails
-        )
+        ]
+
+        # =====================================================================
+        # HIP-3: Also fetch HIP-3 states in parallel for portfolio value
+        # =====================================================================
+        hip3_dexes = []
+        if self.hip3_tracking_enabled:
+            hip3_dexes = self.hl_client.get_active_hip3_dexes()
+            for dex in hip3_dexes:
+                tasks.append(
+                    self.hl_client.get_user_state_hip3_async(address, dex, session)
+                )
+        # =====================================================================
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Unpack fixed results
+        state_result = results[0]
+        spot_result = results[1]
+        vault_result = results[2]
 
         # Log API failures
         if isinstance(state_result, Exception):
@@ -564,8 +593,6 @@ class WhaleMetricsManager:
             logger.debug(f"Spot API failed for {address}: {spot_result}")
         if isinstance(vault_result, Exception):
             logger.debug(f"Vault API failed for {address}: {vault_result}")
-
-
 
         # Process perp value
         if state_result and not isinstance(state_result, Exception):
@@ -607,6 +634,27 @@ class WhaleMetricsManager:
                     total += float(vault_eq.get("equity", 0))
             except Exception:
                 pass
+
+        # =====================================================================
+        # HIP-3: Add margin values from HIP-3 dexes
+        # =====================================================================
+        if self.hip3_tracking_enabled and hip3_dexes:
+            for i, dex in enumerate(hip3_dexes):
+                hip3_result = results[3 + i]  # Offset past the 3 fixed tasks
+
+                if isinstance(hip3_result, Exception) or not hip3_result:
+                    continue
+
+                try:
+                    hip3_state = cast(Dict, hip3_result)
+                    margin_summary = hip3_state.get("marginSummary", {})
+                    hip3_value = float(margin_summary.get("accountValue", 0))
+                    if hip3_value > 0:
+                        total += hip3_value
+                        logger.debug(f"HIP-3 '{dex}' value for {address[:10]}...: ${hip3_value:,.0f}")
+                except Exception:
+                    pass
+        # =====================================================================
 
         return total
 
@@ -702,6 +750,7 @@ class WhaleMetricsManager:
         """
         Async version of fetch_whale_data.
         Fetches perp, spot, vault data in PARALLEL.
+        Includes HIP-3 positions if enabled.
         """
         try:
             portfolio_data = {
@@ -717,13 +766,32 @@ class WhaleMetricsManager:
             spot_balances = []
             vaults = []
 
-            # Fetch all 3 data sources in parallel
-            state_result, spot_result, vault_result = await asyncio.gather(
+            # Build parallel task list
+            tasks = [
                 self.hl_client.get_user_state_async(address, session),
                 self.hl_client.get_spot_clearinghouse_state_async(address, session),
                 self.hl_client.get_user_vault_equities_async(address, session),
-                return_exceptions=True
-            )
+            ]
+
+            # =================================================================
+            # HIP-3: Add parallel tasks for each active dex
+            # =================================================================
+            hip3_dexes = []
+            if self.hip3_tracking_enabled:
+                hip3_dexes = self.hl_client.get_active_hip3_dexes()
+                for dex in hip3_dexes:
+                    tasks.append(
+                        self.hl_client.get_user_state_hip3_async(address, dex, session)
+                    )
+            # =================================================================
+
+            # Fire ALL tasks in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Unpack fixed results
+            state_result = results[0]
+            spot_result = results[1]
+            vault_result = results[2]
 
             # DEBUG: Log what we got back
             if isinstance(state_result, Exception):
@@ -768,6 +836,63 @@ class WhaleMetricsManager:
                     portfolio_data["num_positions"] = len(positions)
                 except Exception as e:
                     logger.warning(f"Failed to parse perp state for {address}: {e}")
+
+            # =================================================================
+            # 1b. Process HIP-3 positions (NEW)
+            # =================================================================
+            if self.hip3_tracking_enabled and hip3_dexes:
+                hip3_pos_count = 0
+
+                for i, dex in enumerate(hip3_dexes):
+                    hip3_result = results[3 + i]  # Offset past 3 fixed tasks
+
+                    if isinstance(hip3_result, Exception) or not hip3_result:
+                        continue
+
+                    try:
+                        hip3_state = cast(Dict, hip3_result)
+
+                        # Add HIP-3 margin value to perp_value
+                        hip3_margin = hip3_state.get("marginSummary", {})
+                        hip3_account_value = float(hip3_margin.get("accountValue", 0))
+                        if hip3_account_value > 0:
+                            portfolio_data["perp_value"] += hip3_account_value
+
+                        # Parse HIP-3 positions
+                        for pos_data in hip3_state.get("assetPositions", []):
+                            position = pos_data.get("position", {})
+                            size = float(position.get("szi", 0))
+
+                            if size == 0:
+                                continue
+
+                            coin = position.get("coin", "")
+                            # Ensure dex prefix
+                            if ":" not in coin:
+                                coin = f"{dex}:{coin}"
+
+                            positions.append({
+                                "coin": coin,
+                                "size": size,
+                                "side": "LONG" if size > 0 else "SHORT",
+                                "entry_price": float(position.get("entryPx", 0)),
+                                "liquidation_price": float(position.get("liquidationPx") or 0),
+                                "leverage": float(position.get("leverage", {}).get("value", 1)),
+                                "margin_used": float(position.get("marginUsed", 0)),
+                                "unrealized_pnl": float(position.get("unrealizedPnl", 0))
+                            })
+                            hip3_pos_count += 1
+
+                    except Exception as e:
+                        logger.warning(f"Failed to parse HIP-3 '{dex}' state for {address}: {e}")
+
+                if hip3_pos_count > 0:
+                    # Update position count to include HIP-3
+                    portfolio_data["num_positions"] = len(positions)
+                    logger.debug(
+                        f"🏗️  {address[:10]}...: {hip3_pos_count} HIP-3 positions added to snapshot"
+                    )
+            # =================================================================
 
             # 2. Process spot balances
             if spot_result and not isinstance(spot_result, Exception):
@@ -1066,7 +1191,8 @@ class WhaleMetricsManager:
             "addresses_processed": self.addresses_processed,
             "errors": self.errors_count,
             "min_portfolio_threshold": self.min_portfolio_value,
-            "blacklisted_tokens": len(self.blacklisted_tokens)
+            "blacklisted_tokens": len(self.blacklisted_tokens),
+            "hip3_tracking_enabled": self.hip3_tracking_enabled,
         }
 
     def get_whale(self, address: str) -> Optional[Dict]:
