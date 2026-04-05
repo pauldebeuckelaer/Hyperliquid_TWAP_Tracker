@@ -19,6 +19,9 @@
       "light_interval_hours": 6,
       "deep_interval_hours": 24,
       "hip3_tracking_enabled": true
+    },
+    "market_data": {
+      "hip3_tracking_enabled": true
     }
   },
 

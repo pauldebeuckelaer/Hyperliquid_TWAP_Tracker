@@ -115,7 +115,8 @@ class TWAPBot:
             # Market Data Tracker - lightweight, just OI/funding/prices (1 API call)
             self.market_tracker = MarketDataTracker(
                 self.hyperliquid_client,
-                self.storage
+                self.storage,
+                config=hyperliquid_config.get('market_data', {})
             )
 
             # Liquidation Tracker - tiered whale fetching + liquidation snapshots
