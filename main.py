@@ -36,6 +36,7 @@ from trackers.market_data_tracker import MarketDataTracker
 from trackers.liquidation_tracker import LiquidationTracker
 from trackers.tier_manager import TierManager
 from trackers.whale_event_detector import WhaleEventDetector
+from trackers.fees_collector import HypurrscanFeesCollector
 from coin_registry import init_dynamic_registry
 from storage import SQLiteBackend
 from trader_metrics_manager import WhaleMetricsManager
@@ -130,6 +131,15 @@ class TWAPBot:
 
             logger.info("Tiered tracking architecture initialized")
 
+            # Hypurrscan platform-wide fees collector
+            self.fees_collector = HypurrscanFeesCollector(
+                self.hypurr_client,
+                self.storage,
+                config=config.get('hypurr_fees', {})
+            )
+
+            logger.info("Tiered tracking architecture initialized")
+
         else:
             self.hyperliquid_client = None
             self.storage = None
@@ -137,6 +147,7 @@ class TWAPBot:
             self.event_detector = None
             self.market_tracker = None
             self.liquidation_tracker = None
+            self.fees_collector = None
             logger.info("Hyperliquid client disabled")
 
         # Shutdown handler
@@ -382,6 +393,14 @@ class TWAPBot:
             logger.info("Performing initial tier refresh...")
             self.tier_manager.refresh_tiers_from_snapshots()
 
+        # One-time platform fees backfill (only runs if table is empty and enabled)
+        if self.fees_collector and self.fees_collector.needs_backfill():
+            try:
+                self.fees_collector.backfill()
+            except Exception as e:
+                logger.error(f"Fees backfill failed at startup: {e}", exc_info=True)
+                # Don't abort startup - collector will retry on next poll
+
         while self.running:
             try:
                 loop_start = time.time()
@@ -413,6 +432,15 @@ class TWAPBot:
                 # Process queued order events (portfolio snapshots)
                 if self.hyperliquid_enabled:
                     asyncio.run(self._process_order_events())
+
+                # =============================================================
+                # PLATFORM FEES POLL (hourly, ~1 HTTP call)
+                # =============================================================
+
+                if self.fees_collector and self.tier_manager:
+                    current_cycle = self.tier_manager.get_current_cycle()
+                    if self.fees_collector.should_poll(current_cycle):
+                        self.fees_collector.poll()
 
                 # =============================================================
                 # MARKET DATA SNAPSHOT (lightweight - 1 API call)
@@ -541,6 +569,11 @@ class TWAPBot:
         if self.liquidation_tracker:
             liq_stats = self.liquidation_tracker.get_stats()
             logger.info(f"Liquidation snapshots taken: {liq_stats['snapshot_count']}")
+
+        # Fees collector stats
+        if self.fees_collector:
+            fees_stats = self.fees_collector.get_stats()
+            logger.info(f"Fees collector: {fees_stats}")
 
         # Tier manager stats
         if self.tier_manager:

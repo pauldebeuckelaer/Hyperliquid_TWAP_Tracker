@@ -512,6 +512,65 @@ class HypurrScanClient:
             timestamp=datetime.now()
         )
 
+    def get_platform_fees(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get full cumulative platform fees history from HypurrScan.
+
+        Endpoint: GET /fees
+        Returns one row per ~daily snapshot since Hyperliquid launched (Nov 2024).
+        Values are CUMULATIVE (strictly non-decreasing) in micro-USDC.
+        Used for initial backfill only - /feesRecent is preferred for ongoing polling.
+
+        Returns:
+            List of dicts with keys 'time' (unix seconds), 'total_fees',
+            'total_spot_fees' (both integers in micro-USDC), ordered ascending by time.
+            Returns None on API failure.
+        """
+        logger.info("Fetching full platform fees history via /fees...")
+
+        result = self._get('fees')
+
+        if result is None:
+            logger.warning("Failed to fetch platform fees history")
+            return None
+
+        if not isinstance(result, list):
+            logger.warning(f"Unexpected /fees response type: {type(result).__name__}")
+            return None
+
+        logger.info(f"Got {len(result)} platform fee snapshots (full history)")
+        return result
+
+    def get_platform_fees_recent(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get recent platform fees snapshots from HypurrScan.
+
+        Endpoint: GET /feesRecent
+        Returns ~998 rows of the last ~8 days at ~10-minute cadence.
+        Values are CUMULATIVE (strictly non-decreasing) in micro-USDC.
+        Used for ongoing hourly polling - the 8-day window gives ample
+        overlap to recover from outages without losing data.
+
+        Returns:
+            List of dicts with keys 'time' (unix seconds), 'total_fees',
+            'total_spot_fees' (both integers in micro-USDC), ordered ascending by time.
+            Returns None on API failure.
+        """
+        logger.info("Fetching recent platform fees via /feesRecent...")
+
+        result = self._get('feesRecent')
+
+        if result is None:
+            logger.warning("Failed to fetch recent platform fees")
+            return None
+
+        if not isinstance(result, list):
+            logger.warning(f"Unexpected /feesRecent response type: {type(result).__name__}")
+            return None
+
+        logger.info(f"Got {len(result)} recent platform fee snapshots")
+        return result
+
     # ========== LEGACY METHODS (kept for compatibility) ==========
 
     def discover_address_endpoints(self, address: str, symbol: str = 'HYPE') -> Dict[str, Any]:

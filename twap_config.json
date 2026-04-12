@@ -24,6 +24,10 @@
       "hip3_tracking_enabled": true
     }
   },
+  "hypurr_fees": {
+    "collection_enabled": false,
+    "poll_interval_cycles": 60
+  },
 
   "all_coins_tracking": {
     "enabled": true,
@@ -74,6 +78,7 @@
       "trackers.tier_manager": "DEBUG",
       "trackers.whale_event_detector": "DEBUG",
       "trader_metrics_manager": "DEBUG",
+      "trackers.fees_collector": "INFO",
       "coin_registry": "DEBUG",
       "__main__": "DEBUG"
     }

@@ -57,9 +57,10 @@ from .market_storage import MarketStorage
 from .market_candle_storage import MarketCandleStorage
 from .liquidation_storage import LiquidationStorage
 from .whale_event_storage import WhaleEventStorage
+from .hypurrscan_storage import HypurrscanStorage
 
 
-class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorage, LiquidationStorage, WhaleEventStorage):
+class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorage, LiquidationStorage, WhaleEventStorage, HypurrscanStorage):
     """
     Combined storage backend for backward compatibility.
 
@@ -109,6 +110,7 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorag
         MarketCandleStorage._create_tables(self)
         LiquidationStorage._create_tables(self)
         WhaleEventStorage._create_tables(self)
+        HypurrscanStorage._create_tables(self)
 
     def _create_all_indexes(self):
         """Create indexes from all storage classes."""
@@ -118,6 +120,7 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorag
         MarketCandleStorage._create_indexes(self)
         LiquidationStorage._create_indexes(self)
         WhaleEventStorage._create_indexes(self)
+        HypurrscanStorage._create_tables(self)
 
     def cleanup_old_data(self, days_to_keep: int = 3, batch_size: int = 5000) -> Dict[str, int]:
         """
@@ -292,6 +295,7 @@ __all__ = [
     'MarketStorage',
     'MarketCandleStorage',
     'LiquidationStorage',
+    'HypurrscanStorage',
     'WhaleEventStorage',
     'SQLiteBackend',
     'DEFAULT_DB_PATH',
