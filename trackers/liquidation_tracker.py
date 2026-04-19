@@ -351,7 +351,11 @@ class LiquidationTracker:
 
                 if hip3_dexes:
                     # Get addresses that succeeded in step 1
-                    fetched_addresses = [r['address'] for r in all_results]
+                    # HIP-3 restricted to VIP + Tier1 only to avoid rate limit explosion
+                    fetched_addresses = [
+                        r['address'] for r in all_results
+                        if self.tier_manager and self.tier_manager.is_event_tracking_address(r['address'])
+                    ]
                     hip3_total_positions = 0
 
                     for dex in hip3_dexes:
