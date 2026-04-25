@@ -23,3 +23,6 @@ reports/
 # Credentials & secrets
 .env
 *.session
+# DB backups
+data/twap_backup_*.db
+data/*.db-journal
