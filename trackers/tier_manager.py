@@ -345,6 +345,15 @@ class TierManager:
         """
         Get latest total position value per address from perp_snapshots.
 
+        Only considers snapshots from the last 130 minutes - this ensures
+        tier assignment runs on FRESH data. Whales whose latest snapshot
+        is older than this window are treated as having no positions
+        and get deactivated by refresh_tiers_from_snapshots().
+
+        Why 130 minutes? T5 fetches every 60 cycles. 130 gives slack for
+        fetch latency, brief API outages, and the gap between the cycle
+        when a whale was fetched and the next tier refresh.
+
         Returns:
             Dict of address -> total_position_value
         """
@@ -352,6 +361,7 @@ class TierManager:
             WITH latest_times AS (
                 SELECT address, MAX(snapshot_time) as latest_time
                 FROM perp_snapshots
+                WHERE snapshot_time >= datetime('now', '-130 minutes')
                 GROUP BY address
             )
             SELECT 

@@ -709,6 +709,18 @@ class LiquidationTracker:
             self._log_liquidation_addresses(coin_exposure)
             self.storage.save_liquidation_snapshot(timestamp.isoformat(), coin_exposure)
 
+            # Dual-write ALL positions to perp_snapshots (not 20%-filtered).
+            # This is what gives the tier system fresh position data every cycle.
+            all_positions = []
+            for coin_data in coin_exposure.values():
+                all_positions.extend(coin_data['positions'])
+
+            if all_positions:
+                self.storage.save_perp_snapshots_batch(
+                    timestamp.isoformat(),
+                    all_positions)
+                logger.debug(f"Dual-wrote {len(all_positions)} positions to perp_snapshots")
+
         self.last_snapshot_time = timestamp
         self.snapshot_count += 1
 

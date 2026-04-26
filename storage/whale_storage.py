@@ -671,6 +671,62 @@ class WhaleStorage(BaseStorage):
             self.conn.rollback()
             raise
 
+    def save_perp_snapshots_batch(self, snapshot_time: str, positions: List[Dict]):
+        """
+        Bulk insert perp positions for a single cycle.
+
+        Used by LiquidationTracker to dual-write position data every cycle,
+        so the tier system reads from fresh perp_snapshots instead of stale
+        TWAP-event-only data.
+
+        Args:
+            snapshot_time: ISO timestamp shared by all rows in this batch
+            positions: List of position dicts with keys:
+                address, coin, side, size (abs), entry_price, liq_price,
+                leverage, margin_used, unrealized_pnl
+        """
+        if not positions:
+            return
+
+        try:
+            rows = []
+            for p in positions:
+                # Position dicts from LiquidationTracker have abs(size).
+                # Sign it for consistency with TWAP-path writes (LONG positive,
+                # SHORT negative).
+                size = p.get('size', 0)
+                side = p.get('side', '')
+                if side == 'SHORT' and size > 0:
+                    size = -size
+
+                rows.append((
+                    p.get('address', ''),
+                    snapshot_time,
+                    p.get('coin', ''),
+                    size,
+                    side,
+                    p.get('entry_price', 0),
+                    p.get('liq_price', 0),
+                    p.get('leverage', 0),
+                    p.get('margin_used', 0),
+                    p.get('unrealized_pnl', 0),
+                ))
+
+            self.cursor.executemany("""
+                INSERT INTO perp_snapshots (
+                    address, snapshot_time, coin, size, side,
+                    entry_price, liquidation_price, leverage,
+                    margin_used, unrealized_pnl
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+            self.conn.commit()
+            logger.debug(f"Bulk-saved {len(rows)} perp snapshots at {snapshot_time}")
+
+        except Exception as e:
+            logger.error(f"Error in save_perp_snapshots_batch: {e}")
+            self.conn.rollback()
+            raise
+
     # =========================================================================
     # SNAPSHOT QUERY METHODS
     # =========================================================================
