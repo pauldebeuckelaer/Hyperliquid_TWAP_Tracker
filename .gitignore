@@ -26,3 +26,6 @@ reports/
 # DB backups
 data/twap_backup_*.db
 data/*.db-journal
+
+# One-time bootstrap/migration scripts
+bootstrap_perp_snapshots.py

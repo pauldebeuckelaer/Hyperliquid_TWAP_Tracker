@@ -264,6 +264,17 @@ class TierManager:
                 # Below all thresholds - mark inactive
                 self._deactivate_address(address)
 
+        # Catch orphans: active+tiered whales not present in either snapshot dict
+        # (manual seeds, migration leftovers, addresses that stopped trading)
+        seen_addresses = set(position_values.keys()) | set(portfolio_values.keys())
+        self.storage.cursor.execute("""
+            SELECT address FROM whale_addresses
+            WHERE is_active = 1 AND tier IS NOT NULL
+        """)
+        all_active_tiered = {row[0] for row in self.storage.cursor.fetchall()}
+        for address in all_active_tiered - seen_addresses:
+            self._deactivate_address(address)
+
         self.storage.conn.commit()
 
         # =====================================================================
@@ -361,7 +372,7 @@ class TierManager:
             WITH latest_times AS (
                 SELECT address, MAX(snapshot_time) as latest_time
                 FROM perp_snapshots
-                WHERE snapshot_time >= datetime('now', '-130 minutes')
+                WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-130 minutes')
                 GROUP BY address
             )
             SELECT 
