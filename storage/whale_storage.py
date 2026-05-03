@@ -74,6 +74,8 @@ class WhaleStorage(BaseStorage):
                 is_active INTEGER DEFAULT 1,
                 tier INTEGER DEFAULT NULL,
                 position_value REAL DEFAULT 0,
+                tier_perp_amount INTEGER DEFAULT NULL,
+                raw_usd_value REAL DEFAULT 0,
                 last_tier_update TEXT
             )
         """)
@@ -135,6 +137,29 @@ class WhaleStorage(BaseStorage):
             )
         """)
 
+        # Perp account snapshots - per-address equity for tier_perp_amount
+        # (Per-address shape, not per-coin. HIP-3 columns NULL for non-VIP/T1.)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS perp_account_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                address TEXT NOT NULL,
+                snapshot_time TEXT NOT NULL,
+                account_value REAL,
+                total_raw_usd REAL,
+                total_margin_used REAL,
+                total_ntl_pos REAL,
+                withdrawable REAL,
+                hip3_account_value REAL,
+                hip3_total_raw_usd REAL,
+                hip3_total_margin_used REAL,
+                hip3_total_ntl_pos REAL,
+                hip3_withdrawable REAL,
+                hip3_dexes TEXT,
+                total_account_value REAL,
+                total_raw_usd_all REAL
+            )
+        """)
+
         self.conn.commit()
 
     def _create_indexes(self):
@@ -169,6 +194,11 @@ class WhaleStorage(BaseStorage):
             "CREATE INDEX IF NOT EXISTS idx_vault_time ON vault_snapshots(snapshot_time)",
             "CREATE INDEX IF NOT EXISTS idx_vault_address ON vault_snapshots(address)",
             "CREATE INDEX IF NOT EXISTS idx_vault_address_time ON vault_snapshots(address, snapshot_time)",
+
+            # Perp account indexes
+            "CREATE INDEX IF NOT EXISTS idx_perp_account_time ON perp_account_snapshots(snapshot_time)",
+            "CREATE INDEX IF NOT EXISTS idx_perp_account_address ON perp_account_snapshots(address)",
+            "CREATE INDEX IF NOT EXISTS idx_perp_account_address_time ON perp_account_snapshots(address, snapshot_time)",
         ]
         self._execute_index_list(indexes)
 
@@ -724,6 +754,140 @@ class WhaleStorage(BaseStorage):
 
         except Exception as e:
             logger.error(f"Error in save_perp_snapshots_batch: {e}")
+            self.conn.rollback()
+            raise
+
+    def save_perp_account_snapshot(
+            self,
+            address: str,
+            snapshot_time: str,
+            account_data: Dict
+    ):
+        """
+        Save a single account-equity snapshot for an address.
+
+        Pattern A signature (address as separate param), matching save_whale_snapshot.
+
+        Args:
+            address: Wallet address
+            snapshot_time: ISO T-format timestamp
+            account_data: Dict with keys:
+                Mainnet (always present):
+                    account_value, total_raw_usd, total_margin_used,
+                    total_ntl_pos, withdrawable
+                HIP-3 (optional, None for non-VIP/T1):
+                    hip3_account_value, hip3_total_raw_usd,
+                    hip3_total_margin_used, hip3_total_ntl_pos,
+                    hip3_withdrawable, hip3_dexes
+        """
+        try:
+            mainnet_av = account_data.get('account_value') or 0
+            hip3_av = account_data.get('hip3_account_value') or 0
+            total_av = mainnet_av + hip3_av
+
+            mainnet_raw = account_data.get('total_raw_usd') or 0
+            hip3_raw = account_data.get('hip3_total_raw_usd') or 0
+            total_raw_all = mainnet_raw + hip3_raw
+
+            self.cursor.execute("""
+                INSERT INTO perp_account_snapshots (
+                    address, snapshot_time,
+                    account_value, total_raw_usd, total_margin_used,
+                    total_ntl_pos, withdrawable,
+                    hip3_account_value, hip3_total_raw_usd,
+                    hip3_total_margin_used, hip3_total_ntl_pos,
+                    hip3_withdrawable, hip3_dexes,
+                    total_account_value, total_raw_usd_all
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                address, snapshot_time,
+                account_data.get('account_value'),
+                account_data.get('total_raw_usd'),
+                account_data.get('total_margin_used'),
+                account_data.get('total_ntl_pos'),
+                account_data.get('withdrawable'),
+                account_data.get('hip3_account_value'),
+                account_data.get('hip3_total_raw_usd'),
+                account_data.get('hip3_total_margin_used'),
+                account_data.get('hip3_total_ntl_pos'),
+                account_data.get('hip3_withdrawable'),
+                account_data.get('hip3_dexes'),
+                total_av,
+                total_raw_all,
+            ))
+            self.conn.commit()
+            logger.debug(f"Saved perp_account snapshot for {address[:10]}... at {snapshot_time}")
+
+        except Exception as e:
+            logger.error(f"Error saving perp_account snapshot for {address}: {e}")
+            self.conn.rollback()
+            raise
+
+    def save_perp_account_snapshots_batch(
+            self,
+            snapshot_time: str,
+            account_data_list: List[Dict]
+    ):
+        """
+        Bulk insert account-equity snapshots for a single cycle.
+
+        Pattern B signature (address inside each dict), matching save_perp_snapshots_batch.
+        Used by the tier-stratified poller to write per-address equity in
+        parallel with save_perp_snapshots_batch.
+
+        Args:
+            snapshot_time: ISO T-format timestamp shared by all rows
+            account_data_list: List of dicts. Each dict must contain 'address'
+                plus the same fields as save_perp_account_snapshot's account_data.
+        """
+        if not account_data_list:
+            return
+
+        try:
+            rows = []
+            for d in account_data_list:
+                mainnet_av = d.get('account_value') or 0
+                hip3_av = d.get('hip3_account_value') or 0
+                total_av = mainnet_av + hip3_av
+
+                mainnet_raw = d.get('total_raw_usd') or 0
+                hip3_raw = d.get('hip3_total_raw_usd') or 0
+                total_raw_all = mainnet_raw + hip3_raw
+
+                rows.append((
+                    d.get('address', ''),
+                    snapshot_time,
+                    d.get('account_value'),
+                    d.get('total_raw_usd'),
+                    d.get('total_margin_used'),
+                    d.get('total_ntl_pos'),
+                    d.get('withdrawable'),
+                    d.get('hip3_account_value'),
+                    d.get('hip3_total_raw_usd'),
+                    d.get('hip3_total_margin_used'),
+                    d.get('hip3_total_ntl_pos'),
+                    d.get('hip3_withdrawable'),
+                    d.get('hip3_dexes'),
+                    total_av,
+                    total_raw_all,
+                ))
+
+            self.cursor.executemany("""
+                INSERT INTO perp_account_snapshots (
+                    address, snapshot_time,
+                    account_value, total_raw_usd, total_margin_used,
+                    total_ntl_pos, withdrawable,
+                    hip3_account_value, hip3_total_raw_usd,
+                    hip3_total_margin_used, hip3_total_ntl_pos,
+                    hip3_withdrawable, hip3_dexes,
+                    total_account_value, total_raw_usd_all
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+            self.conn.commit()
+            logger.debug(f"Bulk-saved {len(rows)} perp_account snapshots at {snapshot_time}")
+
+        except Exception as e:
+            logger.error(f"Error in save_perp_account_snapshots_batch: {e}")
             self.conn.rollback()
             raise
 

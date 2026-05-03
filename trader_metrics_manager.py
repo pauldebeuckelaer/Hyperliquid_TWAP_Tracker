@@ -766,6 +766,21 @@ class WhaleMetricsManager:
             spot_balances = []
             vaults = []
 
+            # Account-level equity for perp_account_snapshots
+            account_data = {
+                "account_value": None,
+                "total_raw_usd": None,
+                "total_margin_used": None,
+                "total_ntl_pos": None,
+                "withdrawable": None,
+                "hip3_account_value": None,
+                "hip3_total_raw_usd": None,
+                "hip3_total_margin_used": None,
+                "hip3_total_ntl_pos": None,
+                "hip3_withdrawable": None,
+                "hip3_dexes": None,
+            }
+
             # Build parallel task list
             tasks = [
                 self.hl_client.get_user_state_async(address, session),
@@ -816,6 +831,14 @@ class WhaleMetricsManager:
                     margin_summary = state.get("marginSummary", {})
                     portfolio_data["perp_value"] = float(margin_summary.get("accountValue", 0))
                     portfolio_data["margin_used"] = float(margin_summary.get("totalMarginUsed", 0))
+                    # Capture mainnet marginSummary fields for perp_account_snapshots
+                    account_data["account_value"] = float(margin_summary.get("accountValue", 0))
+                    account_data["total_raw_usd"] = float(margin_summary.get("totalRawUsd", 0))
+                    account_data["total_margin_used"] = float(margin_summary.get("totalMarginUsed", 0))
+                    account_data["total_ntl_pos"] = float(margin_summary.get("totalNtlPos", 0))
+                    withdrawable_raw = state.get("withdrawable")
+                    if withdrawable_raw is not None:
+                        account_data["withdrawable"] = float(withdrawable_raw)
 
                     for pos_data in state.get("assetPositions", []):
                         position = pos_data.get("position", {})
@@ -843,6 +866,14 @@ class WhaleMetricsManager:
             if self.hip3_tracking_enabled and hip3_dexes:
                 hip3_pos_count = 0
 
+                # HIP-3 marginSummary running totals (consolidated across dexes)
+                hip3_acc_value_total = 0.0
+                hip3_raw_usd_total = 0.0
+                hip3_margin_used_total = 0.0
+                hip3_ntl_pos_total = 0.0
+                hip3_withdrawable_total = 0.0
+                hip3_dexes_present = []
+
                 for i, dex in enumerate(hip3_dexes):
                     hip3_result = results[3 + i]  # Offset past 3 fixed tasks
 
@@ -857,6 +888,16 @@ class WhaleMetricsManager:
                         hip3_account_value = float(hip3_margin.get("accountValue", 0))
                         if hip3_account_value > 0:
                             portfolio_data["perp_value"] += hip3_account_value
+
+                        # Consolidate HIP-3 marginSummary fields for perp_account_snapshots
+                        hip3_acc_value_total += hip3_account_value
+                        hip3_raw_usd_total += float(hip3_margin.get("totalRawUsd", 0))
+                        hip3_margin_used_total += float(hip3_margin.get("totalMarginUsed", 0))
+                        hip3_ntl_pos_total += float(hip3_margin.get("totalNtlPos", 0))
+                        hip3_withdrawable_raw = hip3_state.get("withdrawable")
+                        if hip3_withdrawable_raw is not None:
+                            hip3_withdrawable_total += float(hip3_withdrawable_raw)
+                        hip3_dexes_present.append(dex)
 
                         # Parse HIP-3 positions
                         for pos_data in hip3_state.get("assetPositions", []):
@@ -892,6 +933,15 @@ class WhaleMetricsManager:
                     logger.debug(
                         f"🏗️  {address[:10]}...: {hip3_pos_count} HIP-3 positions added to snapshot"
                     )
+
+                # Write HIP-3 totals to account_data if any dex returned data
+                if hip3_dexes_present:
+                    account_data["hip3_account_value"] = hip3_acc_value_total
+                    account_data["hip3_total_raw_usd"] = hip3_raw_usd_total
+                    account_data["hip3_total_margin_used"] = hip3_margin_used_total
+                    account_data["hip3_total_ntl_pos"] = hip3_ntl_pos_total
+                    account_data["hip3_withdrawable"] = hip3_withdrawable_total
+                    account_data["hip3_dexes"] = ",".join(hip3_dexes_present)
             # =================================================================
 
             # 2. Process spot balances
@@ -963,7 +1013,8 @@ class WhaleMetricsManager:
                 "portfolio_data": portfolio_data,
                 "positions": positions,
                 "spot_balances": spot_balances,
-                "vaults": vaults
+                "vaults": vaults,
+                "account_data": account_data,
             }
 
         except Exception as e:
@@ -1053,6 +1104,13 @@ class WhaleMetricsManager:
             positions=data["positions"],
             spot_balances=data["spot_balances"],
             vaults=data["vaults"]
+        )
+
+        # Also save per-address account equity to perp_account_snapshots
+        self.storage.save_perp_account_snapshot(
+            address=address,
+            snapshot_time=snapshot_time,
+            account_data=data["account_data"]
         )
 
         self.snapshots_taken += 1

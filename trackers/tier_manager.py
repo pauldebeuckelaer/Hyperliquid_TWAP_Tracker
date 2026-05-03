@@ -213,63 +213,105 @@ class TierManager:
 
     def refresh_tiers_from_snapshots(self) -> Dict[str, dict]:
         """
-        Recalculate tiers from latest snapshot data.
+        Recalculate tiers from latest snapshot data using dual-axis logic.
 
-        Pulls both position_value (from perp_snapshots) and
-        portfolio_value (from portfolio_snapshots) for each address.
+        Two parallel tier axes:
+        - tier_position: from perp_snapshots notional exposure
+        - tier_perp_amount: from perp_account_snapshots deposited cash
+
+        Effective tier = min(tier_position, tier_perp_amount), treating None
+        as infinity. A whale stays active if EITHER axis is non-None.
 
         Returns:
-            Dict of address -> {'tier': int, 'position_value': float, 'portfolio_value': float}
+            Dict of address -> {
+                'tier': int (effective),
+                'tier_position': int or None,
+                'tier_perp_amount': int or None,
+                'position_value': float,
+                'raw_usd_value': float,
+                'portfolio_value': float,
+            }
         """
         logger.info("Refreshing tier assignments from snapshot data...")
         start_time = datetime.now()
 
-        # Snapshot current tiers BEFORE recalculating
+        # Snapshot current effective tiers BEFORE recalculating (for change detection)
         old_tiers = self._get_current_tiers()
 
-        # Get latest position values from perp_snapshots
+        # Pull all three data sources
         position_values = self._get_latest_position_values()
-        logger.info(f"Found {len(position_values)} addresses with perp positions")
-
-        # Get latest portfolio values from portfolio_snapshots
+        raw_usd_values = self._get_latest_raw_usd_values()
         portfolio_values = self._get_latest_portfolio_values()
-        logger.info(f"Found {len(portfolio_values)} addresses with portfolio snapshots")
+        logger.info(
+            f"Snapshot data: {len(position_values)} with positions, "
+            f"{len(raw_usd_values)} with perp cash, "
+            f"{len(portfolio_values)} with portfolio data"
+        )
 
-        # Combine: use position_value for tier, but store both
-        all_addresses = set(position_values.keys()) | set(portfolio_values.keys())
+        # Union of addresses seen in EITHER tier-driving source
+        all_addresses = set(position_values.keys()) | set(raw_usd_values.keys())
 
         results = {}
-        new_tiers = {}
+        new_tiers = {}  # address -> effective tier (for change detection)
         tier_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        position_axis_count = 0
+        cash_axis_count = 0
+        both_axes_count = 0
 
         for address in all_addresses:
             pos_value = position_values.get(address, 0)
+            raw_usd = raw_usd_values.get(address, 0)
             port_value = portfolio_values.get(address, 0)
 
-            # Calculate tier based on position value
-            tier = self._calculate_tier(pos_value)
+            # Compute both tier axes independently
+            tier_pos = self._calculate_tier(pos_value)
+            tier_cash = self._calculate_tier(raw_usd)
 
-            if tier is not None:
+            # Effective tier: highest tier (= lowest number) of the two.
+            # If both None, the whale falls to deactivation.
+            if tier_pos is None and tier_cash is None:
+                effective_tier = None
+            elif tier_pos is None:
+                effective_tier = tier_cash
+            elif tier_cash is None:
+                effective_tier = tier_pos
+            else:
+                effective_tier = min(tier_pos, tier_cash)
+
+            if effective_tier is not None:
                 results[address] = {
-                    'tier': tier,
+                    'tier': effective_tier,
+                    'tier_position': tier_pos,
+                    'tier_perp_amount': tier_cash,
                     'position_value': pos_value,
+                    'raw_usd_value': raw_usd,
                     'portfolio_value': port_value,
                 }
-                new_tiers[address] = tier
-                tier_counts[tier] += 1
+                new_tiers[address] = effective_tier
+                tier_counts[effective_tier] += 1
 
-                # Update in database
-                self._update_address_tier(address, tier, pos_value, port_value)
+                # Count which axis (or both) qualified the whale
+                if tier_pos is not None and tier_cash is not None:
+                    both_axes_count += 1
+                elif tier_pos is not None:
+                    position_axis_count += 1
+                else:
+                    cash_axis_count += 1
+
+                self._update_address_tier(
+                    address, effective_tier, tier_pos, tier_cash,
+                    pos_value, raw_usd
+                )
             else:
-                # Below all thresholds - mark inactive
+                # Below threshold on BOTH axes - deactivate
                 self._deactivate_address(address)
 
-        # Catch orphans: active+tiered whales not present in either snapshot dict
-        # (manual seeds, migration leftovers, addresses that stopped trading)
-        seen_addresses = set(position_values.keys()) | set(portfolio_values.keys())
+        # Catch orphans: active whales with no fresh data on either axis
+        seen_addresses = all_addresses
         self.storage.cursor.execute("""
             SELECT address FROM whale_addresses
-            WHERE is_active = 1 AND tier IS NOT NULL
+            WHERE is_active = 1
+              AND (tier IS NOT NULL OR tier_perp_amount IS NOT NULL)
         """)
         all_active_tiered = {row[0] for row in self.storage.cursor.fetchall()}
         for address in all_active_tiered - seen_addresses:
@@ -278,35 +320,31 @@ class TierManager:
         self.storage.conn.commit()
 
         # =====================================================================
-        # DETECT AND LOG TIER CHANGES
+        # DETECT AND LOG TIER CHANGES (effective tier transitions)
         # =====================================================================
         promoted = []
         demoted = []
         new_entries = []
         deactivated = []
 
-        # Check for promotions, demotions, new entries
         for address, new_tier in new_tiers.items():
             old_tier = old_tiers.get(address)
             pos_value = position_values.get(address, 0)
+            raw_usd = raw_usd_values.get(address, 0)
 
             if old_tier is None:
-                # New address entering the tier system
-                new_entries.append((address, new_tier, pos_value))
+                new_entries.append((address, new_tier, pos_value, raw_usd))
             elif new_tier < old_tier:
-                # Lower tier number = higher tier = promotion
-                promoted.append((address, old_tier, new_tier, pos_value))
+                promoted.append((address, old_tier, new_tier, pos_value, raw_usd))
             elif new_tier > old_tier:
-                # Higher tier number = lower tier = demotion
-                demoted.append((address, old_tier, new_tier, pos_value))
+                demoted.append((address, old_tier, new_tier, pos_value, raw_usd))
 
-        # Check for deactivated (were in old_tiers, not in new_tiers)
         for address, old_tier in old_tiers.items():
             if address not in new_tiers:
                 pos_value = position_values.get(address, 0)
-                deactivated.append((address, old_tier, pos_value))
+                raw_usd = raw_usd_values.get(address, 0)
+                deactivated.append((address, old_tier, pos_value, raw_usd))
 
-        # Log summary at INFO level
         changes_total = len(promoted) + len(demoted) + len(new_entries) + len(deactivated)
 
         # Refresh event tracking cache
@@ -316,10 +354,18 @@ class TierManager:
         elapsed = (self.last_tier_refresh - start_time).total_seconds()
 
         logger.info(f"Tier refresh complete in {elapsed:.1f}s")
-        logger.info(f"Tier distribution: T1={tier_counts[1]}, T2={tier_counts[2]}, "
-                    f"T3={tier_counts[3]}, T4={tier_counts[4]}, T5={tier_counts[5]}")
-        logger.info(f"Event tracking addresses: {len(self._event_tracking_addresses)} "
-                    f"(VIP + Tier1)")
+        logger.info(
+            f"Tier distribution: T1={tier_counts[1]}, T2={tier_counts[2]}, "
+            f"T3={tier_counts[3]}, T4={tier_counts[4]}, T5={tier_counts[5]}"
+        )
+        logger.info(
+            f"Axis breakdown: {both_axes_count} both axes, "
+            f"{position_axis_count} position-only, "
+            f"{cash_axis_count} cash-only (dormant-loaded)"
+        )
+        logger.info(
+            f"Event tracking addresses: {len(self._event_tracking_addresses)} (VIP + Tier1)"
+        )
 
         if changes_total > 0:
             logger.info(
@@ -327,25 +373,28 @@ class TierManager:
                 f"{len(new_entries)} new, {len(deactivated)} deactivated"
             )
 
-            # Log individual changes at DEBUG level
-            for addr, old_t, new_t, pos_val in sorted(promoted, key=lambda x: x[2]):
+            for addr, old_t, new_t, pos_val, raw_val in sorted(promoted, key=lambda x: x[2]):
                 logger.debug(
-                    f"⬆ {addr} T{old_t}→T{new_t} (pos: {self._format_value(pos_val)})"
+                    f"⬆ {addr} T{old_t}→T{new_t} "
+                    f"(pos: {self._format_value(pos_val)}, cash: {self._format_value(raw_val)})"
                 )
 
-            for addr, old_t, new_t, pos_val in sorted(demoted, key=lambda x: x[2]):
+            for addr, old_t, new_t, pos_val, raw_val in sorted(demoted, key=lambda x: x[2]):
                 logger.debug(
-                    f"⬇ {addr} T{old_t}→T{new_t} (pos: {self._format_value(pos_val)})"
+                    f"⬇ {addr} T{old_t}→T{new_t} "
+                    f"(pos: {self._format_value(pos_val)}, cash: {self._format_value(raw_val)})"
                 )
 
-            for addr, tier, pos_val in sorted(new_entries, key=lambda x: x[1]):
+            for addr, tier, pos_val, raw_val in sorted(new_entries, key=lambda x: x[1]):
                 logger.debug(
-                    f"🆕 {addr} T{tier} (pos: {self._format_value(pos_val)})"
+                    f"🆕 {addr} T{tier} "
+                    f"(pos: {self._format_value(pos_val)}, cash: {self._format_value(raw_val)})"
                 )
 
-            for addr, old_t, pos_val in deactivated:
+            for addr, old_t, pos_val, raw_val in deactivated:
                 logger.debug(
-                    f"❌ {addr} was T{old_t} (pos: {self._format_value(pos_val)})"
+                    f"❌ {addr} was T{old_t} "
+                    f"(pos: {self._format_value(pos_val)}, cash: {self._format_value(raw_val)})"
                 )
         else:
             logger.info("Tier changes: none")
@@ -383,6 +432,42 @@ class TierManager:
                 ON ps.address = lt.address 
                 AND ps.snapshot_time = lt.latest_time
             GROUP BY ps.address
+        """)
+
+        return {row[0]: row[1] for row in self.storage.cursor.fetchall()}
+
+    def _get_latest_raw_usd_values(self) -> Dict[str, float]:
+        """
+        Get latest deposited cash per address from perp_account_snapshots.
+
+        Reads total_raw_usd_all (mainnet + HIP-3 consolidated). This is the
+        "cash" axis for the dual-tier system — independent of open positions,
+        catches dormant-loaded whales who closed positions but kept capital.
+
+        Same 130-minute freshness window as _get_latest_position_values to
+        avoid letting stale snapshots drive tier assignments.
+
+        Note: total_raw_usd_all can be negative for heavily leveraged whales.
+        Negative values are returned as-is — the caller handles them via
+        _calculate_tier returning None for sub-threshold values.
+
+        Returns:
+            Dict of address -> total_raw_usd_all (may be negative)
+        """
+        self.storage.cursor.execute("""
+            WITH latest_times AS (
+                SELECT address, MAX(snapshot_time) as latest_time
+                FROM perp_account_snapshots
+                WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-130 minutes')
+                GROUP BY address
+            )
+            SELECT 
+                pas.address,
+                pas.total_raw_usd_all
+            FROM perp_account_snapshots pas
+            JOIN latest_times lt 
+                ON pas.address = lt.address 
+                AND pas.snapshot_time = lt.latest_time
         """)
 
         return {row[0]: row[1] for row in self.storage.cursor.fetchall()}
@@ -426,33 +511,63 @@ class TierManager:
                 return tier
         return None
 
-    def _update_address_tier(self, address: str, tier: int, position_value: float, portfolio_value: float):
+    def _update_address_tier(
+            self,
+            address: str,
+            effective_tier: int,
+            tier_position: int,
+            tier_perp_amount: int,
+            position_value: float,
+            raw_usd_value: float,
+    ):
         """
         Update address tier in whale_addresses table.
 
+        Writes both tier axes plus the derived effective tier.
+
         Args:
             address: Wallet address
-            tier: Tier number (1-5)
-            position_value: Total position value
-            portfolio_value: Total portfolio value
+            effective_tier: min(tier_position, tier_perp_amount), drives cadence
+            tier_position: Tier from notional exposure (None if subthreshold)
+            tier_perp_amount: Tier from deposited cash (None if subthreshold)
+            position_value: Total notional exposure value
+            raw_usd_value: Total deposited cash (may be negative)
         """
         timestamp = datetime.now().isoformat()
 
         self.storage.cursor.execute("""
-            INSERT INTO whale_addresses (address, first_seen, last_updated, is_active, tier, position_value, last_tier_update)
-            VALUES (?, ?, ?, 1, ?, ?, ?)
+            INSERT INTO whale_addresses (
+                address, first_seen, last_updated, is_active,
+                tier, position_value,
+                tier_perp_amount, raw_usd_value,
+                last_tier_update
+            )
+            VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
             ON CONFLICT(address) DO UPDATE SET
                 last_updated = ?,
                 is_active = 1,
                 tier = ?,
                 position_value = ?,
+                tier_perp_amount = ?,
+                raw_usd_value = ?,
                 last_tier_update = ?
-        """, (address, timestamp, timestamp, tier, position_value, timestamp,
-              timestamp, tier, position_value, timestamp))
+        """, (
+            address, timestamp, timestamp,
+            effective_tier, position_value,
+            tier_perp_amount, raw_usd_value,
+            timestamp,
+            timestamp,
+            effective_tier, position_value,
+            tier_perp_amount, raw_usd_value,
+            timestamp,
+        ))
 
     def _deactivate_address(self, address: str):
         """
-        Mark address as inactive (below all tier thresholds).
+        Mark address as inactive (below all tier thresholds on BOTH axes).
+
+        Clears both tier columns and value columns to prevent stale data
+        from leaking back into queries.
 
         Args:
             address: Wallet address
@@ -461,7 +576,12 @@ class TierManager:
 
         self.storage.cursor.execute("""
             UPDATE whale_addresses
-            SET is_active = 0, tier = NULL, last_updated = ?
+            SET is_active = 0,
+                tier = NULL,
+                tier_perp_amount = NULL,
+                position_value = 0,
+                raw_usd_value = 0,
+                last_updated = ?
             WHERE address = ?
         """, (timestamp, address))
 

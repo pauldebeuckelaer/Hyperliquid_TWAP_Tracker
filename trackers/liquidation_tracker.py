@@ -223,9 +223,9 @@ class LiquidationTracker:
             session: aiohttp.ClientSession,
             addresses: List[str],
             dex: str
-    ) -> Dict[str, List[Dict]]:
+    ) -> tuple:
         """
-        Fetch HIP-3 positions for a batch of addresses on a single dex.
+        Fetch HIP-3 positions and marginSummary for a batch of addresses on a single dex.
 
         Args:
             session: aiohttp session
@@ -233,10 +233,15 @@ class LiquidationTracker:
             dex: HIP-3 dex name
 
         Returns:
-            Dict of address -> list of raw position dicts.
-            Addresses with no positions are omitted.
+            Tuple of (positions_by_addr, margin_by_addr):
+              - positions_by_addr: Dict[address, List[position_dict]]
+                Addresses with no positions are omitted.
+              - margin_by_addr: Dict[address, marginSummary_dict]
+                Includes top-level 'withdrawable' merged in.
+                Addresses where the API failed are omitted.
         """
         positions_by_addr = {}
+        margin_by_addr = {}
 
         for i in range(0, len(addresses), self.hip3_batch_size):
             batch = addresses[i:i + self.hip3_batch_size]
@@ -250,6 +255,19 @@ class LiquidationTracker:
 
                 address = result["address"]
                 state = result.get("state", {})
+
+                # Capture marginSummary + withdrawable for account_data
+                margin_summary = state.get("marginSummary", {})
+                if margin_summary:
+                    margin_by_addr[address] = {
+                        "accountValue": margin_summary.get("accountValue", "0"),
+                        "totalRawUsd": margin_summary.get("totalRawUsd", "0"),
+                        "totalMarginUsed": margin_summary.get("totalMarginUsed", "0"),
+                        "totalNtlPos": margin_summary.get("totalNtlPos", "0"),
+                        "withdrawable": state.get("withdrawable"),
+                    }
+
+                # Existing position parsing
                 asset_positions = state.get("assetPositions", [])
 
                 for pos_data in asset_positions:
@@ -285,7 +303,7 @@ class LiquidationTracker:
             if i + self.hip3_batch_size < len(addresses):
                 await asyncio.sleep(self.hip3_batch_delay)
 
-        return positions_by_addr
+        return positions_by_addr, margin_by_addr
 
     # =========================================================================
     # MAIN FETCH METHOD (UPDATED)
@@ -360,16 +378,23 @@ class LiquidationTracker:
 
                     for dex in hip3_dexes:
                         try:
-                            positions_by_addr = await self._fetch_hip3_positions_batch(
+                            positions_by_addr, margin_by_addr = await self._fetch_hip3_positions_batch(
                                 session, fetched_addresses, dex
                             )
+
+                            # Merge marginSummary into all_results (for account_data)
+                            results_by_addr = {r['address']: r for r in all_results}
+                            for addr, margin in margin_by_addr.items():
+                                if addr in results_by_addr:
+                                    if 'hip3_margin_by_dex' not in results_by_addr[addr]:
+                                        results_by_addr[addr]['hip3_margin_by_dex'] = {}
+                                    results_by_addr[addr]['hip3_margin_by_dex'][dex] = margin
 
                             if positions_by_addr:
                                 dex_pos_count = sum(len(v) for v in positions_by_addr.values())
                                 hip3_total_positions += dex_pos_count
 
-                                # Merge into existing results
-                                results_by_addr = {r['address']: r for r in all_results}
+                                # Merge positions into existing results
                                 for addr, positions in positions_by_addr.items():
                                     if addr in results_by_addr:
                                         results_by_addr[addr]['hip3_positions'].extend(positions)
@@ -626,6 +651,86 @@ class LiquidationTracker:
         return coin_exposure
 
     # =========================================================================
+    # ACCOUNT DATA PARSING (separate from liquidation logic)
+    # =========================================================================
+
+    def _parse_account_data(self, whale_states: List[Dict]) -> List[Dict]:
+        """
+        Build per-address account_data list for save_perp_account_snapshots_batch.
+
+        Consolidates HIP-3 marginSummary across dexes for VIP+T1 whales who
+        have hip3_margin_by_dex populated. Lower-tier whales get NULL HIP-3
+        columns automatically (no hip3_margin_by_dex present).
+
+        Args:
+            whale_states: List of whale state dicts from _fetch_whale_states_async
+
+        Returns:
+            List of dicts, one per address, ready for save_perp_account_snapshots_batch
+        """
+        account_data_list = []
+
+        for whale_data in whale_states:
+            address = whale_data.get('address', '')
+            if not address:
+                continue
+
+            state = whale_data.get('state', {})
+            margin_summary = state.get('marginSummary', {})
+
+            # Mainnet fields (always populated for any whale we successfully fetched)
+            account_data = {
+                'address': address,
+                'account_value': float(margin_summary.get('accountValue', 0)),
+                'total_raw_usd': float(margin_summary.get('totalRawUsd', 0)),
+                'total_margin_used': float(margin_summary.get('totalMarginUsed', 0)),
+                'total_ntl_pos': float(margin_summary.get('totalNtlPos', 0)),
+                'withdrawable': None,
+                'hip3_account_value': None,
+                'hip3_total_raw_usd': None,
+                'hip3_total_margin_used': None,
+                'hip3_total_ntl_pos': None,
+                'hip3_withdrawable': None,
+                'hip3_dexes': None,
+            }
+
+            withdrawable_raw = state.get('withdrawable')
+            if withdrawable_raw is not None:
+                account_data['withdrawable'] = float(withdrawable_raw)
+
+            # HIP-3 consolidation (only present for VIP+T1 via gating in _fetch_whale_states_async)
+            hip3_margin_by_dex = whale_data.get('hip3_margin_by_dex')
+            if hip3_margin_by_dex:
+                hip3_acc_total = 0.0
+                hip3_raw_total = 0.0
+                hip3_margin_total = 0.0
+                hip3_ntl_total = 0.0
+                hip3_withdrawable_total = 0.0
+                dexes_present = []
+
+                for dex, margin in hip3_margin_by_dex.items():
+                    hip3_acc_total += float(margin.get('accountValue', 0))
+                    hip3_raw_total += float(margin.get('totalRawUsd', 0))
+                    hip3_margin_total += float(margin.get('totalMarginUsed', 0))
+                    hip3_ntl_total += float(margin.get('totalNtlPos', 0))
+                    hip3_withdrawable_raw = margin.get('withdrawable')
+                    if hip3_withdrawable_raw is not None:
+                        hip3_withdrawable_total += float(hip3_withdrawable_raw)
+                    dexes_present.append(dex)
+
+                if dexes_present:
+                    account_data['hip3_account_value'] = hip3_acc_total
+                    account_data['hip3_total_raw_usd'] = hip3_raw_total
+                    account_data['hip3_total_margin_used'] = hip3_margin_total
+                    account_data['hip3_total_ntl_pos'] = hip3_ntl_total
+                    account_data['hip3_withdrawable'] = hip3_withdrawable_total
+                    account_data['hip3_dexes'] = ",".join(dexes_present)
+
+            account_data_list.append(account_data)
+
+        return account_data_list
+
+    # =========================================================================
     # SNAPSHOT METHODS (UPDATED)
     # =========================================================================
 
@@ -720,6 +825,15 @@ class LiquidationTracker:
                     timestamp.isoformat(),
                     all_positions)
                 logger.debug(f"Dual-wrote {len(all_positions)} positions to perp_snapshots")
+
+            # Also write per-address account equity to perp_account_snapshots
+            account_data_list = self._parse_account_data(whale_states)
+            if account_data_list:
+                self.storage.save_perp_account_snapshots_batch(
+                    timestamp.isoformat(),
+                    account_data_list
+                )
+                logger.debug(f"Dual-wrote {len(account_data_list)} account snapshots to perp_account_snapshots")
 
         self.last_snapshot_time = timestamp
         self.snapshot_count += 1
