@@ -335,70 +335,6 @@ class WhaleStorage(BaseStorage):
                 return tier
         return None
 
-    def update_address_tier(self, address: str, position_value: float) -> Optional[int]:
-        """
-        Update an address's tier based on position value.
-
-        Args:
-            address: Wallet address
-            position_value: Current total position value
-
-        Returns:
-            New tier (1-5) or None if below threshold
-        """
-        tier = self.calculate_tier(position_value)
-        timestamp = datetime.now().isoformat()
-
-        # Upsert into whale_addresses
-        self.cursor.execute("""
-            INSERT INTO whale_addresses (address, first_seen, last_updated, is_active, tier, position_value, last_tier_update)
-            VALUES (?, ?, ?, 1, ?, ?, ?)
-            ON CONFLICT(address) DO UPDATE SET
-                last_updated = ?,
-                is_active = 1,
-                tier = ?,
-                position_value = ?,
-                last_tier_update = ?
-        """, (address, timestamp, timestamp, tier, position_value, timestamp,
-              timestamp, tier, position_value, timestamp))
-        self.conn.commit()
-
-        return tier
-
-    def bulk_update_tiers(self, address_positions: Dict[str, float]) -> Dict[str, int]:
-        """
-        Bulk update tiers for multiple addresses.
-
-        Args:
-            address_positions: Dict of address -> position_value
-
-        Returns:
-            Dict of address -> tier for addresses that made the cut
-        """
-        timestamp = datetime.now().isoformat()
-        results = {}
-
-        for address, position_value in address_positions.items():
-            tier = self.calculate_tier(position_value)
-            if tier is not None:
-                results[address] = tier
-
-            self.cursor.execute("""
-                INSERT INTO whale_addresses (address, first_seen, last_updated, is_active, tier, position_value, last_tier_update)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(address) DO UPDATE SET
-                    last_updated = ?,
-                    is_active = ?,
-                    tier = ?,
-                    position_value = ?,
-                    last_tier_update = ?
-            """, (address, timestamp, timestamp, 1 if tier else 0, tier, position_value, timestamp,
-                  timestamp, 1 if tier else 0, tier, position_value, timestamp))
-
-        self.conn.commit()
-        logger.info(f"Bulk updated tiers for {len(address_positions)} addresses, {len(results)} in tiers")
-        return results
-
     def get_addresses_by_tier(self, tier: int) -> List[str]:
         """
         Get all addresses in a specific tier.
@@ -556,16 +492,40 @@ class WhaleStorage(BaseStorage):
         """
         Update whale active status (above/below threshold).
 
+        When deactivating (is_active=False), tier columns are cleared to
+        match the semantics of tier_manager._deactivate_address. This
+        prevents zombie rows where is_active=0 but stale tier data persists.
+
+        When activating (is_active=True), tier columns are left alone —
+        the next hourly tier refresh will populate them from fresh
+        snapshot data.
+
         Args:
             address: Wallet address
             is_active: True if above threshold, False if below
         """
         timestamp = datetime.now().isoformat()
-        self.cursor.execute("""
-            UPDATE whale_addresses
-            SET is_active = ?, last_updated = ?
-            WHERE address = ?
-        """, (1 if is_active else 0, timestamp, address))
+
+        if is_active:
+            # Re-activating — just flip the flag. Tier refresh will repopulate.
+            self.cursor.execute("""
+                UPDATE whale_addresses
+                SET is_active = 1, last_updated = ?
+                WHERE address = ?
+            """, (timestamp, address))
+        else:
+            # Deactivating — clear tier columns to avoid stale zombie rows.
+            self.cursor.execute("""
+                UPDATE whale_addresses
+                SET is_active = 0,
+                    tier = NULL,
+                    tier_perp_amount = NULL,
+                    position_value = 0,
+                    raw_usd_value = 0,
+                    last_updated = ?
+                WHERE address = ?
+            """, (timestamp, address))
+
         self.conn.commit()
 
     def get_active_whale_addresses(self) -> List[str]:
@@ -1049,35 +1009,50 @@ class WhaleStorage(BaseStorage):
     # CLEANUP
     # =========================================================================
 
-    def cleanup_old_snapshots(self, days_to_keep: int = 30) -> int:
+    def cleanup_old_snapshots(self, days_to_keep: int = 30) -> Dict[str, int]:
         """
-        Remove snapshots older than specified days.
+        Remove snapshots older than specified days from all whale state tables.
 
         Args:
             days_to_keep: Number of days of history to keep
 
         Returns:
-            Number of portfolio snapshots deleted
+            Dict of table_name -> rows_deleted
         """
         cutoff = (datetime.now() - timedelta(days=days_to_keep)).isoformat()
+        deleted = {}
 
-        # Get count before deletion
-        self.cursor.execute("""
-            SELECT COUNT(*) FROM portfolio_snapshots
-            WHERE snapshot_time < ?
-        """, (cutoff,))
-        count = self.cursor.fetchone()[0]
+        tables_with_snapshot_time = [
+            'portfolio_snapshots',
+            'perp_snapshots',
+            'spot_snapshots',
+            'vault_snapshots',
+            'perp_account_snapshots',
+        ]
 
-        if count > 0:
-            # Delete from all snapshot tables
-            self.cursor.execute("DELETE FROM portfolio_snapshots WHERE snapshot_time < ?", (cutoff,))
-            self.cursor.execute("DELETE FROM perp_snapshots WHERE snapshot_time < ?", (cutoff,))
-            self.cursor.execute("DELETE FROM spot_snapshots WHERE snapshot_time < ?", (cutoff,))
-            self.cursor.execute("DELETE FROM vault_snapshots WHERE snapshot_time < ?", (cutoff,))
-            self.conn.commit()
-            logger.info(f"Cleaned up {count} old snapshots (older than {days_to_keep} days)")
+        for table in tables_with_snapshot_time:
+            self.cursor.execute(
+                f"DELETE FROM {table} WHERE snapshot_time < ?",
+                (cutoff,),
+            )
+            deleted[table] = self.cursor.rowcount
 
-        return count
+        # whale_events uses 'timestamp' column, not 'snapshot_time'
+        self.cursor.execute(
+            "DELETE FROM whale_events WHERE timestamp < ?",
+            (cutoff,),
+        )
+        deleted['whale_events'] = self.cursor.rowcount
+
+        self.conn.commit()
+
+        total = sum(deleted.values())
+        if total > 0:
+            logger.info(
+                f"Cleaned up {total} rows older than {days_to_keep} days: {deleted}"
+            )
+
+        return deleted
 
     # =========================================================================
     # STATS

@@ -39,7 +39,8 @@ from trackers.whale_event_detector import WhaleEventDetector
 from trackers.fees_collector import HypurrscanFeesCollector
 from coin_registry import init_dynamic_registry
 from storage import SQLiteBackend
-from trader_metrics_manager import WhaleMetricsManager
+from trackers.whale_discovery import WhaleDiscovery, TokenFilter
+from trackers.whale_state_collector import WhaleStateCollector
 
 from generators.daily_summary import generate_daily_summaries
 from telegram.telegram_alerter import TelegramAlerter
@@ -122,14 +123,38 @@ class TWAPBot:
 
             # Liquidation Tracker - tiered whale fetching + liquidation snapshots
             self.liquidation_tracker = LiquidationTracker(
-                self.hyperliquid_client,
                 self.storage,
-                self.tier_manager,
-                self.event_detector,
                 config=hyperliquid_config.get('liquidation_tracker', {})
             )
 
             logger.info("Tiered tracking architecture initialized")
+
+            # =================================================================
+            # WHALE DISCOVERY — event-driven address evaluation + registration
+            # =================================================================
+            metrics_config = hyperliquid_config.get('metrics_collection', {})
+
+            self.token_filter = TokenFilter(metrics_config)
+
+            self.whale_discovery = WhaleDiscovery(
+                self.hyperliquid_client,
+                self.storage,
+                self.token_filter,
+                config=metrics_config,
+            )
+
+            # Collector owns all snapshot persistence. Discovery hands it a
+            # WhaleState (already fetched); Collector writes the five tables
+            # without re-fetching. Cycle-driven collection lands in Step 3.
+            self.collector = WhaleStateCollector(
+                self.hyperliquid_client,
+                self.storage,
+                self.tier_manager,
+                self.token_filter,
+                config=metrics_config,
+            )
+
+            # =================================================================
 
             # Hypurrscan platform-wide fees collector
             self.fees_collector = HypurrscanFeesCollector(
@@ -148,6 +173,9 @@ class TWAPBot:
             self.market_tracker = None
             self.liquidation_tracker = None
             self.fees_collector = None
+            self.token_filter = None
+            self.whale_discovery = None
+            self.collector = None
             logger.info("Hyperliquid client disabled")
 
         # Shutdown handler
@@ -176,14 +204,18 @@ class TWAPBot:
 
     async def _process_order_events(self):
         """
-        Process queued order events - snapshot whales only.
+        Process queued order events.
 
         Flow:
-        - Order START: Check portfolio >= $50K, then snapshot
-        - Order END: Snapshot if we snapshotted at start (tracked whale)
+        - Order START: discovery.evaluate (probes portfolio), discovery.register
+          if qualifying, then stub-persist for snapshot writes.
+        - Order END: stub-persist if address is already a tracked active whale.
 
-        This populates portfolio_snapshots and perp_snapshots tables,
-        which the TierManager uses for tier assignment.
+        Discovery owns the "should we track this?" decision. The stub-persist
+        wraps WhaleMetricsManager.take_snapshot_async until WhaleStateCollector
+        lands. Runtime behavior is identical to before this refactor — the
+        same writes happen via the same code path, just routed through the
+        new class boundary.
         """
         if not self._pending_order_starts and not self._pending_order_ends:
             return
@@ -225,47 +257,54 @@ class TWAPBot:
         elif ends:
             logger.info(f"Processing {len(unique_ends)} order ends")
 
-        storage = SQLiteBackend(self.db_path)
-        manager = WhaleMetricsManager(
-            self.hyperliquid_client,
-            storage,
-            config=self.config.get('hyperliquid', {}).get('metrics_collection', {})
-        )
-
         # Track which addresses we've snapshotted this cycle
         snapshotted_this_cycle = set()
 
         async with aiohttp.ClientSession() as session:
-            # Process ORDER STARTS
+            # =================================================================
+            # ORDER STARTS — Discovery evaluate + register, Collector persist
+            # =================================================================
             for address, (symbol, order) in unique_starts.items():
                 if address in snapshotted_this_cycle:
                     continue
 
                 try:
-                    portfolio_value = await manager._get_portfolio_value_async(address, session)
+                    state = await self.whale_discovery.evaluate(address, session)
 
-                    if portfolio_value >= WHALE_MIN_PORTFOLIO:
-                        success = await manager.take_snapshot_async(address, session)
-
-                        if success:
-                            snapshotted_this_cycle.add(address)
-                            self._snapshot_stats["start_snapshots"] += 1
-                            logger.info(
-                                f"📸 START: {address[:10]}... ${portfolio_value:,.0f} | "
-                                f"{symbol} {order.get('side')} {order.get('size'):,.0f} "
-                                f"({order.get('duration_minutes')}m)"
-                            )
-                        else:
-                            self._snapshot_stats["errors"] += 1
-                    else:
+                    if state is None:
+                        # Either API failed or portfolio < threshold
                         self._snapshot_stats["below_threshold"] += 1
+                        continue
+
+                    # Qualifies — register (idempotent) and persist from in-hand state.
+                    # No re-fetch: Collector writes from the WhaleState that evaluate
+                    # already produced.
+                    self.whale_discovery.register(address)
+                    success = await self.collector.persist(address, state)
+
+                    if success:
+                        snapshotted_this_cycle.add(address)
+                        self._snapshot_stats["start_snapshots"] += 1
+                        logger.info(
+                            f"📸 START: {address[:10]}... ${state.total_value():,.0f} | "
+                            f"{symbol} {order.get('side')} {order.get('size'):,.0f} "
+                            f"({order.get('duration_minutes')}m)"
+                        )
+                    else:
+                        # Sanity check rejected the write (API failure suspected),
+                        # or a real DB error occurred. Collector logged the reason.
+                        self._snapshot_stats["errors"] += 1
 
                 except Exception as e:
                     self._snapshot_stats["errors"] += 1
                     logger.error(f"Error processing order start {address[:10]}...: {e}")
 
-            # Process ORDER ENDS
-            active_whales = set(storage.get_active_whale_addresses())
+            # =================================================================
+            # ORDER ENDS — snapshot if already tracked. Goes through Collector
+            # (no threshold check — an exiting whale gets their final snapshot
+            # even if portfolio drops below $50K mid-close).
+            # =================================================================
+            active_whales = set(self.storage.get_active_whale_addresses())
 
             for address, (symbol, order, end_type) in unique_ends.items():
                 if address in snapshotted_this_cycle:
@@ -273,7 +312,9 @@ class TWAPBot:
 
                 try:
                     if address in active_whales:
-                        success = await manager.take_snapshot_async(address, session)
+                        success = await self.collector.fetch_and_persist(
+                            address, session
+                        )
 
                         if success:
                             snapshotted_this_cycle.add(address)
@@ -290,8 +331,6 @@ class TWAPBot:
                 except Exception as e:
                     self._snapshot_stats["errors"] += 1
                     logger.error(f"Error processing order end {address[:10]}...: {e}")
-
-        storage.close()
 
         if snapshotted_this_cycle:
             logger.info(
@@ -453,12 +492,32 @@ class TWAPBot:
                     prices = {}
 
                 # =============================================================
-                # LIQUIDATION TRACKING (tiered - variable API calls)
+                # CYCLE-DRIVEN WHALE STATE COLLECTION + ANALYSIS
+                # Collector produces whale_states; analyzers consume them.
+                # This replaces the LiquidationTracker dual-write path.
                 # =============================================================
 
-                if self.liquidation_tracker:
-                    # Pass prices to avoid duplicate API call
-                    asyncio.run(self.liquidation_tracker.take_snapshot_async(prices=prices))
+                if self.collector:
+                    whale_states = asyncio.run(
+                        self.collector.collect_async(prices=prices)
+                    )
+
+                    # Liquidation analysis (writes liquidation_snapshots)
+                    if self.liquidation_tracker and whale_states:
+                        self.liquidation_tracker.analyze(whale_states, prices)
+
+                    # Event detection (writes whale_events)
+                    if self.event_detector and whale_states:
+                        events = self.event_detector.detect(whale_states, prices)
+                        if events:
+                            self.event_detector.log_summary(events)
+                            self.storage.save_whale_events(events)
+                    # =========================================================
+                    # SLOW LADDER (Step 4b) — portfolio/spot/vault per-tier cadence
+                    # Fires only at cycle 7 when a tier is due (1/2/4/8h ladder).
+                    # Returns 0 on most cycles.
+                    # =========================================================
+                    asyncio.run(self.collector.collect_slow_async())
 
                 # =============================================================
                 # DAILY MAINTENANCE
@@ -584,6 +643,11 @@ class TWAPBot:
         if self.event_detector:
             event_stats = self.event_detector.get_stats()
             logger.info(f"Event detector: {event_stats}")
+
+        # Collector stats (Step 3 + 4a + 4b)
+        if self.collector:
+            collector_stats = self.collector.get_stats()
+            logger.info(f"Collector: {collector_stats}")
 
         # Event-driven snapshot stats
         logger.info(f"Event-driven snapshot stats: {self._snapshot_stats}")

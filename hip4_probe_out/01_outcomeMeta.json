@@ -1,0 +1,18 @@
+{
+  "outcomes": [
+    {
+      "outcome": 2,
+      "name": "Recurring",
+      "description": "class:priceBinary|underlying:BTC|expiry:20260505-0600|targetPrice:79980|period:1d",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ]
+    }
+  ],
+  "questions": []
+}
