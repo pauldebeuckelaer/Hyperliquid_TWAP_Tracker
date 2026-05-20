@@ -73,9 +73,12 @@ class WhaleStorage(BaseStorage):
                 last_updated TEXT,
                 is_active INTEGER DEFAULT 1,
                 tier INTEGER DEFAULT NULL,
+                tier_position INTEGER DEFAULT NULL,
                 position_value REAL DEFAULT 0,
                 tier_perp_amount INTEGER DEFAULT NULL,
                 raw_usd_value REAL DEFAULT 0,
+                tier_spot INTEGER DEFAULT NULL,
+                spot_value REAL DEFAULT 0,
                 last_tier_update TEXT
             )
         """)
@@ -519,9 +522,12 @@ class WhaleStorage(BaseStorage):
                 UPDATE whale_addresses
                 SET is_active = 0,
                     tier = NULL,
+                    tier_position = NULL,
                     tier_perp_amount = NULL,
+                    tier_spot = NULL,
                     position_value = 0,
                     raw_usd_value = 0,
+                    spot_value = 0,
                     last_updated = ?
                 WHERE address = ?
             """, (timestamp, address))
