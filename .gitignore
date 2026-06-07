@@ -29,3 +29,16 @@ data/*.db-journal
 
 # One-time bootstrap/migration scripts
 bootstrap_perp_snapshots.py
+
+# Virtual environment
+venv/
+.venv/
+
+# IDE
+.idea/
+
+# Session journals
+*.session-journal
+
+# Nested bytecode
+**/__pycache__/
