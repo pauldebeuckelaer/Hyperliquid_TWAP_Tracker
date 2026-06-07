@@ -448,21 +448,24 @@ class TierManager:
 
     def _get_latest_raw_usd_values(self) -> Dict[str, float]:
         """
-        Get latest deposited cash per address from perp_account_snapshots.
+        Get latest deposited capital per address from perp_account_snapshots.
 
-        Reads total_raw_usd_all (mainnet + HIP-3 consolidated). This is the
-        "cash" axis for the dual-tier system — independent of open positions,
-        catches dormant-loaded whales who closed positions but kept capital.
+        Reads total_account_value (mainnet + HIP-3 consolidated account equity).
+        This is the "cash" axis for the tri-axis tier system — independent of
+        open positions, catches dormant-loaded whales who closed positions but
+        kept capital.
+
+        NOTE (fix): previously read total_raw_usd_all, which is equity MINUS
+        notional and therefore structurally negative for any leveraged account.
+        That made this axis return None for every leveraged whale — i.e. the
+        cash axis was effectively dead. total_account_value is the real
+        deposited capital (>= 0 in normal cases) and correctly drives tiering.
 
         Same 130-minute freshness window as _get_latest_position_values to
         avoid letting stale snapshots drive tier assignments.
 
-        Note: total_raw_usd_all can be negative for heavily leveraged whales.
-        Negative values are returned as-is — the caller handles them via
-        _calculate_tier returning None for sub-threshold values.
-
         Returns:
-            Dict of address -> total_raw_usd_all (may be negative)
+            Dict of address -> total_account_value
         """
         self.storage.cursor.execute("""
             WITH latest_times AS (
@@ -473,7 +476,7 @@ class TierManager:
             )
             SELECT 
                 pas.address,
-                pas.total_raw_usd_all
+                pas.total_account_value
             FROM perp_account_snapshots pas
             JOIN latest_times lt 
                 ON pas.address = lt.address 
