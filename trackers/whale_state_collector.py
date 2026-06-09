@@ -734,10 +734,12 @@ class WhaleStateCollector:
             if self.hip3_tracking_enabled and all_results:
                 hip3_dexes = self.hl_client.get_active_hip3_dexes()
                 if hip3_dexes:
+                    flagged = self.storage.get_hip3_flagged_addresses()
                     fetched_addresses = [
                         r["address"] for r in all_results
-                        if self.tier_manager
-                        and self.tier_manager.is_event_tracking_address(r["address"])
+                        if (self.tier_manager
+                            and self.tier_manager.is_event_tracking_address(r["address"]))
+                        or r["address"] in flagged
                     ]
                     hip3_total = 0
 

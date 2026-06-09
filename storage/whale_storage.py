@@ -79,6 +79,7 @@ class WhaleStorage(BaseStorage):
                 raw_usd_value REAL DEFAULT 0,
                 tier_spot INTEGER DEFAULT NULL,
                 spot_value REAL DEFAULT 0,
+                has_hip3 INTEGER DEFAULT 0,
                 last_tier_update TEXT
             )
         """)
@@ -165,6 +166,9 @@ class WhaleStorage(BaseStorage):
 
         self.conn.commit()
 
+        # Migration: ensure has_hip3 exists on pre-existing DBs (idempotent).
+        self._migrate_has_hip3()
+
     def _create_indexes(self):
         """Create whale tracking indexes."""
         indexes = [
@@ -204,6 +208,33 @@ class WhaleStorage(BaseStorage):
             "CREATE INDEX IF NOT EXISTS idx_perp_account_address_time ON perp_account_snapshots(address, snapshot_time)",
         ]
         self._execute_index_list(indexes)
+
+    def _migrate_has_hip3(self):
+        """Add has_hip3 column to existing DBs. Idempotent — safe to run every startup."""
+        self.cursor.execute("PRAGMA table_info(whale_addresses)")
+        cols = {row[1] for row in self.cursor.fetchall()}
+        if "has_hip3" not in cols:
+            self.cursor.execute(
+                "ALTER TABLE whale_addresses ADD COLUMN has_hip3 INTEGER DEFAULT 0"
+            )
+            self.conn.commit()
+            logger.info("Migration: added has_hip3 column to whale_addresses")
+
+    def set_hip3_flag(self, address: str, value: int = 1):
+        """Set has_hip3 flag for an address (1=known HIP-3 holder, 0=cleared)."""
+        self.cursor.execute(
+            "UPDATE whale_addresses SET has_hip3 = ? WHERE address = ?",
+            (value, address),
+        )
+        self.conn.commit()
+
+    def get_hip3_flagged_addresses(self) -> Set[str]:
+        """Return set of addresses flagged as known HIP-3 holders (active only)."""
+        self.cursor.execute(
+            "SELECT address FROM whale_addresses WHERE has_hip3 = 1 AND is_active = 1"
+        )
+        return {row[0] for row in self.cursor.fetchall()}
+
 
     # =========================================================================
     # VIP ADDRESS METHODS
