@@ -165,6 +165,22 @@ class TWAPBot:
 
             logger.info("Tiered tracking architecture initialized")
 
+            # =================================================================
+            # HIP-3 WS DISCOVERY — push-based discovery/resurrection.
+            # Own daemon thread + own event loop + own DB connection.
+            # Off by default; enable via config.
+            # =================================================================
+            hip3_ws_config = hyperliquid_config.get('hip3_ws_discovery', {})
+            if hip3_ws_config.get('enabled', False):
+                from trackers.hip3_discovery_thread import start_hip3_discovery_thread
+                self.hip3_ws_thread, self._hip3_discovery_ref = \
+                    start_hip3_discovery_thread(
+                        self.hyperliquid_client, self.db_path, hip3_ws_config)
+            else:
+                self.hip3_ws_thread = None
+                self._hip3_discovery_ref = None
+                logger.info("HIP-3 WS discovery disabled (config)")
+
         else:
             self.hyperliquid_client = None
             self.storage = None
@@ -176,6 +192,8 @@ class TWAPBot:
             self.token_filter = None
             self.whale_discovery = None
             self.collector = None
+            self.hip3_ws_thread = None
+            self._hip3_discovery_ref = None
             logger.info("Hyperliquid client disabled")
 
         # Shutdown handler
@@ -648,6 +666,10 @@ class TWAPBot:
         if self.collector:
             collector_stats = self.collector.get_stats()
             logger.info(f"Collector: {collector_stats}")
+
+        # HIP-3 WS discovery stats
+        if self._hip3_discovery_ref and self._hip3_discovery_ref.get("obj"):
+            logger.info(f"HIP3 WS discovery: {self._hip3_discovery_ref['obj'].get_stats()}")
 
         # Event-driven snapshot stats
         logger.info(f"Event-driven snapshot stats: {self._snapshot_stats}")

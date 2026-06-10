@@ -28,6 +28,14 @@
 
     "market_data": {
       "hip3_tracking_enabled": true
+    },
+    "hip3_ws_discovery": {
+      "enabled": false,
+      "min_portfolio_value": 50000,
+      "flag_floor": 100000,
+      "worker_sleep": 3.0,
+      "queue_max": 500,
+      "processed_reset_hours": 24
     }
   },
 
