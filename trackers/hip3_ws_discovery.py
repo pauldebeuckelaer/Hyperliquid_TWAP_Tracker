@@ -76,10 +76,13 @@ class HIP3Discovery:
         self.below_floor = 0
         self.queue_dropped = 0
 
+        # Survive write contention (e.g. midnight maintenance) by waiting
+        # instead of erroring; 60s outlasts any single lock hold.
+        self.storage.cursor.connection.execute("PRAGMA busy_timeout = 60000")
+
         logger.info(
             f"HIP3Discovery initialized: {len(coins)} feeds, "
-            f"flag_floor=${self.flag_floor:,}, worker_sleep={self.worker_sleep}s"
-        )
+            f"flag_floor=${self.flag_floor:,}, worker_sleep={self.worker_sleep}s")
 
     # ------------------------------------------------------------------ #
     # FEED SIDE — harvest only, never calls the API
@@ -142,13 +145,25 @@ class HIP3Discovery:
     # WORKER SIDE — all API access lives here, strictly throttled
     # ------------------------------------------------------------------ #
 
+    def _safe_rollback(self):
+        """End any transaction left open by a failed write. Without this,
+        the connection keeps a stale read snapshot: checkpoints stall
+        behind it (WAL grows unbounded) and every later write fails with
+        SQLITE_BUSY_SNAPSHOT ('database is locked'). Root cause of the
+        2026-06-12 incident. No-op when no transaction is open."""
+        try:
+            self.storage.cursor.connection.rollback()
+        except Exception as e:
+            logger.error(f"[hip3-ws] rollback failed: {e}")
+
     def _needs_evaluation(self, addr: str) -> bool:
         """Cheap local check: skip whales already active AND flagged."""
-        self.storage.cursor.execute(
+        cur = self.storage.cursor.connection.execute(
             "SELECT is_active, has_hip3 FROM whale_addresses WHERE address = ?",
             (addr,),
         )
-        row = self.storage.cursor.fetchone()
+        row = cur.fetchone()
+        cur.close()                          # finalize: never hold a read open
         if row is None:
             return True                     # unknown address -> discovery case
         return not (row[0] == 1 and row[1] == 1)
@@ -170,6 +185,7 @@ class HIP3Discovery:
         self.discovery.register(addr)        # INSERT / resurrect / no-op
         ok = await self.collector.persist(addr, state)
         if not ok:
+            self._safe_rollback()
             logger.warning(
                 f"[hip3-ws] persist failed for {addr[:12]}… "
                 f"(registered; refresh/ladders will catch up)")
@@ -212,6 +228,7 @@ class HIP3Discovery:
                 try:
                     await self._evaluate(addr, session)
                 except Exception as e:
+                    self._safe_rollback()
                     logger.warning(
                         f"[hip3-ws] evaluate failed for {addr[:12]}…: {e}")
                 await asyncio.sleep(self.worker_sleep)
