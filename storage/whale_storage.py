@@ -80,6 +80,7 @@ class WhaleStorage(BaseStorage):
                 tier_spot INTEGER DEFAULT NULL,
                 spot_value REAL DEFAULT 0,
                 has_hip3 INTEGER DEFAULT 0,
+                pending_deactivation TEXT DEFAULT NULL,
                 last_tier_update TEXT
             )
         """)
@@ -168,6 +169,26 @@ class WhaleStorage(BaseStorage):
 
         # Migration: ensure has_hip3 exists on pre-existing DBs (idempotent).
         self._migrate_has_hip3()
+
+        # Migration: ensure pending_deactivation exists (idempotent).
+        self._migrate_pending_deactivation()
+
+    def _migrate_pending_deactivation(self):
+        """Add pending_deactivation column to existing DBs. Idempotent.
+
+        Two-strike deactivation guard: a refresh that finds a whale with no
+        qualifying axis sets this timestamp (strike one) instead of killing it,
+        and a targeted verify fetch runs before the next refresh. Only a whale
+        still unqualified on the FOLLOWING refresh (strike two) is deactivated.
+        Cleared whenever any axis qualifies the whale, and on deactivation."""
+        self.cursor.execute("PRAGMA table_info(whale_addresses)")
+        cols = {row[1] for row in self.cursor.fetchall()}
+        if "pending_deactivation" not in cols:
+            self.cursor.execute(
+                "ALTER TABLE whale_addresses ADD COLUMN pending_deactivation TEXT DEFAULT NULL"
+            )
+            self.conn.commit()
+            logger.info("Migration: added pending_deactivation column to whale_addresses")
 
     def _create_indexes(self):
         """Create whale tracking indexes."""
@@ -544,7 +565,7 @@ class WhaleStorage(BaseStorage):
             # Re-activating — just flip the flag. Tier refresh will repopulate.
             self.cursor.execute("""
                 UPDATE whale_addresses
-                SET is_active = 1, last_updated = ?
+                SET is_active = 1, pending_deactivation = NULL, last_updated = ?
                 WHERE address = ?
             """, (timestamp, address))
         else:
@@ -559,6 +580,7 @@ class WhaleStorage(BaseStorage):
                     position_value = 0,
                     raw_usd_value = 0,
                     spot_value = 0,
+                    pending_deactivation = NULL,
                     last_updated = ?
                 WHERE address = ?
             """, (timestamp, address))

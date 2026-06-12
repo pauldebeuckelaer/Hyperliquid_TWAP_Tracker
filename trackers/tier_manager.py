@@ -52,6 +52,7 @@ TIER_FREQUENCIES = {
     5: 60,  # Every 60 cycles
 }
 
+DEACTIVATION_BREAKER_THRESHOLD = 100
 
 class TierManager:
     """
@@ -71,6 +72,7 @@ class TierManager:
         self.storage = storage
         self.cycle_count = 0
         self.last_tier_refresh = None
+        self._verify_candidates: List[str] = []
 
         # Cache for event tracking addresses (refreshed with tiers)
         self._event_tracking_addresses: Set[str] = set()
@@ -262,6 +264,7 @@ class TierManager:
 
         results = {}
         new_tiers = {}  # address -> effective tier (for change detection)
+        deactivation_candidates = []
         tier_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         axis_qualification_counts = {1: 0, 2: 0, 3: 0}
         spot_only_count = 0  # whales that ONLY spot is keeping in the system
@@ -281,8 +284,7 @@ class TierManager:
             axis_tiers = [t for t in (tier_pos, tier_cash, tier_spot) if t is not None]
 
             if not axis_tiers:
-                # All three None — deactivate
-                self._deactivate_address(address)
+                deactivation_candidates.append(address)
                 continue
 
             effective_tier = min(axis_tiers)
@@ -322,8 +324,43 @@ class TierManager:
         """)
         all_active_tiered = {row[0] for row in self.storage.cursor.fetchall()}
         for address in all_active_tiered - seen_addresses:
-            self._deactivate_address(address)
+            deactivation_candidates.append(address)
 
+        # =====================================================================
+        # TWO-STRIKE DEACTIVATION + OUTAGE BREAKER
+        # A candidate is deactivated only on the SECOND consecutive refresh
+        # that finds it unqualified. Strike one keeps it alive and queues a
+        # targeted verify fetch (main.py), so strike two judges fresh
+        # evidence, not absence of data.
+        # =====================================================================
+        pending_first_strike = []
+        executed_deactivations = []
+
+        if len(deactivation_candidates) > DEACTIVATION_BREAKER_THRESHOLD:
+            logger.error(
+                f"🚨 DEACTIVATION BREAKER TRIPPED: "
+                f"{len(deactivation_candidates)} candidates "
+                f"(threshold {DEACTIVATION_BREAKER_THRESHOLD}). Suspected "
+                f"collection outage — no strikes set, no deactivations "
+                f"executed this refresh."
+            )
+        else:
+            strike_time = datetime.now().isoformat()
+            for address in deactivation_candidates:
+                self.storage.cursor.execute(
+                    "SELECT pending_deactivation FROM whale_addresses "
+                    "WHERE address = ?", (address,))
+                row = self.storage.cursor.fetchone()
+                if row and row[0]:
+                    self._deactivate_address(address)  # strike two
+                    executed_deactivations.append(address)
+                else:
+                    self.storage.cursor.execute(
+                        "UPDATE whale_addresses SET pending_deactivation = ? "
+                        "WHERE address = ?", (strike_time, address))
+                    pending_first_strike.append(address)  # strike one
+
+        self._verify_candidates = pending_first_strike
         self.storage.conn.commit()
 
         # =====================================================================
@@ -347,12 +384,17 @@ class TierManager:
             elif new_tier > old_tier:
                 demoted.append((address, old_tier, new_tier, pos_value, raw_usd, spot_val))
 
-        for address, old_tier in old_tiers.items():
-            if address not in new_tiers:
-                pos_value = position_values.get(address, 0)
-                raw_usd = raw_usd_values.get(address, 0)
-                spot_val = spot_values.get(address, 0)
-                deactivated.append((address, old_tier, pos_value, raw_usd, spot_val))
+        for address in executed_deactivations:
+            old_tier = old_tiers.get(address)
+            pos_value = position_values.get(address, 0)
+            raw_usd = raw_usd_values.get(address, 0)
+            spot_val = spot_values.get(address, 0)
+            deactivated.append((address, old_tier, pos_value, raw_usd, spot_val))
+
+        if pending_first_strike:
+            logger.info(
+                f"⏳ {len(pending_first_strike)} whales pending verification "
+                f"(first strike — verify fetch queued)")
 
         changes_total = len(promoted) + len(demoted) + len(new_entries) + len(deactivated)
 
@@ -410,6 +452,14 @@ class TierManager:
             logger.info("Tier changes: none")
 
         return results
+
+    def pop_verify_candidates(self) -> List[str]:
+        """First-strike addresses from the last refresh, cleared on read.
+        main.py hands these to the collector for a targeted fetch_and_persist
+        so the next refresh judges them on fresh data."""
+        out = self._verify_candidates
+        self._verify_candidates = []
+        return out
 
     def _get_latest_position_values(self) -> Dict[str, float]:
         """

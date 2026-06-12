@@ -356,6 +356,20 @@ class TWAPBot:
                 f"Stats: {self._snapshot_stats}"
             )
 
+    async def _verify_deactivation_candidates(self, addresses):
+        """Targeted fetch for whales on first strike (two-strike guard).
+        Fresh state lands in the normal tables via the standard persist
+        path, so the next tier refresh judges these whales on evidence
+        instead of absence of data."""
+        logger.info(f"Verifying {len(addresses)} deactivation candidates...")
+        async with aiohttp.ClientSession() as session:
+            for addr in addresses:
+                try:
+                    await self.collector.fetch_and_persist(addr, session)
+                except Exception as e:
+                    logger.warning(f"Verify fetch failed for {addr[:12]}…: {e}")
+                await asyncio.sleep(0.3)
+
     def _fetch_all_coins(self):
         """Fetch and process TWAP data for ALL coins - single API call"""
         try:
@@ -449,6 +463,9 @@ class TWAPBot:
         if self.tier_manager:
             logger.info("Performing initial tier refresh...")
             self.tier_manager.refresh_tiers_from_snapshots()
+            pending = self.tier_manager.pop_verify_candidates()
+            if pending and self.collector:
+                asyncio.run(self._verify_deactivation_candidates(pending))
 
         # One-time platform fees backfill (only runs if table is empty and enabled)
         if self.fees_collector and self.fees_collector.needs_backfill():
@@ -474,6 +491,9 @@ class TWAPBot:
                     if self.tier_manager.should_refresh_tiers():
                         logger.info("Hourly tier refresh triggered")
                         self.tier_manager.refresh_tiers_from_snapshots()
+                        pending = self.tier_manager.pop_verify_candidates()
+                        if pending and self.collector:
+                            asyncio.run(self._verify_deactivation_candidates(pending))
 
                     # Log cycle status every 10 cycles
                     if cycle % 10 == 0:
