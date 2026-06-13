@@ -269,6 +269,16 @@ class TierManager:
         axis_qualification_counts = {1: 0, 2: 0, 3: 0}
         spot_only_count = 0  # whales that ONLY spot is keeping in the system
 
+        # Canonical active-tiered set — the ONLY population that can be
+        # legitimately deactivated. Pulled once, reused by both the main
+        # loop and the orphan sweep below.
+        self.storage.cursor.execute("""
+                    SELECT address FROM whale_addresses
+                    WHERE is_active = 1 AND tier IS NOT NULL
+                """)
+        active_tiered_set = {row[0] for row in self.storage.cursor.fetchall()}
+        logger.info(f"Active-tiered candidate pool: {len(active_tiered_set)}")
+
         for address in all_addresses:
             pos_value = position_values.get(address, 0)
             raw_usd = raw_usd_values.get(address, 0)
@@ -284,7 +294,8 @@ class TierManager:
             axis_tiers = [t for t in (tier_pos, tier_cash, tier_spot) if t is not None]
 
             if not axis_tiers:
-                deactivation_candidates.append(address)
+                if address in active_tiered_set:
+                    deactivation_candidates.append(address)
                 continue
 
             effective_tier = min(axis_tiers)
@@ -318,12 +329,7 @@ class TierManager:
         # cleared on deactivation. So `tier IS NOT NULL` is the canonical
         # "currently axis-qualified" signal.
         seen_addresses = all_addresses
-        self.storage.cursor.execute("""
-            SELECT address FROM whale_addresses
-            WHERE is_active = 1 AND tier IS NOT NULL
-        """)
-        all_active_tiered = {row[0] for row in self.storage.cursor.fetchall()}
-        for address in all_active_tiered - seen_addresses:
+        for address in active_tiered_set - seen_addresses:
             deactivation_candidates.append(address)
 
         # =====================================================================
