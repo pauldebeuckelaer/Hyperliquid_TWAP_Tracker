@@ -30,6 +30,7 @@ Usage:
 import logging
 from datetime import datetime
 from typing import Dict, List, Set, Tuple, Optional
+import heapq
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,9 @@ TIER_FREQUENCIES = {
     5: 60,  # Every 60 cycles
 }
 
-DEACTIVATION_BREAKER_THRESHOLD = 100
+AXIS_CAPS = {'position': 200, 'cash': 200, 'spot': 200}
+
+DEACTIVATION_BREAKER_THRESHOLD = 1500
 
 class TierManager:
     """
@@ -255,6 +258,10 @@ class TierManager:
             f"{len(portfolio_values)} with portfolio data"
         )
 
+        pos_capped = self._top_n_addresses(position_values, AXIS_CAPS['position'])
+        cash_capped = self._top_n_addresses(raw_usd_values, AXIS_CAPS['cash'])
+        spot_capped = self._top_n_addresses(spot_values, AXIS_CAPS['spot'])
+
         # Union of addresses seen in EITHER tier-driving source
         all_addresses = (
                 set(position_values.keys())
@@ -286,9 +293,9 @@ class TierManager:
             port_value = portfolio_values.get(address, 0)
 
             # Compute both tier axes independently
-            tier_pos = self._calculate_tier(pos_value)
-            tier_cash = self._calculate_tier(raw_usd)
-            tier_spot = self._calculate_tier(spot_val)
+            tier_pos = self._calculate_tier(pos_value) if address in pos_capped else None
+            tier_cash = self._calculate_tier(raw_usd) if address in cash_capped else None
+            tier_spot = self._calculate_tier(spot_val) if address in spot_capped else None
 
             # Effective tier = min of non-None axis tiers
             axis_tiers = [t for t in (tier_pos, tier_cash, tier_spot) if t is not None]
@@ -618,6 +625,12 @@ class TierManager:
             if position_value >= TIER_THRESHOLDS[tier]:
                 return tier
         return None
+
+    @staticmethod
+    def _top_n_addresses(values: Dict[str, float], n: int) -> Set[str]:
+        if len(values) <= n:
+            return set(values.keys())
+        return {a for a, _ in heapq.nlargest(n, values.items(), key=lambda kv: kv[1])}
 
     def _update_address_tier(
             self,
