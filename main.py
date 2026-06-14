@@ -465,6 +465,7 @@ class TWAPBot:
             self.tier_manager.refresh_tiers_from_snapshots()
             pending = self.tier_manager.pop_verify_candidates()
             if pending and self.collector:
+                pending = pending[:50]
                 asyncio.run(self._verify_deactivation_candidates(pending))
 
         # One-time platform fees backfill (only runs if table is empty and enabled)
@@ -493,6 +494,7 @@ class TWAPBot:
                         self.tier_manager.refresh_tiers_from_snapshots()
                         pending = self.tier_manager.pop_verify_candidates()
                         if pending and self.collector:
+                            pending = pending[:50]
                             asyncio.run(self._verify_deactivation_candidates(pending))
 
                     # Log cycle status every 10 cycles

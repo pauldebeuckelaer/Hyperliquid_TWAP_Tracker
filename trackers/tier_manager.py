@@ -272,6 +272,7 @@ class TierManager:
         results = {}
         new_tiers = {}  # address -> effective tier (for change detection)
         deactivation_candidates = []
+        capout_candidates = []
         tier_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         axis_qualification_counts = {1: 0, 2: 0, 3: 0}
         spot_only_count = 0  # whales that ONLY spot is keeping in the system
@@ -302,7 +303,7 @@ class TierManager:
 
             if not axis_tiers:
                 if address in active_tiered_set:
-                    deactivation_candidates.append(address)
+                    capout_candidates.append(address)
                 continue
 
             effective_tier = min(axis_tiers)
@@ -340,25 +341,43 @@ class TierManager:
             deactivation_candidates.append(address)
 
         # =====================================================================
-        # TWO-STRIKE DEACTIVATION + OUTAGE BREAKER
-        # A candidate is deactivated only on the SECOND consecutive refresh
-        # that finds it unqualified. Strike one keeps it alive and queues a
-        # targeted verify fetch (main.py), so strike two judges fresh
-        # evidence, not absence of data.
+        # TWO-STRIKE DEACTIVATION — two independent paths:
+        #   capout_candidates    — present in data, ranked out by cap/threshold.
+        #                          Two-strike, NO verify fetch, NO breaker
+        #                          (a cap-out is a policy decision, not an outage).
+        #   deactivation_candidates — disappeared (no data any axis). Two-strike,
+        #                          verify fetch + outage breaker (unchanged).
         # =====================================================================
-        pending_first_strike = []
-        executed_deactivations = []
+        strike_time = datetime.now().isoformat()
+        pending_first_strike = []  # disappeared, strike one (queued for verify)
+        executed_deactivations = []  # all deactivations this refresh (both paths)
 
+        # --- CAP-OUT PATH: two-strike, no verify, no breaker ---
+        capout_first_strike = 0
+        for address in capout_candidates:
+            self.storage.cursor.execute(
+                "SELECT pending_deactivation FROM whale_addresses "
+                "WHERE address = ?", (address,))
+            row = self.storage.cursor.fetchone()
+            if row and row[0]:
+                self._deactivate_address(address)  # strike two
+                executed_deactivations.append(address)
+            else:
+                self.storage.cursor.execute(
+                    "UPDATE whale_addresses SET pending_deactivation = ? "
+                    "WHERE address = ?", (strike_time, address))
+                capout_first_strike += 1  # strike one
+
+        # --- DISAPPEARED PATH: two-strike + verify + outage breaker (unchanged) ---
         if len(deactivation_candidates) > DEACTIVATION_BREAKER_THRESHOLD:
             logger.error(
                 f"🚨 DEACTIVATION BREAKER TRIPPED: "
-                f"{len(deactivation_candidates)} candidates "
+                f"{len(deactivation_candidates)} disappeared candidates "
                 f"(threshold {DEACTIVATION_BREAKER_THRESHOLD}). Suspected "
                 f"collection outage — no strikes set, no deactivations "
-                f"executed this refresh."
+                f"executed on disappeared path this refresh."
             )
         else:
-            strike_time = datetime.now().isoformat()
             for address in deactivation_candidates:
                 self.storage.cursor.execute(
                     "SELECT pending_deactivation FROM whale_addresses "
@@ -373,7 +392,12 @@ class TierManager:
                         "WHERE address = ?", (strike_time, address))
                     pending_first_strike.append(address)  # strike one
 
-        self._verify_candidates = pending_first_strike
+        if capout_first_strike or pending_first_strike:
+            logger.info(
+                f"⏳ Strike one: {capout_first_strike} cap-outs (no verify), "
+                f"{len(pending_first_strike)} disappeared (verify queued)")
+
+        self._verify_candidates = pending_first_strike  # only disappeared get verified
         self.storage.conn.commit()
 
         # =====================================================================
