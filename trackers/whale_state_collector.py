@@ -733,6 +733,8 @@ class WhaleStateCollector:
             # STEP 2: HIP-3 for VIP+T1 only
             if self.hip3_tracking_enabled and all_results:
                 hip3_dexes = self.hl_client.get_active_hip3_dexes()
+                hip3_dexes = [d for d in hip3_dexes if d == 'xyz']
+                logger.info(f"HIP-3 fast-ladder dexes after filter: {hip3_dexes}")
                 if hip3_dexes:
                     flagged = self.storage.get_hip3_flagged_addresses()
                     fetched_addresses = [
