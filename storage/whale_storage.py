@@ -565,7 +565,7 @@ class WhaleStorage(BaseStorage):
             # Re-activating — just flip the flag. Tier refresh will repopulate.
             self.cursor.execute("""
                 UPDATE whale_addresses
-                SET is_active = 1, pending_deactivation = NULL, last_updated = ?
+                SET is_active = 1, last_updated = ?
                 WHERE address = ?
             """, (timestamp, address))
         else:

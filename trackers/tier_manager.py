@@ -704,6 +704,7 @@ class TierManager:
                 raw_usd_value = ?,
                 tier_spot = ?,
                 spot_value = ?,
+                pending_deactivation = NULL,
                 last_tier_update = ?
         """, (
             address, timestamp, timestamp,
@@ -737,6 +738,7 @@ class TierManager:
                 position_value = 0,
                 raw_usd_value = 0,
                 spot_value = 0,
+                pending_deactivation = NULL,
                 last_updated = ?
             WHERE address = ?
         """, (timestamp, address))
