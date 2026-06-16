@@ -28,7 +28,7 @@ Usage:
         tier_mgr.refresh_tiers_from_snapshots()
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Set, Tuple, Optional
 import heapq
 
@@ -339,6 +339,25 @@ class TierManager:
         seen_addresses = all_addresses
         for address in active_tiered_set - seen_addresses:
             deactivation_candidates.append(address)
+
+        # Catch untiered orphans: is_active=1 with tier IS NULL. These are
+        # invisible to active_tiered_set (which requires tier IS NOT NULL), so
+        # without this arm they accumulate forever — discovery adds them, they
+        # never qualify, nothing can deactivate them. Route through the cap-out
+        # path (policy drop: no verify, no breaker). VIPs exempt. 3h grace lets
+        # a freshly-discovered whale get a refresh (incl. one slow-ladder spot
+        # snapshot) to qualify before becoming eligible.
+        grace_cutoff = (datetime.now() - timedelta(hours=3)).isoformat()
+        self.storage.cursor.execute("""
+                SELECT address FROM whale_addresses
+                WHERE is_active = 1 AND tier IS NULL
+                  AND address NOT IN (SELECT address FROM vip_addresses)
+                  AND first_seen < ?
+            """, (grace_cutoff,))
+        untiered_orphans = {row[0] for row in self.storage.cursor.fetchall()}
+        for address in untiered_orphans:
+            if address not in new_tiers:  # didn't qualify on any axis this refresh
+                capout_candidates.append(address)
 
         # =====================================================================
         # TWO-STRIKE DEACTIVATION — two independent paths:
@@ -725,7 +744,15 @@ class TierManager:
 
         Clears all axis tier columns and value columns to prevent stale data
         from leaking back into queries.
+
+        VIP backstop: VIPs are never deactivated, regardless of tier state or
+        caller. Hand-picked addresses (e.g. Macro Short Whale, kept for
+        code-path validation) stay active even when subthreshold.
         """
+        if self.storage.is_vip(address):
+            logger.debug(f"Skipping deactivation of VIP {address[:10]}...")
+            return
+
         timestamp = datetime.now().isoformat()
 
         self.storage.cursor.execute("""
