@@ -33,6 +33,7 @@ from typing import Dict, List, Set, Tuple, Optional
 import heapq
 
 logger = logging.getLogger(__name__)
+axis_pos_logger = logging.getLogger('axis.position')
 
 # Tier thresholds (position value in USD)
 TIER_THRESHOLDS = {
@@ -213,6 +214,20 @@ class TierManager:
             return f"${value / 1_000:.0f}K"
         else:
             return f"${value:.0f}"
+
+    def _dump_axis_position(self, results: dict):
+        """One line per position-axis address, appended each refresh to
+        logs/axis_position.log. Latest board is the last block;
+        grep '=== position' to jump between refreshes."""
+        rows = [
+            (a, r['tier_position'], r['position_value'])
+            for a, r in results.items()
+            if r.get('tier_position') is not None
+        ]
+        rows.sort(key=lambda x: x[2], reverse=True)
+        axis_pos_logger.info(f"=== position axis | {len(rows)} addresses ===")
+        for addr, tier, val in rows:
+            axis_pos_logger.info(f"{addr} T{tier} {int(val):,}")
 
     def refresh_tiers_from_snapshots(self) -> Dict[str, dict]:
         """
@@ -503,7 +518,7 @@ class TierManager:
                 )
         else:
             logger.info("Tier changes: none")
-
+        self._dump_axis_position(results)
         return results
 
     def pop_verify_candidates(self) -> List[str]:

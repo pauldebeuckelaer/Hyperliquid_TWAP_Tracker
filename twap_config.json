@@ -83,6 +83,10 @@
       {
         "path": "logs/tier_manager.log",
         "modules": ["trackers.tier_manager"]
+      },
+      {
+        "path": "logs/axis_position.log",
+        "modules": ["axis.position"]
       }
     ],
     "modules": {
@@ -92,6 +96,7 @@
       "trackers.market_data_tracker": "INFO",
       "trackers.liquidation_tracker": "INFO",
       "trackers.tier_manager": "DEBUG",
+      "axis.position": "INFO",
       "trackers.whale_event_detector": "DEBUG",
       "trackers.whale_discovery": "INFO",
       "trackers.whale_state_collector": "INFO",
