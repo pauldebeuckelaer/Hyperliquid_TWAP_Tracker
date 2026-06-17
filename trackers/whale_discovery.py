@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, cast
 
 import aiohttp
+from trackers.tier_manager import TIER_THRESHOLDS
 
 logger = logging.getLogger(__name__)
 
@@ -197,13 +198,28 @@ class WhaleDiscovery:
         if state is None:
             return None
 
-        total = state.total_value()
-        if total < self.min_portfolio_value:
+        # Gate on the SAME per-axis floors tiering uses (T5 of each axis),
+        # not a summed portfolio total. A whale that can't clear at least one
+        # axis floor can't be tiered — registering it would create a
+        # permanent untiered-active orphan. Mirrors tier_manager's cash
+        # derivation: total_account_value = account_value + hip3_account_value.
+        pos_val = sum(abs(p["size"] * p["entry_price"]) for p in state.positions)
+        cash_val = (state.account_data.get("account_value") or 0) + \
+                   (state.account_data.get("hip3_account_value") or 0)
+        spot_val = state.portfolio_data.get("spot_value", 0)
+
+        if not (
+                pos_val >= TIER_THRESHOLDS['position'][5] or
+                cash_val >= TIER_THRESHOLDS['cash'][5] or
+                spot_val >= TIER_THRESHOLDS['spot'][5]
+        ):
             logger.debug(
-                f"Below threshold: {address[:10]}... (${total:,.0f})"
+                f"Below all axis floors: {address[:10]}... "
+                f"(pos ${pos_val:,.0f}, cash ${cash_val:,.0f}, spot ${spot_val:,.0f})"
             )
             return None
 
+        total = state.total_value()
         logger.info(
             f"Whale qualifies: {address[:10]}... (${total:,.0f})"
         )

@@ -27,6 +27,7 @@ from typing import Dict, List, Optional, Set
 
 from .base import BaseStorage
 
+
 logger = logging.getLogger(__name__)
 
 # Tier thresholds (position value in USD)
