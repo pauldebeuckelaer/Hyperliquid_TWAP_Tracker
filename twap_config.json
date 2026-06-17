@@ -30,7 +30,7 @@
       "hip3_tracking_enabled": true
     },
     "hip3_ws_discovery": {
-      "enabled": false,
+      "enabled": true,
       "min_portfolio_value": 50000,
       "flag_floor": 100000,
       "worker_sleep": 3.0,
