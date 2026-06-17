@@ -36,11 +36,9 @@ logger = logging.getLogger(__name__)
 
 # Tier thresholds (position value in USD)
 TIER_THRESHOLDS = {
-    1: 5_000_000,  # $5M+
-    2: 1_000_000,  # $1M-5M
-    3: 500_000,  # $500K-1M
-    4: 250_000,  # $250K-500K
-    5: 100_000,  # $100K-250K
+    'position': {1: 50_000_000, 2: 20_000_000, 3: 10_000_000, 4: 5_000_000, 5: 1_000_000},
+    'cash':     {1: 20_000_000, 2: 10_000_000, 3:  5_000_000, 4: 1_000_000, 5:   250_000},
+    'spot':     {1: 30_000_000, 2: 15_000_000, 3:  8_000_000, 4: 2_000_000, 5:   500_000},
 }
 
 # Tier fetch frequencies (in cycles, 1 cycle = 1 minute)
@@ -293,10 +291,9 @@ class TierManager:
             spot_val = spot_values.get(address, 0)
             port_value = portfolio_values.get(address, 0)
 
-            # Compute both tier axes independently
-            tier_pos = self._calculate_tier(pos_value) if address in pos_capped else None
-            tier_cash = self._calculate_tier(raw_usd) if address in cash_capped else None
-            tier_spot = self._calculate_tier(spot_val) if address in spot_capped else None
+            tier_pos = self._calculate_tier(pos_value, 'position') if address in pos_capped else None
+            tier_cash = self._calculate_tier(raw_usd, 'cash') if address in cash_capped else None
+            tier_spot = self._calculate_tier(spot_val, 'spot') if address in spot_capped else None
 
             # Effective tier = min of non-None axis tiers
             axis_tiers = [t for t in (tier_pos, tier_cash, tier_spot) if t is not None]
@@ -654,18 +651,11 @@ class TierManager:
 
         return {row[0]: row[1] for row in self.storage.cursor.fetchall()}
 
-    def _calculate_tier(self, position_value: float) -> int:
-        """
-        Calculate tier based on position value.
-
-        Args:
-            position_value: Total position value in USD
-
-        Returns:
-            Tier number (1-5) or None if below all thresholds
-        """
-        for tier in sorted(TIER_THRESHOLDS.keys()):
-            if position_value >= TIER_THRESHOLDS[tier]:
+    def _calculate_tier(self, value: float, axis: str) -> Optional[int]:
+        """Calculate tier for a value on a specific axis ('position'|'cash'|'spot')."""
+        thresholds = TIER_THRESHOLDS[axis]
+        for tier in sorted(thresholds.keys()):
+            if value >= thresholds[tier]:
                 return tier
         return None
 
@@ -833,7 +823,7 @@ class TierManager:
             addresses = self.storage.get_addresses_by_tier(tier)
             stats['tiers'][tier] = {
                 'count': len(addresses),
-                'threshold': TIER_THRESHOLDS[tier],
+                'threshold': TIER_THRESHOLDS['position'][tier],
                 'frequency': TIER_FREQUENCIES[tier],
             }
 
