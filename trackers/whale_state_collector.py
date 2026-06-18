@@ -97,6 +97,9 @@ class WhaleStateCollector:
         self.batch_delay = self.config.get("batch_delay", 0.5)
         self.hip3_batch_size = self.config.get("hip3_batch_size", 50)
         self.hip3_batch_delay = self.config.get("hip3_batch_delay", 0.5)
+        # Slow-ladder time-slicing (Step 4b de-blocking)
+        self.slow_ladder_slice_size = self.config.get("slow_ladder_slice_size", 25)
+        self._slow_queue: List[str] = []
 
         # API endpoint for direct posts (matches LiquidationTracker pattern)
         self.api_url = "https://api.hyperliquid.xyz/info"
@@ -314,6 +317,7 @@ class WhaleStateCollector:
         hip3_dexes: List[str] = []
         if self.hip3_tracking_enabled:
             hip3_dexes = self.hl_client.get_active_hip3_dexes()
+            hip3_dexes = [d for d in hip3_dexes if d == 'xyz']
             for dex in hip3_dexes:
                 tasks.append(
                     self.hl_client.get_user_state_hip3_async(address, dex, session)
@@ -570,59 +574,68 @@ class WhaleStateCollector:
 
     async def collect_slow_async(self) -> int:
         """
-        Slow-ladder fetch + write for portfolio/spot/vault snapshots.
+        Slow-ladder fetch + write, time-sliced across cycles.
 
-        Cadence (per-tier hours):
-            VIP+T1: 1h   T2: 2h   T3: 4h   T4+T5: 8h
+        At the anchor cycle (7), build the deduplicated list of addresses due
+        this hour and enqueue them. Every cycle (including the anchor), drain
+        up to slow_ladder_slice_size addresses and fetch+persist them serially.
 
-        Fires only when the current cycle hits SLOW_LADDER_ANCHOR_CYCLE (7)
-        AND the current hour is divisible by the tier's slow-ladder hour count.
-        Cycle 7 is chosen because no fast-ladder tier divides 7, so slow
-        ladder doesn't stack with the cycle-5/15/30/60 fast-ladder spikes.
+        Spreads what was a single ~300s blocking sweep over ~N cycles, so the
+        60s fast loop never blacks out. Slow data is on a 1-8h freshness
+        window, so a ~15min drain skew is immaterial.
 
-        Independent fetch from fast ladder — duplicates the perp fetch on
-        slow-ladder cycles. Accepted cost for simpler design (no cross-cycle
-        state sharing required).
+        Each address still gets the full five-table fetch_and_persist — only
+        the scheduling changed.
 
-        Writes: portfolio_snapshots, spot_snapshots, vault_snapshots,
-                perp_snapshots, perp_account_snapshots
-        Returns: number of addresses written. 0 if nothing was due this cycle.
+        Returns: addresses written this cycle (0 if queue empty).
         """
         cycle_in_hour = self.tier_manager.get_current_cycle()
 
-        # Wrong cycle position → nothing to do
-        if cycle_in_hour != self.SLOW_LADDER_ANCHOR_CYCLE:
+        # --- ENQUEUE: only at the anchor cycle ---
+        if cycle_in_hour == self.SLOW_LADDER_ANCHOR_CYCLE:
+            hour_count = self.tier_manager.cycle_count // 60
+            due_addresses = self._collect_slow_ladder_addresses(hour_count)
+
+            if due_addresses:
+                if self._slow_queue:
+                    logger.warning(
+                        f"🐢 Slow ladder anchor fired with {len(self._slow_queue)} "
+                        f"still queued from prior sweep — merging. Consider raising "
+                        f"slow_ladder_slice_size."
+                    )
+                    queued = set(self._slow_queue)
+                    for a in due_addresses:
+                        if a not in queued:
+                            self._slow_queue.append(a)
+                else:
+                    self._slow_queue = list(due_addresses)
+
+                logger.info(
+                    f"🐢 Slow ladder enqueued {len(due_addresses)} addresses "
+                    f"(hour {hour_count}); queue depth {len(self._slow_queue)}, "
+                    f"draining {self.slow_ladder_slice_size}/cycle"
+                )
+            else:
+                logger.debug(
+                    f"Slow ladder check at cycle {cycle_in_hour}: no tiers due "
+                    f"(hour {hour_count})"
+                )
+
+        # --- DRAIN: every cycle, bounded slice ---
+        if not self._slow_queue:
             return 0
 
-        hour_count = self.tier_manager.cycle_count // 60
-
-        # Determine which tiers are due this hour
-        due_addresses = self._collect_slow_ladder_addresses(hour_count)
-        if not due_addresses:
-            logger.debug(
-                f"Slow ladder check at cycle {cycle_in_hour}: no tiers due "
-                f"(hour {hour_count})"
-            )
-            return 0
-
-        logger.info(
-            f"🐢 Slow ladder firing at cycle {cycle_in_hour} (hour {hour_count}): "
-            f"{len(due_addresses)} addresses across due tiers"
-        )
+        slice_addrs = self._slow_queue[:self.slow_ladder_slice_size]
+        self._slow_queue = self._slow_queue[self.slow_ladder_slice_size:]
 
         start_time = datetime.now()
-        snapshot_time = start_time.isoformat()
         written = 0
         errors = 0
 
-        # Fetch each address fresh — perp + spot + vault + HIP-3 if enabled.
-        # Reuses fetch_and_persist via the per-address path, which already
-        # writes all five tables and runs sanity checks.
         async with aiohttp.ClientSession() as session:
-            for address in due_addresses:
+            for address in slice_addrs:
                 try:
-                    success = await self.fetch_and_persist(address, session)
-                    if success:
+                    if await self.fetch_and_persist(address, session):
                         written += 1
                     else:
                         errors += 1
@@ -633,15 +646,20 @@ class WhaleStateCollector:
                     )
 
         elapsed = (datetime.now() - start_time).total_seconds()
-
-        self.slow_ladder_runs += 1
         self.slow_ladder_addresses += written
         self.slow_ladder_errors += errors
 
-        logger.info(
-            f"🐢 Slow ladder complete: {written}/{len(due_addresses)} written, "
-            f"{errors} errors ({elapsed:.1f}s)"
-        )
+        if not self._slow_queue:
+            self.slow_ladder_runs += 1
+            logger.info(
+                f"🐢 Slow ladder slice: {written} written, {errors} errors "
+                f"({elapsed:.1f}s) — sweep complete, queue empty"
+            )
+        else:
+            logger.info(
+                f"🐢 Slow ladder slice: {written} written, {errors} errors "
+                f"({elapsed:.1f}s) — {len(self._slow_queue)} remaining"
+            )
 
         return written
 

@@ -35,7 +35,7 @@ SELECT lp.address, lp.coin, lp.side, lp.size,
 FROM latest_pos lp
 JOIN whale_addresses w ON w.address = lp.address
 LEFT JOIN latest_px px ON px.coin = lp.coin
-WHERE w.tier = 1 AND w.is_active = 1
+WHERE w.tier_position = 1 AND w.is_active = 1
 ORDER BY lp.address, mark_ntl DESC
 """
 
