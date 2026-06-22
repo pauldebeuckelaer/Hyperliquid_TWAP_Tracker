@@ -548,6 +548,12 @@ class TWAPBot:
                     except Exception as e:
                         logger.warning(f"T1 board dump failed: {e}")
 
+                    try:
+                        from trackers.cash_board import dump_cash_board
+                        dump_cash_board(self.storage)
+                    except Exception as e:
+                        logger.warning(f"Cash board dump failed: {e}")
+
                     # Liquidation analysis (writes liquidation_snapshots)
                     if self.liquidation_tracker and whale_states:
                         self.liquidation_tracker.analyze(whale_states, prices)

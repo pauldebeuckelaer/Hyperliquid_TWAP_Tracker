@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 """
-Cash-axis T1 Board — standalone read-only validation dump.
+Cash-axis T1 Board — perp_account_snapshots validation dump.
 
 Sibling of trackers/position_board.py, but for perp_account_snapshots
 (the cash / account-value axis) instead of perp_snapshots.
 
-Differences from the position board, both deliberate:
+Two entry points share one validated query (_QUERY):
+  - dump_cash_board(storage, path): in-loop sibling of dump_t1_board.
+    Runs on the live storage.cursor, file-only, never raises into caller.
+  - main(): standalone read-only run (own mode=ro connection), prints to
+    stdout and writes a file. For on-demand checks against Hypurrscan.
+
+Design choices, both deliberate:
   - ONE line per whale (account table is one row per whale per snapshot,
     no per-coin fan-out), so no group/flush accumulator.
-  - NO time filter on the latest-row pick: we always show each T1 whale's
-    most recent snapshot regardless of age, and flag staleness instead of
-    dropping stale whales. (You can't log staleness for a filtered-out row.)
-
-Read-only: opens its own mode=ro connection. Never touches the live writer.
-Run on demand, compare logs/cash_board.txt against Hypurrscan UI.
-
-Usage:
-    python3 cash_board.py [db_path] [out_path]
-Defaults: db_path=twap.db   out_path=cash_board.txt
-Also prints the board to stdout.
+  - NO time filter on the latest-row pick: always show each T1 whale's most
+    recent snapshot regardless of age, and flag staleness instead of dropping
+    stale whales. (You can't log staleness for a filtered-out row.)
 """
 import os
 import sys
@@ -53,19 +51,11 @@ ORDER BY pas.total_account_value DESC
 """
 
 
-def build_board(db_path):
-    """Return the board as a list of text lines. Read-only."""
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    try:
-        rows = conn.execute(_QUERY).fetchall()
-    finally:
-        conn.close()
-
-    now = datetime.now(timezone.utc)
+def _format_board(rows, now):
+    """Shared formatter: rows -> list of text lines."""
     lines = [
         f"# Cash-axis T1 board (tier_perp_amount=1) | {now.isoformat()} | {len(rows)} rows"
     ]
-
     for addr, total_av, mainnet_av, hip3_av, snap in rows:
         total_av = total_av or 0.0
         mainnet_av = mainnet_av or 0.0
@@ -77,7 +67,7 @@ def build_board(db_path):
         except Exception:
             age = -1
 
-        flag = "" if 0 <= age <= FRESH_MAX_AGE else " ⚠STALE"
+        flag = "" if 0 <= age <= FRESH_MAX_AGE else " \u26a0STALE"
         snap_hms = snap[11:19] if snap and len(snap) >= 19 else str(snap)
 
         lines.append(
@@ -86,8 +76,36 @@ def build_board(db_path):
             f"(mainnet ${mainnet_av:>16,.0f}  hip3 ${hip3_av:>16,.0f})  "
             f"snap {snap_hms}  age {age}s{flag}"
         )
-
     return lines
+
+
+def dump_cash_board(storage, path="logs/cash_board.txt"):
+    """In-loop sibling of dump_t1_board. Overwrite path with the current
+    cash-axis T1 board (tier_perp_amount=1) from perp_account_snapshots.
+    Runs on the live storage.cursor. Never raises into the caller."""
+    storage.cursor.execute(_QUERY)
+    rows = storage.cursor.fetchall()
+    now = datetime.now(timezone.utc)
+
+    lines = _format_board(rows, now)
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+# =========================================================================
+# STANDALONE READ-ONLY ENTRY POINT
+# =========================================================================
+
+def build_board(db_path):
+    """Standalone: read-only board build via own mode=ro connection."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        rows = conn.execute(_QUERY).fetchall()
+    finally:
+        conn.close()
+    return _format_board(rows, datetime.now(timezone.utc))
 
 
 def main():
@@ -101,11 +119,8 @@ def main():
         sys.exit(1)
 
     text = "\n".join(lines) + "\n"
-
-    # stdout for immediate eyeballing
     print(text, end="")
 
-    # file for record / diffing against Hypurrscan over time
     try:
         out_dir = os.path.dirname(out_path)
         if out_dir:
