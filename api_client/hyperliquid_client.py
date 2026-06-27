@@ -171,48 +171,58 @@ class HyperliquidClient:
 
     def _get_spot_token_map(self, force_refresh: bool = False) -> Dict[str, int]:
         """
-        Get mapping of token name -> index for spot tokens
-        Cached for 1 hour
+        Map token name -> SPOT MARKET index (the universe entry's `index` field,
+        which is what all_mids keys spot prices by, e.g. "@107").
 
-        Args:
-            force_refresh: Force refresh the cache
+        NOT the token's own array index from the tokens[] list — that mis-resolves
+        to an unrelated market and produces phantom prices (the WAR-at-$712 bug).
+        Empirically confirmed: universe entry `index` field is canonical; array
+        position is NOT.
 
-        Returns:
-            Dict like {"HYPE": 150, "PURR": 10, ...}
+        Only USDC-quoted pairs (quote token index 0) are mapped.
         """
-        # Check if we need to refresh cache
         if (not force_refresh and
                 self._spot_token_map is not None and
                 self._spot_meta_cache_time is not None):
-
-            # Cache for 1 hour
             age = (datetime.now() - self._spot_meta_cache_time).total_seconds()
             if age < 3600:
                 logger.debug(f"📦 Using cached spot token map (age: {age:.1f}s)")
                 return self._spot_token_map
 
-        # Fetch fresh metadata
         try:
             meta = self.get_spot_meta()
             if not meta:
                 logger.warning("Failed to fetch spot metadata")
                 return self._spot_token_map or {}
 
-            # Build mapping
+            tokens = meta.get("tokens", [])
+            universe = meta.get("universe", [])
+
+            # token array-index -> token name
+            idx_to_name = {
+                t["index"]: t["name"]
+                for t in tokens
+                if t.get("name") and t.get("index") is not None
+            }
+
+            # name -> spot MARKET index (universe `index` field), USDC pairs only
             token_map = {}
-            for token in meta.get("tokens", []):
-                name = token.get("name")
-                index = token.get("index")
-                if name and index is not None:
-                    token_map[name] = index
+            for pair in universe:
+                pair_tokens = pair.get("tokens", [])
+                market_index = pair.get("index")
+                if market_index is None or len(pair_tokens) != 2:
+                    continue
+                base_idx, quote_idx = pair_tokens
+                if quote_idx != 0:  # quote must be USDC (token index 0)
+                    continue
+                base_name = idx_to_name.get(base_idx)
+                if base_name and base_name not in token_map:
+                    token_map[base_name] = market_index
 
             self._spot_token_map = token_map
             self._spot_meta_cache_time = datetime.now()
-
-            # INFO level for important cache refresh
-            logger.info(f"Loaded spot token map with {len(token_map)} tokens")
-            logger.debug(f"Sample tokens: {list(token_map.items())[:5]}")
-
+            logger.info(f"Loaded spot token map with {len(token_map)} USDC-quoted markets")
+            logger.debug(f"Sample: {list(token_map.items())[:5]}")
             return token_map
 
         except Exception as e:
