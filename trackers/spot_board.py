@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 # Seconds since last snapshot beyond which a whale is flagged stale.
 # Spot-axis T1 == polled every cycle (~60s), so a healthy whale should be
 # well under this. Tune as needed.
-FRESH_MAX_AGE = 120
+FRESH_MAX_AGE = 4500
 
 # Whale-driven: filter to the small tier_spot=1 set first, then for each
 # whale pick its latest snapshot_time and SUM(value) across the coin rows
