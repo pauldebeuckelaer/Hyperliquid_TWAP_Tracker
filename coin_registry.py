@@ -37,6 +37,7 @@ Usage:
 
 import logging
 from typing import Optional, Dict, List
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,8 @@ HYPE_SPOT_ID = 10107
 HIP3_START = 110000  # First HIP-3 asset ID
 SPOT_START = 10000  # First spot asset ID
 SPOT_END = 110000  # End of spot range (exclusive)
+
+
 
 # ============================================================================
 # COMPLETE ASSET ID MAPPINGS (STATIC)
@@ -367,6 +370,17 @@ class DynamicCoinRegistry:
         self._token_count = 0
         self._market_count = 0
 
+        # Perp universe index -> name (from "meta" endpoint)
+        # Fixes: native perps listed after static dict was last hand-edited
+        # (CC/ICP/CHIP/GRAM/CASHCAT class of bug)
+        self._perp_market_map: Dict[int, str] = {}
+
+        # Client handle for on-miss refresh (set by init_dynamic_registry)
+        self._hl_client = None
+
+        # Rate limiter for on-miss refreshes: scope -> monotonic timestamp
+        self._last_refresh: Dict[str, float] = {}
+
     def update_from_spot_meta(self, spot_meta: Dict) -> int:
         """
         Update registry with fresh data from Hyperliquid spotMeta API.
@@ -447,6 +461,24 @@ class DynamicCoinRegistry:
             logger.debug(traceback.format_exc())
             return 0
 
+    def update_from_perp_meta(self, meta: Dict) -> int:
+        """
+        Update perp registry from Hyperliquid 'meta' endpoint.
+        universe[i]['name'] maps directly to asset_id i (verified 2026-07-16:
+        218=CC, 219=ICP, 229=CHIP, 230=GRAM, 231=CASHCAT).
+        """
+        try:
+            universe = meta.get("universe", [])
+            for i, asset in enumerate(universe):
+                name = asset.get("name")
+                if name:
+                    self._perp_market_map[i] = name
+            logger.info(f"Perp registry loaded {len(self._perp_market_map)} markets")
+            return len(self._perp_market_map)
+        except Exception as e:
+            logger.error(f"Error updating perp registry: {e}")
+            return 0
+
     def get_coin_name(self, asset_id: int) -> str:
         """
         Get coin symbol from asset ID with dynamic resolution.
@@ -463,19 +495,66 @@ class DynamicCoinRegistry:
         Returns:
             Coin symbol (e.g., 'BTC', 'HYPE', 'flx:TSLA') or 'UNKNOWN_{asset_id}'
         """
-        # 1. Try static registry first (fastest, most reliable)
+        # 1. Static registry (fastest, keeps existing behavior/overrides)
         if asset_id in ASSET_ID_TO_NAME:
             return ASSET_ID_TO_NAME[asset_id]
 
-        # 2. Try dynamic resolution for spot tokens (asset_id >= 10000)
-        if asset_id >= 10000 and self._initialized:
+        # 2. Dynamic perp map (native perps, asset_id < 10000)
+        if 0 <= asset_id < SPOT_START:
+            if asset_id in self._perp_market_map:
+                return self._perp_market_map[asset_id]
+            # New listing since last refresh? One rate-limited retry.
+            if self._maybe_refresh("perp"):
+                if asset_id in self._perp_market_map:
+                    logger.info(f"Resolved new perp listing: {asset_id} -> "
+                                f"{self._perp_market_map[asset_id]}")
+                    return self._perp_market_map[asset_id]
+            return f'UNKNOWN_{asset_id}'
+
+        # 3. Spot / HIP-3 dynamic resolution
+        if asset_id >= SPOT_START and self._initialized:
             resolved = self._resolve_spot_token(asset_id)
             if resolved:
-                logger.debug(f"Resolved asset_id {asset_id} -> '{resolved}'")
                 return resolved
+            # New spot listing? One rate-limited retry.
+            if SPOT_START <= asset_id < HIP3_START and self._maybe_refresh("spot"):
+                resolved = self._resolve_spot_token(asset_id)
+                if resolved:
+                    logger.info(f"Resolved new spot listing: {asset_id} -> {resolved}")
+                    return resolved
 
-        # 3. Fallback
+        # 4. Fallback
         return f'UNKNOWN_{asset_id}'
+
+    REFRESH_COOLDOWN_S = 600  # max one refresh per scope per 10 min
+
+    def _maybe_refresh(self, scope: str) -> bool:
+        """
+        Rate-limited registry refresh on lookup miss.
+        Returns True if a refresh was performed.
+        NOTE: timestamp is set BEFORE the request, so a failing API
+        can't be hammered by a burst of misses.
+        """
+        if self._hl_client is None:
+            return False
+        now = time.monotonic()
+        if now - self._last_refresh.get(scope, 0.0) < self.REFRESH_COOLDOWN_S:
+            return False
+        self._last_refresh[scope] = now
+        try:
+            if scope == "perp":
+                meta = self._hl_client._make_request("meta", {})
+                if meta:
+                    self.update_from_perp_meta(meta)
+                    return True
+            elif scope == "spot":
+                spot_meta = self._hl_client.get_spot_meta()
+                if spot_meta:
+                    self.update_from_spot_meta(spot_meta)
+                    return True
+        except Exception as e:
+            logger.warning(f"Registry refresh ({scope}) failed: {e}")
+        return False
 
     def _resolve_spot_token(self, asset_id: int) -> Optional[str]:
         """
@@ -684,6 +763,19 @@ def init_dynamic_registry(hl_client) -> bool:
     Returns:
         True if initialization succeeded, False otherwise
     """
+
+    _registry._hl_client = hl_client
+
+    # Load perp universe (native perps — previously static-only)
+    try:
+        meta = hl_client._make_request("meta", {})
+        if meta:
+            _registry.update_from_perp_meta(meta)
+        else:
+            logger.warning("Failed to fetch perp meta - new perp listings won't resolve")
+    except Exception as e:
+        logger.error(f"Failed to initialize perp registry: {e}")
+
     success = True
 
     # Initialize spot token registry
