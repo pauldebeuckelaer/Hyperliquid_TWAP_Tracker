@@ -408,9 +408,12 @@ class DynamicCoinRegistry:
             # and "index" which corresponds to the market index used in TWAP data
             universe = spot_meta.get("universe", [])
 
-            for i, market in enumerate(universe):
-                # The market index is its position in the universe array
-                market_index = i
+            for market in universe:
+                # Use the API's explicit index field — position in the
+                # array is coincidental, the "index" field is the contract
+                market_index = market.get("index")
+                if market_index is None:
+                    continue
 
                 # Get market name - format varies:
                 # - Regular spot: "PURR/USDC" -> we want "PURR"
