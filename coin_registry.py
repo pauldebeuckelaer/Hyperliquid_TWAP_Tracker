@@ -514,19 +514,39 @@ class DynamicCoinRegistry:
                     return self._perp_market_map[asset_id]
             return f'UNKNOWN_{asset_id}'
 
-        # 3. Spot / HIP-3 dynamic resolution
-        if asset_id >= SPOT_START and self._initialized:
+        # 3. HIP-3 dynamic resolution (110000+)
+        # NOT gated on self._initialized — that flag belongs to the spot
+        # registry; HIP-3 has its own init and must resolve independently.
+        if asset_id >= HIP3_START:
+            resolved = self._resolve_spot_token(asset_id)
+            # Real resolutions are "dex:SYMBOL"; a placeholder like
+            # "hyna_2" (range known, symbol missing) is also a miss.
+            if resolved and ":" in resolved:
+                return resolved
+            # Miss: new dex after boot, failed init, or new listing
+            # inside a known dex. One rate-limited registry rebuild.
+            if self._maybe_refresh("hip3"):
+                retry = self._resolve_spot_token(asset_id)
+                if retry and ":" in retry:
+                    logger.info(f"Resolved HIP-3 after registry rebuild: "
+                                f"{asset_id} -> {retry}")
+                    return retry
+                resolved = retry or resolved
+            return resolved or f'UNKNOWN_{asset_id}'
+
+        # 4. Standard spot dynamic resolution (10000-109999)
+        if SPOT_START <= asset_id < HIP3_START and self._initialized:
             resolved = self._resolve_spot_token(asset_id)
             if resolved:
                 return resolved
             # New spot listing? One rate-limited retry.
-            if SPOT_START <= asset_id < HIP3_START and self._maybe_refresh("spot"):
+            if self._maybe_refresh("spot"):
                 resolved = self._resolve_spot_token(asset_id)
                 if resolved:
                     logger.info(f"Resolved new spot listing: {asset_id} -> {resolved}")
                     return resolved
 
-        # 4. Fallback
+        # 5. Fallback
         return f'UNKNOWN_{asset_id}'
 
     REFRESH_COOLDOWN_S = 600  # max one refresh per scope per 10 min
@@ -554,6 +574,9 @@ class DynamicCoinRegistry:
                 spot_meta = self._hl_client.get_spot_meta()
                 if spot_meta:
                     self.update_from_spot_meta(spot_meta)
+                    return True
+            elif scope == "hip3":
+                if init_hip3_registry(self._hl_client):
                     return True
         except Exception as e:
             logger.warning(f"Registry refresh ({scope}) failed: {e}")
@@ -667,7 +690,8 @@ def init_hip3_registry(hl_client) -> bool:
         perp_dexs = hl_client.get_perp_dexs()
 
         if not perp_dexs:
-            logger.warning("Failed to fetch perpDexs - HIP-3 resolution disabled")
+            logger.error("Failed to fetch perpDexs - HIP-3 resolution disabled "
+                         "(will self-heal via _maybe_refresh on first HIP-3 miss)")
             return False
 
         # Collect dex names in order
