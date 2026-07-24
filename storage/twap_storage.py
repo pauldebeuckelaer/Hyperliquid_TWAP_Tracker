@@ -227,7 +227,7 @@ class TwapStorage(BaseStorage):
                     size = ?,
                     asset_id = COALESCE(asset_id, ?)
                 WHERE order_hash = ?
-            """, (timestamp, status, size, order_hash))
+            """, (timestamp, status, size, asset_id, order_hash))
         else:
             self.cursor.execute("""
                 INSERT INTO orders (
