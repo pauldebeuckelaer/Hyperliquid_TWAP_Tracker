@@ -52,6 +52,7 @@ class TWAPOrder:
     status: str
     duration_minutes: int
     order_hash: str = ""
+    asset_id: Optional[int] = None
 
     # Calculated/optional fields
     elapsed_minutes: Optional[int] = None
@@ -136,6 +137,7 @@ class TWAPOrder:
             elapsed_minutes=elapsed_minutes,
             progress_percent=progress_percent,
             order_hash=raw_order.get('order_hash', raw_order.get('hash', '')),
+            asset_id=asset_id,
             timestamp=datetime.now(),
             raw_data=raw_order
         )

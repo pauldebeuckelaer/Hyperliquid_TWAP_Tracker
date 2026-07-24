@@ -180,7 +180,7 @@ class TwapStorage(BaseStorage):
                 buy_volume, sell_volume,
                 spot_buy_pressure, spot_sell_pressure,
                 perp_buy_pressure, perp_sell_pressure,
-                net_pressure, unique_addresses
+                net_pressure, unique_addresses, asset_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             timestamp,
@@ -195,7 +195,8 @@ class TwapStorage(BaseStorage):
             summary.get('perp_buy_pressure', 0),
             summary.get('perp_sell_pressure', 0),
             summary.get('net_pressure_per_min', 0),
-            summary.get('unique_addresses', 0)
+            summary.get('unique_addresses', 0),
+            summary.get('asset_id')
         ))
 
     def _upsert_order(self, symbol: str, order: Dict, timestamp: str):
@@ -216,13 +217,15 @@ class TwapStorage(BaseStorage):
         product_type = order.get('product_type', '')
         duration = order.get('duration_minutes', 0)
         status = order.get('status', 'active')
+        asset_id = order.get('asset_id')
 
         if existing:
             self.cursor.execute("""
                 UPDATE orders SET
                     last_seen_at = ?,
                     status = ?,
-                    size = ?
+                    size = ?,
+                    asset_id = COALESCE(asset_id, ?)
                 WHERE order_hash = ?
             """, (timestamp, status, size, order_hash))
         else:
@@ -230,12 +233,12 @@ class TwapStorage(BaseStorage):
                 INSERT INTO orders (
                     order_hash, address, symbol, side, size,
                     product_type, duration_minutes, status,
-                    first_seen_at, last_seen_at
+                    first_seen_at, last_seen_at, asset_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 order_hash, address, symbol, side, size,
                 product_type, duration, status,
-                timestamp, timestamp
+                timestamp, timestamp, asset_id
             ))
 
     def _upsert_order_from_change(self, symbol: str, order, timestamp: str):
@@ -248,6 +251,7 @@ class TwapStorage(BaseStorage):
             product_type = order.product_type
             duration = order.duration_minutes
             status = order.status
+            asset_id = getattr(order, 'asset_id', None)
         else:
             order_hash = order.get('order_hash', '')
             address = order.get('address', order.get('full_address', ''))
@@ -256,7 +260,7 @@ class TwapStorage(BaseStorage):
             product_type = order.get('product_type', '')
             duration = order.get('duration_minutes', 0)
             status = order.get('status', 'active')
-
+            asset_id = order.get('asset_id')
         if not order_hash:
             return
 
@@ -270,20 +274,21 @@ class TwapStorage(BaseStorage):
             self.cursor.execute("""
                 UPDATE orders SET
                     last_seen_at = ?,
-                    status = ?
+                    status = ?,
+                    asset_id = COALESCE(asset_id, ?)
                 WHERE order_hash = ?
-            """, (timestamp, status, order_hash))
+            """, (timestamp, status, asset_id, order_hash))
         else:
             self.cursor.execute("""
                 INSERT INTO orders (
                     order_hash, address, symbol, side, size,
                     product_type, duration_minutes, status,
-                    first_seen_at, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    first_seen_at, last_seen_at, asset_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 order_hash, address, symbol, side, size,
                 product_type, duration, status,
-                timestamp, timestamp
+                timestamp, timestamp, asset_id
             ))
 
     def _mark_order_completed(self, order, timestamp: str):
@@ -337,6 +342,7 @@ class TwapStorage(BaseStorage):
             duration = order.duration_minutes
             elapsed = order.elapsed_minutes
             progress = order.progress_percent
+            asset_id = getattr(order, 'asset_id', None)
         else:
             order_hash = order.get('order_hash', '')
             address = order.get('address', order.get('full_address', ''))
@@ -346,6 +352,7 @@ class TwapStorage(BaseStorage):
             duration = order.get('duration_minutes', 0)
             elapsed = order.get('elapsed_minutes')
             progress = order.get('progress_percent')
+            asset_id = order.get('asset_id')
 
         if not order_hash:
             logger.debug(f"Skipping {event_type} event for {symbol}: missing order_hash")
@@ -355,12 +362,12 @@ class TwapStorage(BaseStorage):
             INSERT INTO events (
                 timestamp, event_type, order_hash, address, symbol,
                 side, size, product_type, duration_minutes,
-                elapsed_minutes, progress_percent
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                elapsed_minutes, progress_percent, asset_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             timestamp, event_type, order_hash, address, symbol,
             side, size, product_type, duration,
-            elapsed, progress
+            elapsed, progress, asset_id
         ))
 
     def _upsert_address(self, address: str, timestamp: str):

@@ -355,6 +355,9 @@ class AllCoinsStateTracker:
             stats = snapshot.get_stats()
             active = snapshot.active_orders
 
+            contributing_ids = {getattr(o, 'asset_id', None) for o in active} - {None}
+            snapshot_asset_id = (next(iter(contributing_ids)) if len(contributing_ids) == 1 else None)
+
             # Build snapshot data dict
             snapshot_data = {
                 'timestamp': datetime.now().isoformat(),
@@ -382,7 +385,8 @@ class AllCoinsStateTracker:
                     'buy_pressure_per_min': stats['buy_pressure_per_min'],
                     'sell_pressure_per_min': stats['sell_pressure_per_min'],
                     'net_pressure_per_min': stats['net_pressure_per_min'],
-                    'unique_addresses': stats['unique_addresses']
+                    'unique_addresses': stats['unique_addresses'],
+                    'asset_id': snapshot_asset_id
                 },
                 'active_orders': [self._order_to_dict(o) for o in snapshot.active_orders]
             }
@@ -416,6 +420,7 @@ class AllCoinsStateTracker:
                 'status': order.get('status', 'unknown'),
                 'elapsed_minutes': order.get('elapsed_minutes'),
                 'progress_percent': order.get('progress_percent'),
+                'asset_id': order.get('asset_id'),
             }
         return {
             'address': order.full_address,
@@ -427,6 +432,7 @@ class AllCoinsStateTracker:
             'status': order.status,
             'elapsed_minutes': order.elapsed_minutes,
             'progress_percent': order.progress_percent,
+            'asset_id': getattr(order, 'asset_id', None),
         }
 
     def _log_coin_snapshot(self, symbol: str, snapshot: TWAPSnapshot, changes: Dict):
