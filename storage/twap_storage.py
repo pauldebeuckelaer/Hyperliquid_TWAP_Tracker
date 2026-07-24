@@ -181,7 +181,7 @@ class TwapStorage(BaseStorage):
                 spot_buy_pressure, spot_sell_pressure,
                 perp_buy_pressure, perp_sell_pressure,
                 net_pressure, unique_addresses, asset_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             timestamp,
             symbol,
