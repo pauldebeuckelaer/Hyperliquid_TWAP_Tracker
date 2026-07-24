@@ -234,7 +234,7 @@ class TwapStorage(BaseStorage):
                     order_hash, address, symbol, side, size,
                     product_type, duration_minutes, status,
                     first_seen_at, last_seen_at, asset_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 order_hash, address, symbol, side, size,
                 product_type, duration, status,
