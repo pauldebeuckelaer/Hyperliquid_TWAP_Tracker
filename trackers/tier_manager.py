@@ -549,7 +549,7 @@ class TierManager:
             WITH latest_times AS (
                 SELECT address, MAX(snapshot_time) as latest_time
                 FROM perp_snapshots
-                WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-540 minutes')
+                WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-130 minutes')
                 GROUP BY address
             )
             SELECT 
@@ -589,7 +589,7 @@ class TierManager:
             WITH latest_times AS (
                 SELECT address, MAX(snapshot_time) as latest_time
                 FROM perp_account_snapshots
-                WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-540 minutes')
+                WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-130 minutes')
                 GROUP BY address
             )
             SELECT 
