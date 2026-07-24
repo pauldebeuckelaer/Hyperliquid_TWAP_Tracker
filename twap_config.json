@@ -87,6 +87,10 @@
       {
         "path": "logs/axis_position.log",
         "modules": ["axis.position"]
+      },
+      {
+        "path": "logs/registry.log",
+        "modules": ["coin_registry"]
       }
     ],
     "modules": {
@@ -101,7 +105,7 @@
       "trackers.whale_discovery": "INFO",
       "trackers.whale_state_collector": "INFO",
       "trackers.fees_collector": "INFO",
-      "coin_registry": "DEBUG",
+      "coin_registry": "INFO",
       "__main__": "DEBUG"
     }
   },
