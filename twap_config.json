@@ -114,6 +114,7 @@
       "trackers.whale_state_collector": "INFO",
       "trackers.fees_collector": "INFO",
       "coin_registry": "INFO",
+      "trackers.hip3_ws_discovery": "INFO",
       "__main__": "DEBUG"
     }
   },
