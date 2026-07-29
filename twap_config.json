@@ -91,11 +91,19 @@
       {
         "path": "logs/registry.log",
         "modules": ["coin_registry"]
+      },
+      {
+        "path": "logs/hip3_ws.log",
+        "modules": ["trackers.hip3_ws_discovery"]
+      },
+      {
+        "path": "logs/api_client.log",
+        "modules": ["api_client.hyperliquid_client"]
       }
     ],
     "modules": {
       "api_client.hypurrscan_client": "INFO",
-      "api_client.hyperliquid_client": "WARNING",
+      "api_client.hyperliquid_client": "DEBUG",
       "trackers.state_tracker": "INFO",
       "trackers.market_data_tracker": "INFO",
       "trackers.liquidation_tracker": "INFO",
