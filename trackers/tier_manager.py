@@ -54,7 +54,14 @@ TIER_FREQUENCIES = {
 
 AXIS_CAPS = {'position': 200, 'cash': 200, 'spot': 200}
 
-DEACTIVATION_BREAKER_THRESHOLD = 1500
+# Outage breaker — DISAPPEARED path only. Cap-outs are a policy decision and
+# stay deliberately unguarded. Measured Aug 4 2026: the disappeared path fired
+# 0 times across 66 retained refreshes, so 10% of the active-tiered pool is
+# very large headroom. The floor keeps the rule sane on a small or restarting
+# roster, where 10% would fall below routine noise and the breaker would jam
+# permanently open.
+DEACTIVATION_BREAKER_FRACTION = 0.10
+DEACTIVATION_BREAKER_FLOOR = 20
 
 class TierManager:
     """
@@ -315,7 +322,17 @@ class TierManager:
 
             if not axis_tiers:
                 if address in active_tiered_set:
-                    capout_candidates.append(address)
+                    # Distinguish a genuine cap-out (fresh data, ranked out)
+                    # from a collection gap (no fresh perp data at all).
+                    # The spot axis runs a 540-min window against 130 for
+                    # position/cash, so a wallet whose collection has stalled
+                    # can still appear in all_addresses via an old spot row.
+                    # Without this test it is swept through the UNGUARDED
+                    # cap-out path — which is exactly where an outage lands.
+                    if address in position_values or address in raw_usd_values:
+                        capout_candidates.append(address)
+                    else:
+                        deactivation_candidates.append(address)
                 continue
 
             effective_tier = min(axis_tiers)
@@ -399,15 +416,31 @@ class TierManager:
                     "WHERE address = ?", (strike_time, address))
                 capout_first_strike += 1  # strike one
 
-        # --- DISAPPEARED PATH: two-strike + verify + outage breaker (unchanged) ---
-        if len(deactivation_candidates) > DEACTIVATION_BREAKER_THRESHOLD:
+        # --- DISAPPEARED PATH: two-strike + verify + outage breaker ---
+        breaker_threshold = max(
+            DEACTIVATION_BREAKER_FLOOR,
+            int(len(active_tiered_set) * DEACTIVATION_BREAKER_FRACTION),
+        )
+        logger.info(
+            f"Disappeared path: {len(deactivation_candidates)} candidates "
+            f"(breaker threshold {breaker_threshold}, pool {len(active_tiered_set)})")
+
+        if len(deactivation_candidates) > breaker_threshold:
             logger.error(
                 f"🚨 DEACTIVATION BREAKER TRIPPED: "
                 f"{len(deactivation_candidates)} disappeared candidates "
-                f"(threshold {DEACTIVATION_BREAKER_THRESHOLD}). Suspected "
-                f"collection outage — no strikes set, no deactivations "
-                f"executed on disappeared path this refresh."
+                f"(threshold {breaker_threshold}). Suspected collection "
+                f"outage — no strikes set, no deactivations executed on "
+                f"disappeared path this refresh."
             )
+            # Clear strikes from earlier refreshes: a wallet stamped just
+            # before the outage would otherwise be executed the moment the
+            # breaker clears, judged on degraded data.
+            placeholders = ','.join('?' * len(deactivation_candidates))
+            self.storage.cursor.execute(
+                f"UPDATE whale_addresses SET pending_deactivation = NULL "
+                f"WHERE address IN ({placeholders})",
+                deactivation_candidates)
         else:
             for address in deactivation_candidates:
                 self.storage.cursor.execute(
