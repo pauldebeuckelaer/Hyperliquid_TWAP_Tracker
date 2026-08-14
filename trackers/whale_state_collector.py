@@ -63,6 +63,17 @@ def _cum_funding(position: Dict) -> Optional[float]:
     except (TypeError, ValueError):
         return None
 
+def _margin_mode(position: Dict) -> Optional[str]:
+    """leverage.type — 'cross' or 'isolated' — or None if absent.
+
+    Ground truth for margin mode. The liquidation-distance heuristic
+    (dist > 2 => cross) was the pre-column proxy for this.
+    """
+    lev = position.get("leverage")
+    if not isinstance(lev, dict):
+        return None
+    return lev.get("type")
+
 
 class WhaleStateCollector:
     """
@@ -462,6 +473,7 @@ class WhaleStateCollector:
                 "margin_used": float(position.get("marginUsed", 0)),
                 "unrealized_pnl": float(position.get("unrealizedPnl", 0)),
                 "cum_funding_all_time": _cum_funding(position),
+                "margin_mode": _margin_mode(position),
             })
 
         portfolio_data["num_positions"] = len(positions)
@@ -520,6 +532,7 @@ class WhaleStateCollector:
                         "margin_used": float(position.get("marginUsed", 0)),
                         "unrealized_pnl": float(position.get("unrealizedPnl", 0)),
                         "cum_funding_all_time": _cum_funding(position),
+                        "margin_mode": _margin_mode(position),
                     })
                     hip3_pos_count += 1
 
@@ -1025,6 +1038,10 @@ class WhaleStateCollector:
             "margin_used": float(pos.get("marginUsed", 0)),
             "unrealized_pnl": float(pos.get("unrealizedPnl", 0)),
             "cum_funding_all_time": _cum_funding(pos),
+            "margin_mode": (
+                leverage_data.get("type")
+                if isinstance(leverage_data, dict) else None
+            ),
         }
 
     def _parse_account_data(self, whale_states: List[Dict]) -> List[Dict]:

@@ -116,7 +116,8 @@ class WhaleStorage(BaseStorage):
                 leverage REAL,
                 margin_used REAL,
                 unrealized_pnl REAL,
-                cum_funding_all_time REAL
+                cum_funding_all_time REAL,
+                margin_mode TEXT
             )
         """)
 
@@ -178,6 +179,9 @@ class WhaleStorage(BaseStorage):
         # Migration: ensure cum_funding_all_time exists (idempotent).
         self._migrate_cum_funding()
 
+        # Migration: ensure margin_mode exists (idempotent).
+        self._migrate_margin_mode()
+
     def _migrate_pending_deactivation(self):
         """Add pending_deactivation column to existing DBs. Idempotent.
 
@@ -214,6 +218,23 @@ class WhaleStorage(BaseStorage):
             )
             self.conn.commit()
             logger.info("Migration: added cum_funding_all_time to perp_snapshots")
+
+    def _migrate_margin_mode(self):
+        """Add margin_mode to perp_snapshots. Idempotent.
+
+        Ground truth from clearinghouseState leverage.type — 'cross' or
+        'isolated'. Supersedes the liquidation-distance heuristic
+        (dist = |liq - entry| / entry > 2) used before this column existed.
+        NULL on rows written before deploy, and on any row where the API
+        omitted the field."""
+        self.cursor.execute("PRAGMA table_info(perp_snapshots)")
+        cols = {row[1] for row in self.cursor.fetchall()}
+        if "margin_mode" not in cols:
+            self.cursor.execute(
+                "ALTER TABLE perp_snapshots ADD COLUMN margin_mode TEXT"
+            )
+            self.conn.commit()
+            logger.info("Migration: added margin_mode to perp_snapshots")
 
     def _create_indexes(self):
         """Create whale tracking indexes."""
@@ -687,8 +708,9 @@ class WhaleStorage(BaseStorage):
                     INSERT INTO perp_snapshots (
                         address, snapshot_time, coin, size, side,
                         entry_price, liquidation_price, leverage,
-                        margin_used, unrealized_pnl, cum_funding_all_time
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        margin_used, unrealized_pnl, cum_funding_all_time,
+                        margin_mode
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     address,
                     snapshot_time,
@@ -701,6 +723,7 @@ class WhaleStorage(BaseStorage):
                     pos.get('margin_used', 0),
                     pos.get('unrealized_pnl', 0),
                     pos.get('cum_funding_all_time'),
+                    pos.get('margin_mode'),
                 ))
 
             # 3. Save spot balances
@@ -786,14 +809,16 @@ class WhaleStorage(BaseStorage):
                     p.get('margin_used', 0),
                     p.get('unrealized_pnl', 0),
                     p.get('cum_funding_all_time'),
+                    p.get('margin_mode'),
                 ))
 
             self.cursor.executemany("""
                 INSERT INTO perp_snapshots (
                     address, snapshot_time, coin, size, side,
                     entry_price, liquidation_price, leverage,
-                    margin_used, unrealized_pnl, cum_funding_all_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    margin_used, unrealized_pnl, cum_funding_all_time,
+                    margin_mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, rows)
             self.conn.commit()
             logger.debug(f"Bulk-saved {len(rows)} perp snapshots at {snapshot_time}")
