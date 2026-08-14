@@ -31,6 +31,22 @@ from trackers.tier_manager import TIER_THRESHOLDS
 
 logger = logging.getLogger(__name__)
 
+def _cum_funding(position: Dict) -> Optional[float]:
+    """cumFunding.allTime as a float, or None if the field is absent.
+
+    NEGATIVE = funding RECEIVED. Odometer since the wallet first opened
+    this coin, so only deltas between consecutive snapshots are
+    attributable to an observation window.
+    """
+    cf = position.get("cumFunding") or {}
+    val = cf.get("allTime")
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
 
 # =============================================================================
 # VALUE OBJECTS
@@ -430,6 +446,7 @@ class WhaleDiscovery:
                 "leverage": float(position.get("leverage", {}).get("value", 1)),
                 "margin_used": float(position.get("marginUsed", 0)),
                 "unrealized_pnl": float(position.get("unrealizedPnl", 0)),
+                "cum_funding_all_time": _cum_funding(position),
             })
 
         portfolio_data["num_positions"] = len(positions)
@@ -494,6 +511,7 @@ class WhaleDiscovery:
                         "leverage": float(position.get("leverage", {}).get("value", 1)),
                         "margin_used": float(position.get("marginUsed", 0)),
                         "unrealized_pnl": float(position.get("unrealizedPnl", 0)),
+                        "cum_funding_all_time": _cum_funding(position),
                     })
                     hip3_pos_count += 1
 

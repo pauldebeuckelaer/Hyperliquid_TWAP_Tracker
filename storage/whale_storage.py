@@ -115,7 +115,8 @@ class WhaleStorage(BaseStorage):
                 liquidation_price REAL,
                 leverage REAL,
                 margin_used REAL,
-                unrealized_pnl REAL
+                unrealized_pnl REAL,
+                cum_funding_all_time REAL
             )
         """)
 
@@ -174,6 +175,9 @@ class WhaleStorage(BaseStorage):
         # Migration: ensure pending_deactivation exists (idempotent).
         self._migrate_pending_deactivation()
 
+        # Migration: ensure cum_funding_all_time exists (idempotent).
+        self._migrate_cum_funding()
+
     def _migrate_pending_deactivation(self):
         """Add pending_deactivation column to existing DBs. Idempotent.
 
@@ -190,6 +194,26 @@ class WhaleStorage(BaseStorage):
             )
             self.conn.commit()
             logger.info("Migration: added pending_deactivation column to whale_addresses")
+
+    def _migrate_cum_funding(self):
+        """Add cum_funding_all_time to perp_snapshots. Idempotent.
+
+        Cumulative funding on this position since the wallet first opened
+        the coin, from clearinghouseState cumFunding.allTime.
+
+        NEGATIVE = funding RECEIVED, positive = funding PAID.
+
+        It is an ODOMETER, not a per-interval value: the absolute number
+        includes accrual from before this row was collected. Take deltas
+        between consecutive snapshots for funding in an interval."""
+        self.cursor.execute("PRAGMA table_info(perp_snapshots)")
+        cols = {row[1] for row in self.cursor.fetchall()}
+        if "cum_funding_all_time" not in cols:
+            self.cursor.execute(
+                "ALTER TABLE perp_snapshots ADD COLUMN cum_funding_all_time REAL"
+            )
+            self.conn.commit()
+            logger.info("Migration: added cum_funding_all_time to perp_snapshots")
 
     def _create_indexes(self):
         """Create whale tracking indexes."""
@@ -663,8 +687,8 @@ class WhaleStorage(BaseStorage):
                     INSERT INTO perp_snapshots (
                         address, snapshot_time, coin, size, side,
                         entry_price, liquidation_price, leverage,
-                        margin_used, unrealized_pnl
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        margin_used, unrealized_pnl, cum_funding_all_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     address,
                     snapshot_time,
@@ -676,6 +700,7 @@ class WhaleStorage(BaseStorage):
                     pos.get('leverage', 0),
                     pos.get('margin_used', 0),
                     pos.get('unrealized_pnl', 0),
+                    pos.get('cum_funding_all_time'),
                 ))
 
             # 3. Save spot balances
@@ -760,14 +785,15 @@ class WhaleStorage(BaseStorage):
                     p.get('leverage', 0),
                     p.get('margin_used', 0),
                     p.get('unrealized_pnl', 0),
+                    p.get('cum_funding_all_time'),
                 ))
 
             self.cursor.executemany("""
                 INSERT INTO perp_snapshots (
                     address, snapshot_time, coin, size, side,
                     entry_price, liquidation_price, leverage,
-                    margin_used, unrealized_pnl
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    margin_used, unrealized_pnl, cum_funding_all_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, rows)
             self.conn.commit()
             logger.debug(f"Bulk-saved {len(rows)} perp snapshots at {snapshot_time}")
