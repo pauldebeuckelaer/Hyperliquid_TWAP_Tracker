@@ -164,7 +164,9 @@ class WhaleStorage(BaseStorage):
                 hip3_withdrawable REAL,
                 hip3_dexes TEXT,
                 total_account_value REAL,
-                total_raw_usd_all REAL
+                total_raw_usd_all REAL,
+                cross_maintenance_margin_used REAL,
+                hip3_cross_maintenance_margin_used REAL
             )
         """)
 
@@ -181,6 +183,9 @@ class WhaleStorage(BaseStorage):
 
         # Migration: ensure margin_mode exists (idempotent).
         self._migrate_margin_mode()
+
+        # Migration: ensure cross-maintenance margin columns exist (idempotent).
+        self._migrate_cross_maintenance_margin()
 
     def _migrate_pending_deactivation(self):
         """Add pending_deactivation column to existing DBs. Idempotent.
@@ -235,6 +240,44 @@ class WhaleStorage(BaseStorage):
             )
             self.conn.commit()
             logger.info("Migration: added margin_mode to perp_snapshots")
+
+    def _migrate_cross_maintenance_margin(self):
+        """Add cross-maintenance margin columns to perp_account_snapshots. Idempotent.
+
+        From clearinghouseState top-level `crossMaintenanceMarginUsed` — NOT a
+        member of marginSummary. Maintenance margin is the level at which
+        liquidation actually triggers; every other margin figure stored here is
+        INITIAL margin, i.e. the requirement at order time.
+
+        CROSS ONLY, by construction. Isolated positions are ring-fenced and are
+        not included. For those, perp_snapshots.liquidation_price is exact and
+        per-position — this column fills the cross case, where the per-position
+        liq price is whole-account-conditional or comes back 0.0.
+
+        Each column is checked separately so a half-applied migration heals.
+        NULL on rows written before deploy."""
+        self.cursor.execute("PRAGMA table_info(perp_account_snapshots)")
+        cols = {row[1] for row in self.cursor.fetchall()}
+
+        if "cross_maintenance_margin_used" not in cols:
+            self.cursor.execute(
+                "ALTER TABLE perp_account_snapshots "
+                "ADD COLUMN cross_maintenance_margin_used REAL"
+            )
+            self.conn.commit()
+            logger.info(
+                "Migration: added cross_maintenance_margin_used to perp_account_snapshots"
+            )
+
+        if "hip3_cross_maintenance_margin_used" not in cols:
+            self.cursor.execute(
+                "ALTER TABLE perp_account_snapshots "
+                "ADD COLUMN hip3_cross_maintenance_margin_used REAL"
+            )
+            self.conn.commit()
+            logger.info(
+                "Migration: added hip3_cross_maintenance_margin_used to perp_account_snapshots"
+            )
 
     def _create_indexes(self):
         """Create whale tracking indexes."""
@@ -850,6 +893,9 @@ class WhaleStorage(BaseStorage):
                     hip3_account_value, hip3_total_raw_usd,
                     hip3_total_margin_used, hip3_total_ntl_pos,
                     hip3_withdrawable, hip3_dexes
+                Cross maintenance (optional):
+                    cross_maintenance_margin_used,
+                    hip3_cross_maintenance_margin_used
         """
         try:
             mainnet_av = account_data.get('account_value') or 0
@@ -868,8 +914,10 @@ class WhaleStorage(BaseStorage):
                     hip3_account_value, hip3_total_raw_usd,
                     hip3_total_margin_used, hip3_total_ntl_pos,
                     hip3_withdrawable, hip3_dexes,
-                    total_account_value, total_raw_usd_all
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    total_account_value, total_raw_usd_all,
+                    cross_maintenance_margin_used,
+                    hip3_cross_maintenance_margin_used
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 address, snapshot_time,
                 account_data.get('account_value'),
@@ -885,6 +933,8 @@ class WhaleStorage(BaseStorage):
                 account_data.get('hip3_dexes'),
                 total_av,
                 total_raw_all,
+                account_data.get('cross_maintenance_margin_used'),
+                account_data.get('hip3_cross_maintenance_margin_used'),
             ))
             self.conn.commit()
             logger.debug(f"Saved perp_account snapshot for {address[:10]}... at {snapshot_time}")
@@ -941,6 +991,8 @@ class WhaleStorage(BaseStorage):
                     d.get('hip3_dexes'),
                     total_av,
                     total_raw_all,
+                    d.get('cross_maintenance_margin_used'),
+                    d.get('hip3_cross_maintenance_margin_used'),
                 ))
 
             self.cursor.executemany("""
@@ -951,8 +1003,10 @@ class WhaleStorage(BaseStorage):
                     hip3_account_value, hip3_total_raw_usd,
                     hip3_total_margin_used, hip3_total_ntl_pos,
                     hip3_withdrawable, hip3_dexes,
-                    total_account_value, total_raw_usd_all
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    total_account_value, total_raw_usd_all,
+                    cross_maintenance_margin_used,
+                    hip3_cross_maintenance_margin_used
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, rows)
             self.conn.commit()
             logger.debug(f"Bulk-saved {len(rows)} perp_account snapshots at {snapshot_time}")

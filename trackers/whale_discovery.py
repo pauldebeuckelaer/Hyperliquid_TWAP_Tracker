@@ -58,6 +58,29 @@ def _margin_mode(position: Dict) -> Optional[str]:
         return None
     return lev.get("type")
 
+def _cross_maintenance(state: Dict) -> Optional[float]:
+    """Top-level crossMaintenanceMarginUsed as a float, or None if absent.
+
+    NOT a member of marginSummary — it is a SIBLING of it in the
+    clearinghouseState response, like `withdrawable`.
+
+    Maintenance margin is the level at which liquidation triggers. Every
+    other margin figure on this table is INITIAL margin, i.e. the
+    requirement at order time.
+
+    CROSS ONLY by construction. Isolated positions are ring-fenced and
+    excluded; for those, perp_snapshots.liquidation_price is exact.
+
+    Returns None (not 0.0) when the field is absent, so NULL in the DB
+    means "not reported" and 0.0 means "genuinely no cross maintenance".
+    """
+    val = state.get("crossMaintenanceMarginUsed")
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
 
 # =============================================================================
 # VALUE OBJECTS
@@ -354,6 +377,8 @@ class WhaleDiscovery:
             "hip3_total_ntl_pos": None,
             "hip3_withdrawable": None,
             "hip3_dexes": None,
+            "cross_maintenance_margin_used": None,
+            "hip3_cross_maintenance_margin_used": None,
         }
 
         # --- 1. Mainnet perp positions + account_data ---
@@ -442,6 +467,8 @@ class WhaleDiscovery:
         if withdrawable_raw is not None:
             account_data["withdrawable"] = float(withdrawable_raw)
 
+        account_data["cross_maintenance_margin_used"] = _cross_maintenance(state)
+
         for pos_data in state.get("assetPositions", []):
             position = pos_data.get("position", {})
             size = float(position.get("szi", 0))
@@ -478,6 +505,7 @@ class WhaleDiscovery:
         hip3_margin_total = 0.0
         hip3_ntl_total = 0.0
         hip3_withdrawable_total = 0.0
+        hip3_cross_maint_total = 0.0
         hip3_dexes_present: List[str] = []
         hip3_pos_count = 0
 
@@ -501,6 +529,10 @@ class WhaleDiscovery:
                 hip3_withdrawable_raw = hip3_state.get("withdrawable")
                 if hip3_withdrawable_raw is not None:
                     hip3_withdrawable_total += float(hip3_withdrawable_raw)
+
+                hip3_cm = _cross_maintenance(hip3_state)
+                if hip3_cm is not None:
+                    hip3_cross_maint_total += hip3_cm
 
                 hip3_dexes_present.append(dex)
 
@@ -543,6 +575,7 @@ class WhaleDiscovery:
             account_data["hip3_total_margin_used"] = hip3_margin_total
             account_data["hip3_total_ntl_pos"] = hip3_ntl_total
             account_data["hip3_withdrawable"] = hip3_withdrawable_total
+            account_data["hip3_cross_maintenance_margin_used"] = hip3_cross_maint_total
             account_data["hip3_dexes"] = ",".join(hip3_dexes_present)
 
     def _parse_spot_state(
