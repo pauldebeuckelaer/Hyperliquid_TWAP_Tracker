@@ -1,0 +1,12 @@
+aiohttp==3.13.2
+hyperliquid-python-sdk==0.22.0
+eth-account==0.13.7
+numpy==2.4.3
+pandas==3.0.1
+requests==2.33.0
+python-dotenv==1.2.1
+rich==13.3.1
+Telethon==1.42.0
+PyYAML==6.0.2
+websockets==16.0
+websocket-client==1.9.0

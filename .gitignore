@@ -42,3 +42,15 @@ venv/
 
 # Nested bytecode
 **/__pycache__/
+# DB backups — any naming (the twap_backup_*.db pattern above
+# missed twap.backup-YYYY-MM-DD.db)
+*.db
+*.db-wal
+*.db-shm
+
+# Analysis scripts, box-only — not production
+analysis/
+
+# Chart output
+*.png
+*.boxbak
