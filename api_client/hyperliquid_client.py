@@ -458,10 +458,6 @@ class HyperliquidClient:
         """Get user's vault equity positions"""
         return self._make_request("userVaultEquities", {"user": address})
 
-    def get_vault_equities(self, address: str):
-        """Get user's vault deposits (legacy name)"""
-        return self._get_user_vault_equities(address)
-
     # =============================================================================
     # Market Data
     # =============================================================================
