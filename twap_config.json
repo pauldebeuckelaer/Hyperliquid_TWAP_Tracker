@@ -11,14 +11,12 @@
     "enabled": true,
     "api_url": "https://api.hyperliquid.xyz",
     "timeout": 10,
-    "rate_limit_delay": 0.5,
 
     "_comment_liquidation_tracker": "LiquidationTracker is now a pure analyzer (Step 3). Config kept for compatibility but only used for unused init parameters.",
     "liquidation_tracker": {},
 
-    "_comment_metrics_collection": "Shared by WhaleDiscovery and WhaleStateCollector. min_portfolio_value is the $50K floor for whale qualification. batch_size/batch_delay control Collector's fast-ladder fetch concurrency.",
+    "_comment_metrics_collection": "Shared by WhaleDiscovery and WhaleStateCollector. batch_size/batch_delay control Collector's fast-ladder fetch concurrency.",
     "metrics_collection": {
-      "min_portfolio_value": 50000,
       "hip3_tracking_enabled": true,
       "batch_size": 50,
       "batch_delay": 0.5,
@@ -31,7 +29,6 @@
     },
     "hip3_ws_discovery": {
       "enabled": true,
-      "min_portfolio_value": 50000,
       "flag_floor": 100000,
       "worker_sleep": 3.0,
       "queue_max": 500,

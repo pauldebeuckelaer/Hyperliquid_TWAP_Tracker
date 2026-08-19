@@ -44,7 +44,6 @@ class HyperliquidClient:
         self.api_url = config.get('api_url', 'https://api.hyperliquid.xyz')
         self.info_endpoint = f"{self.api_url}/info"
         self.timeout = config.get('timeout', 10)
-        self.rate_limit_delay = config.get('rate_limit_delay', 0.5)
 
         self._all_mids_cache = None
         self._all_mids_cache_time = None
