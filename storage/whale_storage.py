@@ -11,14 +11,6 @@ Tables:
 - perp_snapshots: Hourly perp position details
 - spot_snapshots: Hourly spot balance details
 - vault_snapshots: Hourly vault holding details
-
-Tier System:
-- VIP: Hand-picked addresses (every 1 min)
-- Tier 1: Position $5M+ (every 1 min)
-- Tier 2: Position $1M-5M (every 5 min)
-- Tier 3: Position $500K-1M (every 15 min)
-- Tier 4: Position $250K-500K (every 30 min)
-- Tier 5: Position $100K-250K (every 60 min)
 """
 import logging
 from datetime import datetime, timedelta
@@ -29,15 +21,6 @@ from .base import BaseStorage
 
 
 logger = logging.getLogger(__name__)
-
-# Tier thresholds (position value in USD)
-TIER_THRESHOLDS = {
-    1: 5_000_000,  # $5M+
-    2: 1_000_000,  # $1M-5M
-    3: 500_000,  # $500K-1M
-    4: 250_000,  # $250K-500K
-    5: 100_000,  # $100K-250K
-}
 
 # Tier fetch frequencies (in cycles, 1 cycle = 1 minute)
 TIER_FREQUENCIES = {
@@ -462,22 +445,6 @@ class WhaleStorage(BaseStorage):
     # =========================================================================
     # TIER MANAGEMENT METHODS
     # =========================================================================
-
-    def calculate_tier(self, position_value: float) -> Optional[int]:
-        """
-        Calculate tier based on position value.
-
-        Args:
-            position_value: Total position value in USD
-
-        Returns:
-            Tier number (1-5) or None if below all thresholds
-        """
-        for tier in sorted(TIER_THRESHOLDS.keys()):
-            threshold = TIER_THRESHOLDS[tier]
-            if position_value >= threshold:
-                return tier
-        return None
 
     def get_addresses_by_tier(self, tier: int) -> List[str]:
         """
