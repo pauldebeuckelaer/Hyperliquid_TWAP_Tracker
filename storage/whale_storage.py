@@ -1141,51 +1141,6 @@ class WhaleStorage(BaseStorage):
     # CLEANUP
     # =========================================================================
 
-    def cleanup_old_snapshots(self, days_to_keep: int = 30) -> Dict[str, int]:
-        """
-        Remove snapshots older than specified days from all whale state tables.
-
-        Args:
-            days_to_keep: Number of days of history to keep
-
-        Returns:
-            Dict of table_name -> rows_deleted
-        """
-        cutoff = (datetime.now() - timedelta(days=days_to_keep)).isoformat()
-        deleted = {}
-
-        tables_with_snapshot_time = [
-            'portfolio_snapshots',
-            'perp_snapshots',
-            'spot_snapshots',
-            'vault_snapshots',
-            'perp_account_snapshots',
-        ]
-
-        for table in tables_with_snapshot_time:
-            self.cursor.execute(
-                f"DELETE FROM {table} WHERE snapshot_time < ?",
-                (cutoff,),
-            )
-            deleted[table] = self.cursor.rowcount
-
-        # whale_events uses 'timestamp' column, not 'snapshot_time'
-        self.cursor.execute(
-            "DELETE FROM whale_events WHERE timestamp < ?",
-            (cutoff,),
-        )
-        deleted['whale_events'] = self.cursor.rowcount
-
-        self.conn.commit()
-
-        total = sum(deleted.values())
-        if total > 0:
-            logger.info(
-                f"Cleaned up {total} rows older than {days_to_keep} days: {deleted}"
-            )
-
-        return deleted
-
     # =========================================================================
     # STATS
     # =========================================================================

@@ -393,32 +393,6 @@ class LiquidationStorage(BaseStorage):
     # CLEANUP
     # =========================================================================
 
-    def cleanup_old_snapshots(self, days_to_keep: int = 7) -> int:
-        """
-        Remove snapshots older than specified days.
-
-        Args:
-            days_to_keep: Number of days of history to keep (default 7)
-
-        Returns:
-            Number of snapshots deleted
-        """
-        cutoff = (datetime.now() - timedelta(days=days_to_keep)).isoformat()
-
-        # Get count before deletion
-        self.cursor.execute("""
-            SELECT COUNT(*) FROM liquidation_snapshots
-            WHERE snapshot_time < ?
-        """, (cutoff,))
-        count = self.cursor.fetchone()[0]
-
-        if count > 0:
-            self.cursor.execute("DELETE FROM liquidation_snapshots WHERE snapshot_time < ?", (cutoff,))
-            self.conn.commit()
-            logger.info(f"Cleaned up {count} old liquidation snapshots (older than {days_to_keep} days)")
-
-        return count
-
     # =========================================================================
     # STATS
     # =========================================================================
