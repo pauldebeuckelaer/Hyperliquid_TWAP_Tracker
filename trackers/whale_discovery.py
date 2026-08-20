@@ -7,18 +7,18 @@ Event-driven whale discovery: probe portfolio value, threshold check, register.
 Lifecycle of a newly-discovered whale:
 1. TWAP order fires → main._process_order_events calls discovery.evaluate(address)
 2. evaluate() fetches full state from Hyperliquid (perp + spot + vault + HIP-3)
-3. If portfolio >= min_portfolio_value, returns a WhaleState; else None
-4. main calls discovery.register(address) → INSERT into whale_addresses
+3. If any ONE axis (position / cash / spot) clears TIER_THRESHOLDS[axis][5], returns a WhaleState; else None
+4. main calls discovery.register(address) → INSERT, or reactivate if the address exists but is inactive
    (is_active=1, tier=NULL, tier_perp_amount=NULL — UNTIERED until next refresh)
 5. main hands the WhaleState to the snapshot manager for persist
-6. Next hourly tier refresh (tier_manager.refresh_tiers_from_snapshots) reads
-   the persisted perp_snapshots + perp_account_snapshots and assigns tier
-7. From the following cycle, the address is picked up by the tier-driven loop
+6. Next tier refresh (tier_manager.refresh_tiers_from_snapshots) reads the
+   persisted snapshots and assigns a tier ONLY if the address ranks inside
+   AXIS_CAPS on some axis. Clearing the T5 threshold is not sufficient —
+   unranked wallets stay tier-NULL and are swept by the cap-out path.
+7. If tiered, the address is picked up by the tier-driven loop from the following cycle
 
 Discovery does NOT:
 - Write any snapshot tables (that's the snapshot manager's job)
-- Know about tiers (Discovery only cares about the $50K floor)
-- Handle reactivation of dormant whales (parked design question)
 - Touch HIP-3 unless configured to (same gating as today)
 """
 import asyncio
@@ -116,8 +116,8 @@ class TokenFilter:
     Token inclusion rules: blacklist, whitelist, dust threshold, price sanity.
 
     Stateless, no DB or API dependencies. Used by Discovery (for portfolio
-    valuation) and later by the snapshot manager (for spot inclusion). One
-    instance shared at the TWAPBot level.
+    valuation) and by whale_state_collector (for spot inclusion).
+    Two instances exist: one at TWAPBot level, one inside the WS discovery thread
     """
 
     # Stablecoins treated as $1 without a price lookup
@@ -214,14 +214,11 @@ class WhaleDiscovery:
         self.token_filter = token_filter
         self.config = config or {}
 
-        self.min_portfolio_value = self.config.get("min_portfolio_value", 50_000)
         self.hip3_tracking_enabled = self.config.get("hip3_tracking_enabled", False)
 
         hip3_status = "ON" if self.hip3_tracking_enabled else "OFF"
         logger.info(
-            f"WhaleDiscovery initialized: "
-            f"min_portfolio=${self.min_portfolio_value:,}, "
-            f"HIP-3={hip3_status}"
+            f"WhaleDiscovery initialized: HIP-3={hip3_status}"
         )
 
     # -------------------------------------------------------------------------
@@ -238,7 +235,7 @@ class WhaleDiscovery:
 
         Returns None if:
         - All three core APIs failed (no data to evaluate)
-        - Total portfolio value is below min_portfolio_value
+        - No axis clears its T5 threshold (position / cash / spot)
 
         Returns a WhaleState if the address qualifies as a whale. The caller
         is then expected to call register() and hand the state to the
@@ -286,12 +283,13 @@ class WhaleDiscovery:
         - Existing and active: no-op. Returns False.
 
         The inactive-flip case (option b) handles whales that previously
-        deactivated and now fire a TWAP order above the $50K floor again.
+        deactivated and now re-qualify on any axis.
         Without this, they would stay is_active=0 forever and never be
         picked up by the tier-driven loop.
 
-        Note: the inactive-flip does NOT clear tier columns. tier_manager's
-        next hourly refresh will reassign them from fresh snapshot data.
+        Note: the inactive-flip does NOT clear tier columns. The next refresh
+        reassigns them only if the address ranks inside AXIS_CAPS; otherwise it
+        stays tier-NULL and active — the reactivation churn loop.
         """
         added = self.storage.add_whale_address(address)
         if added:
