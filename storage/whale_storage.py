@@ -129,8 +129,8 @@ class WhaleStorage(BaseStorage):
         """)
 
         # Perp account snapshots - per-address equity for tier_perp_amount
-        # (Per-address shape, not per-coin. HIP-3 columns NULL for non-VIP/T1.)
-        # and any wallet with has_hip3=1; NULL otherwise.)
+        # (Per-address shape, not per-coin. HIP-3 columns filled for VIP, T1,
+        #  and any wallet with has_hip3=1; NULL otherwise.)
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS perp_account_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +154,24 @@ class WhaleStorage(BaseStorage):
             )
         """)
 
+        # Whale lifecycle events - append-only log of activate/deactivate
+        # transitions. One row per event, never updated. Values are captured
+        # AT the event because _deactivate_address zeroes them immediately
+        # after, so this is the only record of a wallet's size when it fell out.
+        self.cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS whale_lifecycle_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        address TEXT NOT NULL,
+                        event_time TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        source TEXT NOT NULL,
+                        tier INTEGER,
+                        position_value REAL,
+                        raw_usd_value REAL,
+                        spot_value REAL
+            )
+        """)
+
         self.conn.commit()
 
         # Migration: ensure has_hip3 exists on pre-existing DBs (idempotent).
@@ -170,6 +188,9 @@ class WhaleStorage(BaseStorage):
 
         # Migration: ensure cross-maintenance margin columns exist (idempotent).
         self._migrate_cross_maintenance_margin()
+
+        # Migration: ensure whale_lifecycle_events exists (idempotent).
+        self._migrate_lifecycle_events()
 
     def _migrate_pending_deactivation(self):
         """Add pending_deactivation column to existing DBs. Idempotent.
@@ -263,6 +284,35 @@ class WhaleStorage(BaseStorage):
                 "Migration: added hip3_cross_maintenance_margin_used to perp_account_snapshots"
             )
 
+    def _migrate_lifecycle_events(self):
+        """Create whale_lifecycle_events on pre-existing DBs. Idempotent.
+
+        Append-only transition log. Exists because the reactivation churn
+        loop was only visible in logs, which rotate after three days —
+        too short to compute a stable "reactivated on N of the last M days"
+        selection rule.
+        """
+        self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='whale_lifecycle_events'"
+        )
+        if self.cursor.fetchone() is None:
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS whale_lifecycle_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    address TEXT NOT NULL,
+                    event_time TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    tier INTEGER,
+                    position_value REAL,
+                    raw_usd_value REAL,
+                    spot_value REAL
+                )
+            """)
+            self.conn.commit()
+            logger.info("Migration: created whale_lifecycle_events table")
+
     def _create_indexes(self):
         """Create whale tracking indexes."""
         indexes = [
@@ -300,6 +350,11 @@ class WhaleStorage(BaseStorage):
             "CREATE INDEX IF NOT EXISTS idx_perp_account_time ON perp_account_snapshots(snapshot_time)",
             "CREATE INDEX IF NOT EXISTS idx_perp_account_address ON perp_account_snapshots(address)",
             "CREATE INDEX IF NOT EXISTS idx_perp_account_address_time ON perp_account_snapshots(address, snapshot_time)",
+
+            # Lifecycle event indexes
+            "CREATE INDEX IF NOT EXISTS idx_lifecycle_address ON whale_lifecycle_events(address)",
+            "CREATE INDEX IF NOT EXISTS idx_lifecycle_time ON whale_lifecycle_events(event_time)",
+            "CREATE INDEX IF NOT EXISTS idx_lifecycle_addr_time ON whale_lifecycle_events(address, event_time)",
         ]
         self._execute_index_list(indexes)
 
@@ -782,6 +837,34 @@ class WhaleStorage(BaseStorage):
             logger.error(f"Error saving whale snapshot for {address}: {e}")
             self.conn.rollback()
             raise
+
+    def record_lifecycle_event(
+            self,
+            address: str,
+            event_type: str,
+            source: str,
+            tier: Optional[int] = None,
+            position_value: Optional[float] = None,
+            raw_usd_value: Optional[float] = None,
+            spot_value: Optional[float] = None,
+    ):
+        """Append one activate/deactivate transition. Never raises.
+
+        Instrumentation must not be able to break collection, so a failure
+        here is logged and swallowed rather than propagated.
+        """
+        try:
+            self.cursor.execute("""
+                INSERT INTO whale_lifecycle_events (
+                    address, event_time, event_type, source,
+                    tier, position_value, raw_usd_value, spot_value
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                address, datetime.now().isoformat(), event_type, source,
+                tier, position_value, raw_usd_value, spot_value,
+            ))
+        except Exception as e:
+            logger.warning(f"Failed to record lifecycle event for {address[:10]}...: {e}")
 
     def save_perp_snapshots_batch(self, snapshot_time: str, positions: List[Dict]):
         """
