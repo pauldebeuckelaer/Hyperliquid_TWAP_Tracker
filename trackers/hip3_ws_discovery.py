@@ -12,7 +12,7 @@ Pipeline per fill:
   feed handler (harvest only, ZERO API calls) -> queue -> worker (throttled):
     1. dedup against processed-set (cleared daily)
     2. skip if already active + flagged (one local SELECT)
-    3. discovery.evaluate()    full state fetch, gated on TIER_THRESHOLDS[axis][5]
+    3. discovery.evaluate()  — full state fetch, gated on TIER_THRESHOLDS[axis][5]
                                on ANY ONE axis (position / cash / spot)
                                (HIP-3 included: this instance runs with
                                hip3_tracking_enabled=True. REQUIRED — without
@@ -28,7 +28,8 @@ Pipeline per fill:
     6. flag if HIP-3 notional >= flag_floor (read from the in-hand state,
        zero extra calls) -> fast ladder collects its HIP-3 every cycle
 
-Registration floor (T5 threshold on any one axis, evaluates own) and decides "is this a whale".
+Registration floor (T5 threshold on any one axis, evaluates own) decides "is this a whale".
+reactivations are recorded in whale_lifecycle_events
 Flag floor ($100K HIP-3 notional) decides "is its HIP-3 worth per-cycle
 collection". Separate questions, separate floors.
 """
@@ -183,12 +184,12 @@ class HIP3Discovery:
         # The exact same path an order-start event takes in main.py.
         state = await self.discovery.evaluate(addr, session)
         if state is None:
-            # API failure or no axis clears its T5 threshold — stays in
-            # until the daily reset, then gets another look if still trading.
+            # API failure or no axis clears its T5 threshold — stays in the
+            # processed-set until the daily reset, then gets another look if still trading.
             self.below_floor += 1
             return
 
-        self.discovery.register(addr)        # INSERT / resurrect / no-op
+        self.discovery.register(addr, source='ws_hip3')
         ok = await self.collector.persist(addr, state)
         if not ok:
             self._safe_rollback()

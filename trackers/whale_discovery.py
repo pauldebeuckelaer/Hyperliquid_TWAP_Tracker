@@ -272,7 +272,7 @@ class WhaleDiscovery:
         )
         return state
 
-    def register(self, address: str) -> bool:
+    def register(self, address: str, source: str = 'twap_event') -> bool:
         """
         Register address in whale_addresses table.
 
@@ -300,6 +300,11 @@ class WhaleDiscovery:
         existing_active = set(self.storage.get_active_whale_addresses())
         if address not in existing_active:
             self.storage.update_whale_status(address, is_active=True)
+            self.storage.record_lifecycle_event(
+                address=address,
+                event_type='activate',
+                source=source,
+            )
             logger.info(f"Reactivated previously-inactive whale: {address}")
             return True
 
