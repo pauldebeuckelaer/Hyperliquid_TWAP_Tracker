@@ -4,7 +4,7 @@ Tier Manager
 ============
 Manages tiered whale address fetching to respect API limits.
 
-TTri-axis tiering. Each address is scored independently on three axes —
+Tri-axis tiering. Each address is scored independently on three axes —
 position (notional exposure), cash (deposited capital), spot (spot value) —
 and the effective tier is min() across whichever axes qualified, treating
 None as infinity. See TIER_THRESHOLDS below for the live numbers.
@@ -363,11 +363,30 @@ class TierManager:
             if tier_pos is None and tier_cash is None and tier_spot is not None:
                 spot_only_count += 1
 
+
+            # NOTE: was_dormant is true for a wallet that was INACTIVE and for
+            # one that was active-but-untiered. Those are different events;
+            # distinguishing them needs a per-address is_active read (~350
+            # extra SELECTs per refresh). Taking the free version — expect
+            # 'tier_update' to over-count relative to true reactivations.
+            was_dormant = address not in active_tiered_set
+
             self._update_address_tier(
                 address, effective_tier,
                 tier_pos, tier_cash, tier_spot,
                 pos_value, raw_usd, spot_val,
             )
+
+            if was_dormant:
+                self.storage.record_lifecycle_event(
+                    address=address,
+                    event_type='activate',
+                    source='tier_update',
+                    tier=effective_tier,
+                    position_value=pos_value,
+                    raw_usd_value=raw_usd,
+                    spot_value=spot_val,
+                )
 
         # Catch orphans: active whales with no fresh data on any axis this refresh.
         # `tier` is the effective tier — set whenever any axis qualifies the whale,
@@ -416,7 +435,7 @@ class TierManager:
                 "WHERE address = ?", (address,))
             row = self.storage.cursor.fetchone()
             if row and row[0]:
-                self._deactivate_address(address)  # strike two
+                self._deactivate_address(address, source='capout')  # strike two
                 executed_deactivations.append(address)
             else:
                 self.storage.cursor.execute(
@@ -456,7 +475,7 @@ class TierManager:
                     "WHERE address = ?", (address,))
                 row = self.storage.cursor.fetchone()
                 if row and row[0]:
-                    self._deactivate_address(address)  # strike two
+                    self._deactivate_address(address, source='disappeared')  # strike two
                     executed_deactivations.append(address)
                 else:
                     self.storage.cursor.execute(
@@ -576,7 +595,7 @@ class TierManager:
 
         Only considers snapshots from the last 130 minutes - this ensures
         tier assignment runs on FRESH data. Whales whose latest snapshot
-        is older than this window .are treated as having no positions.
+        is older than this window are treated as having no positions.
         Absent from every axis, they route to the disappeared path
         — two-strike, verify fetch, breaker-guarded — not to immediate deactivation.
 
@@ -785,7 +804,7 @@ class TierManager:
             timestamp,
         ))
 
-    def _deactivate_address(self, address: str):
+    def _deactivate_address(self, address: str, source: str = 'unknown'):
         """
         Mark address as inactive. Reached from both the cap-out path
         (ranked out of AXIS_CAPS) and the disappeared path (no data on any axis).
@@ -800,6 +819,24 @@ class TierManager:
         if self.storage.is_vip(address):
             logger.debug(f"Skipping deactivation of VIP {address[:10]}...")
             return
+
+        # Capture state BEFORE the UPDATE zeroes it — this row is the only
+        # record of the wallet's size at the moment it fell out.
+        self.storage.cursor.execute(
+            "SELECT tier, position_value, raw_usd_value, spot_value "
+            "FROM whale_addresses WHERE address = ?", (address,))
+
+        prev = self.storage.cursor.fetchone()
+        if prev:
+            self.storage.record_lifecycle_event(
+                address=address,
+                event_type='deactivate',
+                source=source,
+                tier=prev[0],
+                position_value=prev[1],
+                raw_usd_value=prev[2],
+                spot_value=prev[3],
+            )
 
         timestamp = datetime.now().isoformat()
 
