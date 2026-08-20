@@ -183,15 +183,28 @@ class WhaleStateCollector:
         """
         Persist an in-hand WhaleState. No API calls.
 
-        Called by main._process_order_events after Discovery.evaluate returns a qualifying state.
-        and by hip3_ws_discovery's worker, which takes the same evaluate → register → persist path.
-        returns a qualifying state. Writes all five tables.
+            Called by main._process_order_events after Discovery.evaluate returns a
+            qualifying state, and by hip3_ws_discovery's worker, which takes the same
+            evaluate → register → persist path. Writes all five tables.
         """
         if not self._passes_sanity_checks(address, state):
             return False
 
         # Force is_active=True in case tier_manager deactivated between
-        # Discovery.evaluate and Collector.persist.
+        # Discovery.evaluate and Collector.persist. Both callers register()
+        # immediately before this, so a wallet reaching here inactive means
+        # the refresh landed in between — record it, because if this never
+        # fires the defensive line is dead code.
+        self.storage.cursor.execute(
+            "SELECT is_active FROM whale_addresses WHERE address = ?", (address,))
+        row = self.storage.cursor.fetchone()
+        if row and row[0] == 0:
+            self.storage.record_lifecycle_event(
+                address=address,
+                event_type='activate',
+                source='persist_race',
+            )
+
         self.storage.update_whale_status(address, is_active=True)
 
         snapshot_time = datetime.now().isoformat()
