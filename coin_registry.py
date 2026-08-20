@@ -5,10 +5,10 @@ Coin Registry - Asset ID Mappings for Hyperliquid
 Central registry for all asset IDs and their mappings to coin symbols.
 Provides helper functions for coin name resolution and market type detection.
 
-NOW WITH DYNAMIC SPOT TOKEN RESOLUTION + HIP-3 MARKETS!
+Dynamic spot token resolution + HIP-3 markets.
 - Static mappings for known perps and common spots
 - Dynamic resolution via Hyperliquid spotMeta API for unknown tokens
-- HIP-3 market resolution (xyz, flx, vntl) via perpDexs API
+- HIP-3 market resolution via perpDexs API (all deployed dexes)
 - Call init_dynamic_registry(hl_client) at startup to enable
 
 Market Types:
@@ -18,9 +18,8 @@ Market Types:
 Asset ID Ranges:
 - 0-9999: Standard perp markets
 - 10000-109999: Standard spot markets (10000 + market_index)
-- 110000-119999: xyz: HIP-3 perps (tokenized equities)
-- 120000-129999: flx: HIP-3 perps (tokenized equities)
-- 130000-139999: vntl: HIP-3 perps (venture tokens)
+- 110000+: HIP-3 perps. Each dex gets a 10K block assigned at init in
+  perpDexs order; ranges are dynamic, not fixed to any dex name.
 
 Usage:
     from coin_registry import get_coin_name, get_market_type, init_dynamic_registry
@@ -325,7 +324,7 @@ ASSET_ID_TO_NAME = {
 }
 
 # ============================================================================
-# HIP-3 MARKET MAPPINGS (xyz, flx, vntl)
+# HIP-3 MARKET MAPPINGS (dynamic, all deployed dexes)
 # ============================================================================
 # These are tokenized equity markets with separate asset ID ranges
 # Populated at runtime by init_hip3_registry()
@@ -336,9 +335,6 @@ _hip3_market_map: Dict[str, Dict[int, str]] = {}
 # Dynamic range mapping — populated at runtime by init_hip3_registry()
 # Maps dex_name -> (range_start, range_end)
 _hip3_ranges: Dict[str, tuple] = {}
-
-# Reverse lookup: given a range_start, find which dex it belongs to
-_hip3_range_index: Dict[int, str] = {}
 
 # ============================================================================
 # DYNAMIC REGISTRY CLASS
@@ -488,7 +484,7 @@ class DynamicCoinRegistry:
 
         Resolution priority:
         1. Static registry (ASSET_ID_TO_NAME) - for known perps and common spots
-        2. HIP-3 market map (xyz, flx, vntl) - for tokenized equities
+        2. HIP-3 market map (dynamic ranges)
         3. Dynamic spot token map - for newer/unknown spot tokens
         4. UNKNOWN_{asset_id} fallback
 
@@ -683,7 +679,7 @@ def init_hip3_registry(hl_client) -> bool:
       - dex index 1 → 120000-129999
       - etc.
     """
-    global _hip3_market_map, _hip3_ranges, _hip3_range_index
+    global _hip3_market_map, _hip3_ranges
 
     try:
         # Step 1: Get dex names from perpDexs
@@ -705,7 +701,6 @@ def init_hip3_registry(hl_client) -> bool:
             range_end = range_start + 10000
 
             _hip3_ranges[name] = (range_start, range_end)
-            _hip3_range_index[range_start] = name
 
             logger.info(f"HIP-3 dex '{name}': range {range_start}-{range_end - 1}")
 
@@ -824,7 +819,7 @@ def init_dynamic_registry(hl_client) -> bool:
         logger.error(f"❌ Failed to initialize dynamic registry: {e}")
         success = False
 
-    # Initialize HIP-3 registry (xyz, flx, vntl)
+    # Initialize HIP-3 registry
     try:
         if hasattr(hl_client, 'get_perp_dexs'):
             init_hip3_registry(hl_client)
@@ -853,12 +848,12 @@ def get_market_type(asset_id: int) -> str:
     """
     Determine if asset is SPOT or PERP based on ID range.
 
-    IMPORTANT: HIP-3 markets (xyz, flx, vntl) are PERP markets, not SPOT!
+    IMPORTANT: HIP-3 markets are PERP markets, not SPOT!
 
     Ranges:
         - 0-9999: Standard perps
         - 10000-109999: Spot markets
-        - 110000+: HIP-3 builder-deployed perps (xyz, flx, vntl)
+        - 110000+: HIP-3 builder-deployed perps
 
     Args:
         asset_id: Asset identifier from API
@@ -867,7 +862,7 @@ def get_market_type(asset_id: int) -> str:
         'SPOT', 'PERP', or 'UNKNOWN'
     """
     if asset_id >= HIP3_START:
-        return 'PERP'  # HIP-3 builder-deployed perps (xyz, flx, vntl)
+        return 'PERP'  # HIP-3 builder-deployed perps
     elif asset_id >= SPOT_START:
         return 'SPOT'  # Standard spot markets (10000-109999)
     elif asset_id >= 0:
@@ -906,13 +901,13 @@ def is_perp(asset_id: int) -> bool:
 
     Includes:
         - Standard perps (0-9999)
-        - HIP-3 perps (110000+): xyz, flx, vntl
+        - HIP-3 perps (110000+)
     """
     return (0 <= asset_id < SPOT_START) or (asset_id >= HIP3_START)
 
 
 def is_hip3(asset_id: int) -> bool:
-    """Check if asset_id represents a HIP-3 market (xyz, flx, vntl)"""
+    """Check if asset_id represents a HIP-3 market"""
     return asset_id >= HIP3_START
 
 
