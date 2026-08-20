@@ -13,7 +13,7 @@ Three paths:
 2. Cycle-driven fast ladder (collect_async, Step 3):
     - Called every minute by main loop
     - Asks tier_manager which addresses to fetch this cycle
-    - Fetches perp + spot-USDC + HIP-3 (VIP+T1 only) in parallel batches
+    - Fetches perp + spot-USDC + HIP-3 (event-tracking addresses + has_hip3-flagged) in parallel batches
     - Persists to perp_snapshots + perp_account_snapshots
     - Returns whale_states for downstream analyzers (LiquidationTracker,
       EventDetector)
@@ -23,7 +23,8 @@ Three paths:
     - Fetches one address, persists all five tables, no threshold check
 
 4. Cycle-driven slow ladder (collect_slow_async, Step 4b):
-    - Called every minute, fires only at cycle 30 when a tier is due
+    - Called every minute. Enqueues at cycle 7 (the anchor) when a tier is
+      due; drains a bounded slice every cycle thereafter until empty
     - Fires at per-tier hourly cadences (VIP+T1 1h, T2 2h, T3 4h, T4/T5 8h)
     - Writes portfolio_snapshots, spot_snapshots, vault_snapshots
       (plus perp/account refreshes, since fetch_and_persist writes them all)
@@ -32,7 +33,7 @@ Three paths:
 After Step 4b, this class is the ONLY writer to all five whale state tables.
 LiquidationTracker is a pure analyzer.
 
-Sanity checks (preserved from WhaleMetricsManager.take_snapshot_async):
+Sanity checks (cold-start path only):
     - All-zeros guard: if perp+spot+vault are all 0, treat as API failure
     - Vanish guard: if perp unchanged but spot/vault vanished, partial failure
 """
@@ -140,7 +141,6 @@ class WhaleStateCollector:
         self.token_filter = token_filter
         self.config = config or {}
 
-        self.min_portfolio_value = self.config.get("min_portfolio_value", 50_000)
         self.hip3_tracking_enabled = self.config.get("hip3_tracking_enabled", False)
 
         # Batch/concurrency config — lifted from LiquidationTracker defaults
@@ -172,7 +172,6 @@ class WhaleStateCollector:
         hip3_status = "ON" if self.hip3_tracking_enabled else "OFF"
         logger.info(
             f"WhaleStateCollector initialized: "
-            f"min_portfolio=${self.min_portfolio_value:,}, "
             f"batch_size={self.batch_size}, HIP-3={hip3_status}"
         )
 
@@ -184,7 +183,8 @@ class WhaleStateCollector:
         """
         Persist an in-hand WhaleState. No API calls.
 
-        Called by main._process_order_events after Discovery.evaluate
+        Called by main._process_order_events after Discovery.evaluate returns a qualifying state.
+        and by hip3_ws_discovery's worker, which takes the same evaluate → register → persist path.
         returns a qualifying state. Writes all five tables.
         """
         if not self._passes_sanity_checks(address, state):
@@ -233,7 +233,7 @@ class WhaleStateCollector:
         Flow:
         1. Ask tier_manager which addresses to fetch this cycle.
         2. Fetch perp state + spot USDC for all of them in parallel batches.
-        3. For VIP+T1 only, fetch HIP-3 state across all active dexes.
+        3. For event-tracking + has_hip3-flagged addresses, fetch HIP-3 state on the xyz dex only.
         4. Parse positions + account_data.
         5. Persist to perp_snapshots and perp_account_snapshots.
         6. Return whale_states for downstream analyzers.
@@ -328,11 +328,10 @@ class WhaleStateCollector:
 
         Used by main.py's order-end path. An active whale's TWAP order just
         ended; we want to capture their state now regardless of portfolio
-        size (a whale exiting a position might drop below $50K mid-close,
-        and we still want the final snapshot).
+        size (a whale exiting a position might drop below its axis threshold mid-close).
 
         This duplicates some parsing logic from Discovery._fetch_full_state_async
-        intentionally: Discovery threshold-checks (returns None for < $50K),
+        intentionally: Discovery threshold-checks (returns None when no axis clears its T5 threshold,
         which is wrong for order-end. Keeping the paths separate avoids a
         silent behavior change.
 
@@ -769,14 +768,14 @@ class WhaleStateCollector:
 
     async def _fetch_whale_states_async(self, addresses: List[str]) -> List[Dict]:
         """
-        Fetch perp + spot USDC + HIP-3 (for VIP+T1) in batches.
+        Fetch perp + spot USDC + HIP-3 (for event-tracking + flagged addresses) in batches.
 
         Returns list of whale_state dicts. Each dict contains:
         - address: str
         - state: clearinghouseState dict (mainnet perp)
         - spot_usdc: float (USDC available, total - hold)
-        - hip3_positions: list of raw HIP-3 position dicts (empty if not VIP+T1)
-        - hip3_margin_by_dex: dict {dex: marginSummary} (only for VIP+T1)
+        - hip3_positions: list of raw HIP-3 position dicts (empty if not selected for HIP-3)
+        - hip3_margin_by_dex: dict {dex: marginSummary} (only for HIP-3-selected addresses)
         """
         if not addresses:
             return []
@@ -813,7 +812,7 @@ class WhaleStateCollector:
                 if i + self.batch_size < len(addresses):
                     await asyncio.sleep(self.batch_delay)
 
-            # STEP 2: HIP-3 for VIP+T1 only
+            # STEP 2: HIP-3 for event-tracking + flagged addresses, xyz dex only
             if self.hip3_tracking_enabled and all_results:
                 hip3_dexes = self.hl_client.get_active_hip3_dexes()
                 hip3_dexes = [d for d in hip3_dexes if d == 'xyz']
@@ -1086,8 +1085,8 @@ class WhaleStateCollector:
         Build per-address account_data list for save_perp_account_snapshots_batch.
 
         Consolidates HIP-3 marginSummary across dexes for whales who have
-        hip3_margin_by_dex populated (VIP+T1 only — gated by collect_async).
-        Lower-tier whales get NULL HIP-3 columns automatically.
+        hip3_margin_by_dex populated (gated by collect_async's HIP-3 selection).
+        Unselected whales get NULL HIP-3 columns automatically.
         """
         account_data_list = []
 
@@ -1228,6 +1227,5 @@ class WhaleStateCollector:
             "slow_ladder_runs": self.slow_ladder_runs,
             "slow_ladder_addresses": self.slow_ladder_addresses,
             "slow_ladder_errors": self.slow_ladder_errors,
-            "min_portfolio_value": self.min_portfolio_value,
             "hip3_tracking_enabled": self.hip3_tracking_enabled,
         }
