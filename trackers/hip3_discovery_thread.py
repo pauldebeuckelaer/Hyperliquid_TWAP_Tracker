@@ -8,9 +8,11 @@ storage connection (sqlite3 connections are not safe to share across
 threads; WAL mode makes multi-connection writes safe).
 
 Builds its own WhaleDiscovery with hip3_tracking_enabled=True — REQUIRED
-so pure-HIP-3 whales (tiny main-dex, big builder-dex) pass evaluate's
-$50K portfolio floor. The main path's discovery instance and its config
-are untouched.
+so pure-HIP-3 whales (tiny main-dex, big builder-dex) can clear evaluate's
+gate. Without it hip3_account_value is zero, so a wallet whose size lives
+entirely on a builder dex fails every axis. The gate itself is
+TIER_THRESHOLDS[axis][5] on any one axis, not a flat floor. The main path's
+discovery instance and its config are untouched.
 """
 import asyncio
 import logging
@@ -55,7 +57,6 @@ def start_hip3_discovery_thread(hl_client, db_path: Path, config: dict):
             storage,
             token_filter,
             config={
-                "min_portfolio_value": config.get("min_portfolio_value", 50_000),
                 "hip3_tracking_enabled": True,   # forced ON — see module docstring
             },
         )
