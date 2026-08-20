@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Hyperliquid API Client - REFACTORED WITH PROPER LOGGING LEVELS AND PRICE VALIDATION
-Provides access to Hyperliquid Info endpoint for trader data
+Hyperliquid API Client
+Provides access to the Hyperliquid Info endpoint for trader and market data.
 
 LOGGING STRATEGY:
 - DEBUG: Individual price lookups, cache hits, strategy attempts, API calls
@@ -38,7 +38,6 @@ class HyperliquidClient:
             config: Optional configuration dict with:
                 - api_url: Base API URL (default: https://api.hyperliquid.xyz)
                 - timeout: Request timeout in seconds (default: 10)
-                - rate_limit_delay: Delay between requests (default: 0.5)
         """
         config = config or {}
         self.api_url = config.get('api_url', 'https://api.hyperliquid.xyz')
@@ -641,7 +640,7 @@ class HyperliquidClient:
 
     def _validate_price(self, token: str, price: float) -> float:
         """
-        Validate and log warnings for suspicious prices
+        Log debug notes on suspicious prices. Never filters — returns the price unchanged.
 
         Args:
             token: Token name
@@ -668,7 +667,6 @@ class HyperliquidClient:
     def get_token_price(self, token: str) -> Optional[float]:
         """
         Get best available price for any token using multi-strategy approach
-        NOW WITH PRICE VALIDATION
 
         Priority waterfall:
         1. Stablecoins (1:1 USD)
@@ -1072,7 +1070,7 @@ class HyperliquidClient:
 
     def get_perp_dexs(self) -> Optional[List]:
         """
-        Get HIP-3 perp dex metadata (xyz, flx, vntl)
+        Get HIP-3 perp dex metadata for all deployed dexes
 
         Returns list of dex info with asset mappings for tokenized equities
         """
@@ -1124,19 +1122,6 @@ class HyperliquidClient:
                     'max_leverage': asset.get('maxLeverage', 0),
                 }
 
-        # DEBUG: Log which coins we got
-        logger.info(f"📋 API returned {len(asset_ctxs)} perpetual markets")
-
-        # Check for specific missing coins that we saw on Hypurrscan
-        missing_coins = ['ZEREBRO', 'BNB', 'XPL', 'WLFI', 'IP', 'ASTER']
-        found = [c for c in missing_coins if c in asset_ctxs]
-        not_found = [c for c in missing_coins if c not in asset_ctxs]
-
-        if found:
-            logger.info(f"   ✅ Found: {found}")
-        if not_found:
-            logger.info(f"   ❌ Missing: {not_found}")
-
         # Log all coins at DEBUG level
         logger.debug(f"   All coins: {sorted(asset_ctxs.keys())}")
 
@@ -1151,7 +1136,7 @@ class HyperliquidClient:
 
     def get_hip3_mids(self) -> Dict[str, str]:
         """
-        Get mark prices for ALL active HIP-3 dexes (xyz, flx, vntl, etc.)
+        Get mark prices for ALL active HIP-3 dexes
 
         Returns prices in the same format as allMids: {"xyz:TSLA": "399.71", ...}
         so they can be merged directly into the allMids price dict.
@@ -1226,11 +1211,10 @@ class HyperliquidClient:
         """
         Get perp metadata + asset contexts for a specific HIP-3 dex.
 
-        Same structure as get_meta_and_asset_ctxs() but for builder-deployed
-        perp dexes (xyz, flx, vntl).
+        Same structure as get_meta_and_asset_ctxs() but builder-deployed perp dexes
 
         Args:
-            dex: Dex name (e.g., "xyz", "flx", "vntl")
+            dex: Dex name (e.g., "xyz")
 
         Returns:
             {
@@ -1292,15 +1276,14 @@ class HyperliquidClient:
         """
         Get list of active HIP-3 dex names, cached for 1 hour.
 
-        Dex names change rarely (new deployments are infrequent), so
-        caching avoids a wasted API call every cycle.
+        Dex names change slowly relative to the 1h cache TTL
 
         Args:
             force_refresh: Force refresh the cache
 
         Returns:
-            List of dex name strings, e.g. ["xyz", "flx", "vntl"]
-            Empty list on error (never None — safe to iterate)
+            List of dex name strings, e.g. ["xyz", ...] —
+            ten active as of Aug 2026, discovered dynamically
         """
         # Check cache
         if (not force_refresh
@@ -1356,7 +1339,7 @@ class HyperliquidClient:
 
         Args:
             address: User address in 0x format
-            dex: HIP-3 dex name (e.g., "xyz", "flx", "vntl")
+            dex: HIP-3 dex name (e.g., "xyz")
             session: Shared aiohttp session
 
         Returns:
