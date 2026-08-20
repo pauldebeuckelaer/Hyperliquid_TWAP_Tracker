@@ -7,14 +7,14 @@ Storage for whale portfolio tracking data.
 Tables:
 - whale_addresses: Master list of tracked whales with tier assignment
 - vip_addresses: Hand-picked whales for priority tracking
-- portfolio_snapshots: Hourly portfolio summaries
-- perp_snapshots: Hourly perp position details
-- spot_snapshots: Hourly spot balance details
-- vault_snapshots: Hourly vault holding details
+- portfolio_snapshots: Per-cycle portfolio summaries (cadence by tier)
+- perp_snapshots: Per-cycle perp position details, one row per coin
+- spot_snapshots: Per-cycle spot balance details
+- vault_snapshots: Per-cycle vault holding details
+- perp_account_snapshots: Per-address account equity (mainnet + HIP-3)
 """
 import logging
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 from typing import Dict, List, Optional, Set
 
 from .base import BaseStorage
@@ -130,6 +130,7 @@ class WhaleStorage(BaseStorage):
 
         # Perp account snapshots - per-address equity for tier_perp_amount
         # (Per-address shape, not per-coin. HIP-3 columns NULL for non-VIP/T1.)
+        # and any wallet with has_hip3=1; NULL otherwise.)
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS perp_account_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -607,9 +608,12 @@ class WhaleStorage(BaseStorage):
         match the semantics of tier_manager._deactivate_address. This
         prevents zombie rows where is_active=0 but stale tier data persists.
 
-        When activating (is_active=True), tier columns are left alone —
-        the next hourly tier refresh will populate them from fresh
-        snapshot data.
+        When activating (is_active=True), tier columns are left alone.
+        The next tier refresh assigns a tier ONLY if the wallet ranks
+        inside AXIS_CAPS on some axis. A wallet that clears the T5
+        threshold but ranks past the cap stays tier-NULL and is swept
+        by the cap-out path — see tier_manager. This is the reactivation
+        churn loop; is_active=1 does not imply the wallet will be tiered.
 
         Args:
             address: Wallet address
@@ -783,15 +787,14 @@ class WhaleStorage(BaseStorage):
         """
         Bulk insert perp positions for a single cycle.
 
-        Used by LiquidationTracker to dual-write position data every cycle,
-        so the tier system reads from fresh perp_snapshots instead of stale
-        TWAP-event-only data.
+        whale_state_collector is the sole writer. LiquidationTracker is a
+        pure analyzer and does not write here.
 
         Args:
             snapshot_time: ISO timestamp shared by all rows in this batch
             positions: List of position dicts with keys:
-                address, coin, side, size (abs), entry_price, liq_price,
-                leverage, margin_used, unrealized_pnl
+            address, coin, side, size (abs), entry_price, liq_price,
+            leverage, margin_used, unrealized_pnl, cum_funding_all_time, margin_mode
         """
         if not positions:
             return
@@ -799,7 +802,7 @@ class WhaleStorage(BaseStorage):
         try:
             rows = []
             for p in positions:
-                # Position dicts from LiquidationTracker have abs(size).
+                # Position dicts arrive with abs(size).
                 # Sign it for consistency with TWAP-path writes (LONG positive,
                 # SHORT negative).
                 size = p.get('size', 0)
@@ -856,7 +859,7 @@ class WhaleStorage(BaseStorage):
                 Mainnet (always present):
                     account_value, total_raw_usd, total_margin_used,
                     total_ntl_pos, withdrawable
-                HIP-3 (optional, None for non-VIP/T1):
+                HIP-3 (optional, None when HIP-3 was not fetched for this address):
                     hip3_account_value, hip3_total_raw_usd,
                     hip3_total_margin_used, hip3_total_ntl_pos,
                     hip3_withdrawable, hip3_dexes
@@ -1136,10 +1139,6 @@ class WhaleStorage(BaseStorage):
             LIMIT ?
         """, (limit,))
         return [row[0] for row in self.cursor.fetchall()]
-
-    # =========================================================================
-    # CLEANUP
-    # =========================================================================
 
     # =========================================================================
     # STATS

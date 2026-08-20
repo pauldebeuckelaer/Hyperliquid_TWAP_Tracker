@@ -12,17 +12,23 @@ Pipeline per fill:
   feed handler (harvest only, ZERO API calls) -> queue -> worker (throttled):
     1. dedup against processed-set (cleared daily)
     2. skip if already active + flagged (one local SELECT)
-    3. discovery.evaluate()  — full state fetch, $50K portfolio floor
+    3. discovery.evaluate()    full state fetch, gated on TIER_THRESHOLDS[axis][5]
+                               on ANY ONE axis (position / cash / spot)
                                (HIP-3 included: this instance runs with
-                               hip3_tracking_enabled=True, so pure-HIP-3
-                               whales pass the floor)
+                               hip3_tracking_enabled=True. REQUIRED — without
+                               it hip3_account_value is zero and a pure-HIP-3
+                               whale cannot clear the cash axis)
     4. discovery.register()  — new: INSERT / inactive: RESURRECT / active: no-op
     5. collector.persist()   — bootstrap snapshot from in-hand state, no re-fetch
-                               -> next hourly tier refresh assigns a real tier
+                               -> next tier refresh assigns a tier ONLY if the
+                               wallet ranks inside AXIS_CAPS. Clearing the T5
+                               threshold is not enough; unranked wallets stay
+                               tier-NULL and are swept. This path is a
+                               contributor to the reactivation churn loop.
     6. flag if HIP-3 notional >= flag_floor (read from the in-hand state,
        zero extra calls) -> fast ladder collects its HIP-3 every cycle
 
-Registration floor ($50K, evaluate's own) decides "is this a whale".
+Registration floor (T5 threshold on any one axis, evaluates own) and decides "is this a whale".
 Flag floor ($100K HIP-3 notional) decides "is its HIP-3 worth per-cycle
 collection". Separate questions, separate floors.
 """
@@ -177,7 +183,7 @@ class HIP3Discovery:
         # The exact same path an order-start event takes in main.py.
         state = await self.discovery.evaluate(addr, session)
         if state is None:
-            # API failure or portfolio < $50K — stays in processed-set
+            # API failure or no axis clears its T5 threshold — stays in
             # until the daily reset, then gets another look if still trading.
             self.below_floor += 1
             return
