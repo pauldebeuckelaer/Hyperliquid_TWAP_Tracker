@@ -4,13 +4,21 @@ Tier Manager
 ============
 Manages tiered whale address fetching to respect API limits.
 
-Tiers (by position value):
-- VIP: Hand-picked addresses (every 1 min)
-- Tier 1: $5M+ positions (every 1 min)
-- Tier 2: $1M-5M positions (every 5 min)
-- Tier 3: $500K-1M positions (every 15 min)
-- Tier 4: $250K-500K positions (every 30 min)
-- Tier 5: $100K-250K positions (every 60 min)
+TTri-axis tiering. Each address is scored independently on three axes —
+position (notional exposure), cash (deposited capital), spot (spot value) —
+and the effective tier is min() across whichever axes qualified, treating
+None as infinity. See TIER_THRESHOLDS below for the live numbers.
+
+Assignment is RANK-THEN-THRESHOLD, not threshold alone. AXIS_CAPS admits
+only the top 200 per axis; an address can clear a T5 threshold and still
+get no tier because it ranks past the cap. Those become untiered orphans
+and are swept via the cap-out path. This is the reactivation churn loop:
+whale_discovery's gate is the threshold alone, so wallets between the
+threshold and the cap are registered, collected, swept, and re-registered
+continuously. No threshold change reaches them — they already clear it.
+
+Fetch cadence by effective tier (see TIER_FREQUENCIES):
+- VIP / T1: every cycle | T2: 5 | T3: 15 | T4: 30 | T5: 60
 
 Usage:
     from tier_manager import TierManager
@@ -188,7 +196,7 @@ class TierManager:
 
         Refresh happens:
         - On first cycle (initialization)
-        - Every 60 cycles (hourly)
+        - When the cycle counter reaches 60 (once per hour-long wrap)
 
         Returns:
             True if refresh needed
@@ -568,8 +576,9 @@ class TierManager:
 
         Only considers snapshots from the last 130 minutes - this ensures
         tier assignment runs on FRESH data. Whales whose latest snapshot
-        is older than this window are treated as having no positions
-        and get deactivated by refresh_tiers_from_snapshots().
+        is older than this window .are treated as having no positions.
+        Absent from every axis, they route to the disappeared path
+        — two-strike, verify fetch, breaker-guarded — not to immediate deactivation.
 
         Why 130 minutes? T5 fetches every 60 cycles. 130 gives slack for
         fetch latency, brief API outages, and the gap between the cycle
@@ -737,7 +746,7 @@ class TierManager:
             tier_perp_amount: Tier from deposited cash (None if subthreshold)
             tier_spot: Tier from spot holdings (None if subthreshold)
             position_value: Total notional exposure value
-            raw_usd_value: Total deposited cash (may be negative)
+            raw_usd_value: Total deposited cash
             spot_value: Total spot holdings value
         """
         timestamp = datetime.now().isoformat()
@@ -778,7 +787,8 @@ class TierManager:
 
     def _deactivate_address(self, address: str):
         """
-        Mark address as inactive (below all tier thresholds on ALL axes).
+        Mark address as inactive. Reached from both the cap-out path
+        (ranked out of AXIS_CAPS) and the disappeared path (no data on any axis).
 
         Clears all axis tier columns and value columns to prevent stale data
         from leaking back into queries.
@@ -871,6 +881,7 @@ class TierManager:
             addresses = self.storage.get_addresses_by_tier(tier)
             stats['tiers'][tier] = {
                 'count': len(addresses),
+                # position axis only — cash/spot thresholds differ
                 'threshold': TIER_THRESHOLDS['position'][tier],
                 'frequency': TIER_FREQUENCIES[tier],
             }
