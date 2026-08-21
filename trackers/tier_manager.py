@@ -435,7 +435,12 @@ class TierManager:
                 "WHERE address = ?", (address,))
             row = self.storage.cursor.fetchone()
             if row and row[0]:
-                self._deactivate_address(address, source='capout')  # strike two
+                self._deactivate_address(
+                    address, source='capout',
+                    fresh=(position_values.get(address),
+                           raw_usd_values.get(address),
+                           spot_values.get(address)),
+                )  # strike two
                 executed_deactivations.append(address)
             else:
                 self.storage.cursor.execute(
@@ -804,7 +809,8 @@ class TierManager:
             timestamp,
         ))
 
-    def _deactivate_address(self, address: str, source: str = 'unknown'):
+    def _deactivate_address(self, address: str, source: str = 'unknown',
+                            fresh: Optional[Tuple[Optional[float], Optional[float], Optional[float]]] = None):
         """
         Mark address as inactive. Reached from both the cap-out path
         (ranked out of AXIS_CAPS) and the disappeared path (no data on any axis).
@@ -815,6 +821,10 @@ class TierManager:
         VIP backstop: VIPs are never deactivated, regardless of tier state or
         caller. Hand-picked addresses (e.g. Macro Short Whale, kept for
         code-path validation) stay active even when subthreshold.
+
+        Value columns on the recorded event differ by path: 'capout' rows carry
+        values measured at the refresh that dropped the wallet; 'disappeared'
+        rows carry last-known values from whale_addresses, which may be stale.
         """
         if self.storage.is_vip(address):
             logger.debug(f"Skipping deactivation of VIP {address[:10]}...")
@@ -828,14 +838,30 @@ class TierManager:
 
         prev = self.storage.cursor.fetchone()
         if prev:
+            pos, raw, spot = prev[1], prev[2], prev[3]
+            if fresh is not None:
+                # Cap-out path: the refresh holds this wallet's CURRENT values.
+                # The whale_addresses value columns are written only by a
+                # qualifying refresh, so on a two-strike cap-out they are ~2h
+                # stale — and biased upward, since the last qualifying refresh
+                # is by construction the last one before the wallet began
+                # closing. Measured Aug 21: recorded >= actual in 20/20 cases,
+                # worst 6,619,779 recorded against 1,001 actual.
+                # Absent from a value dict means zero on that axis (no rows are
+                # written for a wallet holding nothing), not unknown.
+                # untiered orphan absent from all three dicts records zeros —
+                # deliberate: whale_addresses holds nothing better for it.
+                pos = fresh[0] if fresh[0] is not None else 0.0
+                raw = fresh[1] if fresh[1] is not None else 0.0
+                spot = fresh[2] if fresh[2] is not None else 0.0
             self.storage.record_lifecycle_event(
                 address=address,
                 event_type='deactivate',
                 source=source,
                 tier=prev[0],
-                position_value=prev[1],
-                raw_usd_value=prev[2],
-                spot_value=prev[3],
+                position_value=pos,
+                raw_usd_value=raw,
+                spot_value=spot,
             )
 
         timestamp = datetime.now().isoformat()
