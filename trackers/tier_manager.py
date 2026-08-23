@@ -315,6 +315,21 @@ class TierManager:
         active_tiered_set = {row[0] for row in self.storage.cursor.fetchall()}
         logger.info(f"Active-tiered candidate pool: {len(active_tiered_set)}")
 
+        # Superset of active_tiered_set: every active wallet regardless of
+        # tier. The difference between the two sets is exactly the
+        # active-but-untiered population, which lets the activation path
+        # below tell a real reactivation (was inactive) from a tier grant
+        # (was already active, just ranked in). One query, ~350 rows —
+        # the per-address is_active read this replaces would have been
+        # one SELECT per qualifying wallet per refresh.
+        self.storage.cursor.execute("""
+            SELECT address FROM whale_addresses WHERE is_active = 1
+        """)
+        active_set = {row[0] for row in self.storage.cursor.fetchall()}
+        logger.info(
+            f"Active pool: {len(active_set)} "
+            f"({len(active_set) - len(active_tiered_set)} active-but-untiered)")
+
         for address in all_addresses:
             pos_value = position_values.get(address, 0)
             raw_usd = raw_usd_values.get(address, 0)
@@ -363,13 +378,15 @@ class TierManager:
             if tier_pos is None and tier_cash is None and tier_spot is not None:
                 spot_only_count += 1
 
-
-            # NOTE: was_dormant is true for a wallet that was INACTIVE and for
-            # one that was active-but-untiered. Those are different events;
-            # distinguishing them needs a per-address is_active read (~350
-            # extra SELECTs per refresh). Taking the free version — expect
-            # 'tier_update' to over-count relative to true reactivations.
-            was_dormant = address not in active_tiered_set
+            # Two different transitions land here, split by active_set:
+            #   'activate'   — wallet was INACTIVE, is back. A real reactivation.
+            #   'tier_grant' — wallet was ACTIVE but untiered, now ranked in.
+            #                  Nothing turned on; it only gained a tier.
+            # Recording both as 'activate' inflated reactivation counts, which
+            # is the exact measurement the protected-grants-tier rule depends on.
+            lifecycle_event = None
+            if address not in active_tiered_set:
+                lifecycle_event = 'tier_grant' if address in active_set else 'activate'
 
             self._update_address_tier(
                 address, effective_tier,
@@ -377,10 +394,10 @@ class TierManager:
                 pos_value, raw_usd, spot_val,
             )
 
-            if was_dormant:
+            if lifecycle_event:
                 self.storage.record_lifecycle_event(
                     address=address,
-                    event_type='activate',
+                    event_type=lifecycle_event,
                     source='tier_update',
                     tier=effective_tier,
                     position_value=pos_value,
