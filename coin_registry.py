@@ -674,10 +674,21 @@ def init_hip3_registry(hl_client) -> bool:
     Step 1: perpDexs → discover dex names and assign ID ranges
     Step 2: metaAndAssetCtxs per dex → get correct asset order for ID mapping
 
-    Each dex gets a 10K range starting at 110000:
-      - dex index 0 → 110000-119999
-      - dex index 1 → 120000-129999
+    Each dex gets a 10K range. perpDexs[0] is the null mainnet slot, so
+    dex index 1 is the first real dex:
+      - dex index 1 → 110000-119999
+      - dex index 2 → 120000-129999
       - etc.
+
+    BUILD-LOCAL-THEN-SWAP: the module globals are rebound only after a
+    fully successful rebuild. This function is re-entered at runtime by
+    _maybe_refresh("hip3") on a lookup miss, so mutating the live dicts
+    in place would (a) leave entries for dexes that have since been
+    removed from perpDexs — and since _resolve_spot_token takes the FIRST
+    matching range in insertion order, a stale entry would shadow the
+    live one and resolve asset IDs under the wrong dex name, and (b)
+    expose collector threads to a partially-rebuilt map. A failed refresh
+    now leaves the previous registry serving unchanged.
     """
     global _hip3_market_map, _hip3_ranges
 
@@ -686,82 +697,119 @@ def init_hip3_registry(hl_client) -> bool:
         perp_dexs = hl_client.get_perp_dexs()
 
         if not perp_dexs:
-            logger.error("Failed to fetch perpDexs - HIP-3 resolution disabled "
-                         "(will self-heal via _maybe_refresh on first HIP-3 miss)")
+            logger.error("Failed to fetch perpDexs - HIP-3 registry unchanged "
+                         "(will retry via _maybe_refresh on next HIP-3 miss)")
             return False
 
-        # Collect dex names in order
-        # Discover dex names and assign ranges
+        new_ranges: Dict[str, tuple] = {}
+
         for dex_index, dex in enumerate(perp_dexs):
             if dex is None or not isinstance(dex, dict) or not dex.get("name"):
                 continue
 
             name = dex["name"]
-            range_start = HIP3_START + ((dex_index - 1) * 10000)
-            range_end = range_start + 10000
 
-            _hip3_ranges[name] = (range_start, range_end)
+            # Range base is the asset-ID grid, NOT HIP3_START. They coincide
+            # today only because index 0 is the unnamed mainnet slot; keeping
+            # them separate means a future named dex at index 0 fails loudly
+            # below instead of being assigned 100000-109999, which collides
+            # with the spot range and is unreachable from every >= HIP3_START
+            # dispatch in this module.
+            range_start = 100_000 + (dex_index * 10_000)
+            range_end = range_start + 10_000
 
+            if range_start < HIP3_START:
+                logger.error(
+                    f"HIP-3 dex '{name}' at index {dex_index} maps to "
+                    f"{range_start}, below HIP3_START ({HIP3_START}) - "
+                    f"skipping. perpDexs layout has changed."
+                )
+                continue
+
+            new_ranges[name] = (range_start, range_end)
             logger.info(f"HIP-3 dex '{name}': range {range_start}-{range_end - 1}")
 
-        if not _hip3_ranges:
-            logger.warning("No named HIP-3 dexes found")
+        if not new_ranges:
+            logger.warning("No named HIP-3 dexes found - registry unchanged")
             return False
 
         # Step 2: Fetch metaAndAssetCtxs per dex for correct universe order
+        new_market_map: Dict[str, Dict[int, str]] = {}
         loaded_count = 0
+        carried_count = 0
 
-        for name, (range_start, range_end) in _hip3_ranges.items():
+        for name, (range_start, range_end) in new_ranges.items():
             try:
                 result = hl_client._make_request("metaAndAssetCtxs", {"dex": name})
 
                 if not result or not isinstance(result, list) or len(result) < 2:
-                    logger.warning(f"No metaAndAssetCtxs data for dex '{name}'")
-                    _hip3_market_map[name] = {}
-                    continue
+                    raise ValueError("malformed or empty metaAndAssetCtxs response")
 
                 meta = result[0]
                 universe = meta.get("universe", [])
 
-                _hip3_market_map[name] = {}
-
+                dex_map: Dict[int, str] = {}
                 for i, asset in enumerate(universe):
                     asset_name = asset.get("name")
                     if asset_name:
                         # Strip dex prefix if present (universe returns "xyz:COIN", we want "COIN")
                         if asset_name.startswith(f"{name}:"):
                             asset_name = asset_name[len(name) + 1:]
-                        _hip3_market_map[name][i] = asset_name
+                        dex_map[i] = asset_name
 
-                loaded_count += len(_hip3_market_map[name])
+                if not dex_map:
+                    raise ValueError("universe contained no named assets")
+
+                new_market_map[name] = dex_map
+                loaded_count += len(dex_map)
 
                 logger.info(
-                    f"HIP-3 dex '{name}': {len(_hip3_market_map[name])} assets loaded "
+                    f"HIP-3 dex '{name}': {len(dex_map)} assets loaded "
                     f"(universe order)"
                 )
 
-                # Log first 5 for verification
                 if logger.isEnabledFor(logging.DEBUG):
-                    samples = list(_hip3_market_map[name].items())[:5]
+                    samples = list(dex_map.items())[:5]
                     logger.debug(f"  Sample: {samples}")
 
             except Exception as e:
-                logger.warning(f"Failed to fetch universe for dex '{name}': {e}")
-                _hip3_market_map[name] = {}
+                # Carry forward the previous map for this dex rather than
+                # blanking it. A transient timeout must not turn every
+                # resolution for this dex into a "{prefix}_{index}"
+                # placeholder for the length of the refresh cooldown.
+                previous = _hip3_market_map.get(name, {})
+                new_market_map[name] = dict(previous)
+                if previous:
+                    carried_count += len(previous)
+                    logger.warning(
+                        f"Failed to fetch universe for dex '{name}': {e} - "
+                        f"carried forward {len(previous)} existing assets"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to fetch universe for dex '{name}': {e} - "
+                        f"no previous map to carry forward, dex unresolvable"
+                    )
                 continue
 
-        if loaded_count > 0:
-            logger.info(
-                f"✅ HIP-3 registry initialized: {loaded_count} assets across "
-                f"{len(_hip3_ranges)} dexes: {list(_hip3_ranges.keys())}"
-            )
-            return True
-        else:
-            logger.warning("No HIP-3 assets loaded")
+        if loaded_count == 0 and carried_count == 0:
+            logger.warning("No HIP-3 assets loaded - registry unchanged")
             return False
 
+        # Atomic swap: readers see either the old registry or the new one,
+        # never a half-built one.
+        _hip3_ranges = new_ranges
+        _hip3_market_map = new_market_map
+
+        logger.info(
+            f"✅ HIP-3 registry initialized: {loaded_count} assets fetched"
+            + (f", {carried_count} carried forward" if carried_count else "")
+            + f" across {len(_hip3_ranges)} dexes: {list(_hip3_ranges.keys())}"
+        )
+        return True
+
     except Exception as e:
-        logger.error(f"❌ Failed to initialize HIP-3 registry: {e}")
+        logger.error(f"❌ Failed to initialize HIP-3 registry: {e} - registry unchanged")
         import traceback
         logger.debug(traceback.format_exc())
         return False
