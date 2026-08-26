@@ -64,7 +64,7 @@ PARAMS = {
     "start_date": "2026-08-14T00:00:00",
 }
 
-METHOD_TAG = "v4"   # v4: vanish window measured on the perp clock, not the liquidation-table clock
+METHOD_TAG = "v5"   # v5: blended-entry return outranks the price-traversal check
 
 DEFAULT_DB = str(Path(__file__).resolve().parent.parent / "data" / "twap.db")
 
@@ -371,6 +371,14 @@ def decide(ep):
     liq, inject margin. That needs a series, hence min_rows. An episode can
     have a solid verdict and an unreadable defense channel; that combination
     is exactly the one to exclude from any defense-vs-outcome statistic.
+
+    PRECEDENCE. The returning position outranks the price check. A liquidated
+    position comes back as a NEW position, so a same-side return with a
+    BLENDED entry proves the old one was never closed — it was cut and re-added
+    inside the gap. In that case a price crossing means only that the stored
+    liq level was stale, not that anything died. NBIS was the case: a 75-minute
+    gap in the middle of a ladder, size 1646 -> 845 -> 1953, entry walking down
+    the whole way, position still open a week later.
     """
     defense_readable = int(ep["n_rows"] >= PARAMS["min_rows"])
 
@@ -378,6 +386,9 @@ def decide(ep):
         return "open", defense_readable
     if ep["entry_price_reset"] == 1:
         return "dead", defense_readable
+    if ep["reentry_note"] == "blended_add":
+        # Same side, entry re-blended: it survived the gap.
+        return "survived", defense_readable
     if ep["position_vanished"] == 1:
         if ep["price_traversed_liq"] == 1:
             return "dead", defense_readable
