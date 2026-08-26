@@ -21,7 +21,8 @@ import argparse
 import sqlite3
 import statistics
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # RULES. Most edits belong in this block and nowhere else.
@@ -63,9 +64,9 @@ PARAMS = {
     "start_date": "2026-08-14T00:00:00",
 }
 
-METHOD_TAG = "v1"
+METHOD_TAG = "v2"   # v2: verdict decoupled from min_rows; classifiable now means "defense readable"
 
-DEFAULT_DB = "data/twap.db"
+DEFAULT_DB = str(Path(__file__).resolve().parent.parent / "data" / "twap.db")
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,17 @@ def parse_ts(s):
 
 def iso(dt):
     return None if dt is None else dt.isoformat()
+
+
+def last_non_null(values):
+    for v in reversed(values):
+        if v is not None:
+            return v
+    return None
+
+
+def now_iso():
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def connect(path):
@@ -284,19 +296,32 @@ def price_traversed(con, coin, t0, t1, liq_price, is_short):
 # ---------------------------------------------------------------------------
 
 def decide(ep):
-    if ep["n_rows"] < PARAMS["min_rows"]:
-        return "unreadable", 0
+    """Two independent readings, deliberately not conflated.
+
+    VERDICT (dead/survived) needs only the LAST row plus a price check —
+    episode #1 had exactly one row and was still decidable, because the whole
+    liquidation ladder ran inside one polling gap and price visibly crossed
+    the stored liq level.
+
+    CLASSIFIABLE means DEFENSE was readable — did the wallet cut size, move
+    liq, inject margin. That needs a series, hence min_rows. An episode can
+    have a solid verdict and an unreadable defense channel; that combination
+    is exactly the one to exclude from any defense-vs-outcome statistic.
+    """
+    defense_readable = int(ep["n_rows"] >= PARAMS["min_rows"])
+
     if ep["is_open"]:
-        return "open", 1
+        return "open", defense_readable
     if ep["entry_price_reset"] == 1:
-        return "dead", 1
+        return "dead", defense_readable
     if ep["position_vanished"] == 1:
         if ep["price_traversed_liq"] == 1:
-            return "dead", 1
+            return "dead", defense_readable
         if ep["price_traversed_liq"] == 0:
-            return "survived", 1
+            return "survived", defense_readable
+        # no price data and no liq level to test against — genuinely unknown
         return "ambiguous", 0
-    return "survived", 1
+    return "survived", defense_readable
 
 
 # ---------------------------------------------------------------------------
@@ -312,11 +337,13 @@ def build(con, labels_only=False, verbose=False):
     for pair in candidate_pairs(con, labels_only):
         addr, coin = pair["address"], pair["coin"]
         rows = pair_series(con, addr, coin)
-        if len(rows) < 2:
+        if not rows:
             continue
         times = [parse_ts(r["snapshot_time"]) for r in rows]
         times = [t for t in times if t]
-        cadence = observed_cadence(times)
+        # A one-row pair still has a decidable outcome — do not drop it here.
+        # cadence comes back None and the vanish window falls back to its floor.
+        cadence = observed_cadence(times) if len(times) > 1 else None
 
         for idxs in split_approaches(rows, cadence):
             erows = [rows[i] for i in idxs]
@@ -337,9 +364,13 @@ def build(con, labels_only=False, verbose=False):
                     for i in range(1, len(etimes))]
             max_gap = max(gaps) if gaps else 0.0
 
-            prows = perp_window(con, addr, coin, t_start, t_end)
+            # Backward pad only. A single-row episode has a zero-width window,
+            # which returns no perp rows at all; padding forward instead would
+            # risk pulling in a post-vanish re-entry and faking a size change.
+            pad = timedelta(seconds=max(cadence or 60, 60) * 2)
+            prows = perp_window(con, addr, coin, t_start - pad, t_end)
             size_changed, size_pct, liq_moved = defense_columns(prows, erows)
-            mode = margin_mode_for(con, addr, coin, t_start, t_end)
+            mode = margin_mode_for(con, addr, coin, t_start - pad, t_end)
 
             rate = baseline_liq_rate(con, addr, coin, t_start)
             span_h = max((t_end - t_start).total_seconds() / 3600.0, 1e-9)
@@ -349,8 +380,21 @@ def build(con, labels_only=False, verbose=False):
             last_seen = parse_ts(prows[-1]["snapshot_time"]) if prows else t_end
             last_size = prows[-1]["size"] if prows else erows[-1]["size"]
             last_entry = prows[-1]["entry_price"] if prows else erows[-1]["entry_price"]
-            last_liq = (prows[-1]["liquidation_price"] if prows else erows[-1]["liq_price"])
-            is_short = (last_size or 0) < 0
+
+            # Take the last NON-NULL liq level from either source. A single
+            # null on the final perp row was silently forcing 'ambiguous'.
+            last_liq = last_non_null(
+                [r["liquidation_price"] for r in prows] +
+                [r["liq_price"] for r in erows])
+
+            # size can be null too; fall back to the side label.
+            if last_size is None:
+                last_size = last_non_null([r["size"] for r in erows])
+            if last_size is None:
+                side = last_non_null([r["side"] for r in erows])
+                is_short = bool(side and str(side).lower().startswith(("s", "short")))
+            else:
+                is_short = last_size < 0
 
             vanish_win = timedelta(seconds=max((cadence or 60) * PARAMS["vanish_multiple"],
                                                PARAMS["vanish_floor_minutes"] * 60))
@@ -395,7 +439,7 @@ def build(con, labels_only=False, verbose=False):
                 "price_traversed_liq": traversed,
                 "entry_price_reset": entry_reset,
                 "is_open": is_open,
-                "built_at": datetime.utcnow().isoformat(),
+                "built_at": now_iso(),
             }
             ep["verdict"], ep["classifiable"] = decide(ep)
             ep.pop("is_open")
