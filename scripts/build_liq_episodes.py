@@ -64,7 +64,7 @@ PARAMS = {
     "start_date": "2026-08-14T00:00:00",
 }
 
-METHOD_TAG = "v2"   # v2: verdict decoupled from min_rows; classifiable now means "defense readable"
+METHOD_TAG = "v3"   # v3: reentry check branches on side flip vs same-side blending
 
 DEFAULT_DB = str(Path(__file__).resolve().parent.parent / "data" / "twap.db")
 
@@ -262,11 +262,51 @@ def margin_mode_for(con, address, coin, t0, t1):
 # ---------------------------------------------------------------------------
 
 def next_perp_row(con, address, coin, after, until):
+    """Any row for this pair in the window — used for the vanish check."""
     return con.execute(
         """SELECT snapshot_time, size, entry_price FROM perp_snapshots
            WHERE address = ? AND snapshot_time > ? AND snapshot_time <= ?
              AND coin = ? ORDER BY snapshot_time LIMIT 1""",
         (address, iso(after), iso(until), coin)).fetchone()
+
+
+def reentry_check(con, address, coin, last_seen, last_entry, last_size, last_liq):
+    """Classify the position that comes back after a disappearance.
+
+    Returns (entry_price_reset, note) where entry_price_reset is 1 only when
+    the returning position PROVES the old one is gone.
+
+    SAME SIDE: an add blends the entry price, so a changed entry is not
+    evidence by itself — this is what made NBIS (a laddered accumulation) read
+    as a death. Blending always lands the new entry BETWEEN the old entry and
+    the add price, so it can never cross the old liquidation level. An entry
+    beyond that level therefore cannot be a blend.
+
+    SIDE FLIPPED: the old position is definitively gone, but a flip is also
+    exactly what a voluntary capitulate-and-flip looks like (episode #5). So a
+    flip asserts nothing about HOW it ended — fall through to the price check.
+    """
+    back = con.execute(
+        """SELECT snapshot_time, size, entry_price FROM perp_snapshots
+           WHERE address = ? AND snapshot_time > ? AND snapshot_time <= ?
+             AND coin = ? ORDER BY snapshot_time LIMIT 1""",
+        (address, iso(last_seen),
+         iso(last_seen + timedelta(hours=PARAMS["reentry_hours"])), coin)).fetchone()
+    if back is None or back["entry_price"] is None or last_entry is None:
+        return 0, None
+
+    old_short = (last_size or 0) < 0
+    new_short = (back["size"] or 0) < 0
+
+    if old_short != new_short:
+        return 0, "side_flip"
+
+    if last_liq is None:
+        return 0, "same_side_no_liq"
+
+    new_entry = back["entry_price"]
+    beyond = new_entry > last_liq if old_short else new_entry < last_liq
+    return (1, "entry_beyond_liq") if beyond else (0, "blended_add")
 
 
 def price_traversed(con, coin, t0, t1, liq_price, is_short):
@@ -406,14 +446,12 @@ def build(con, labels_only=False, verbose=False):
 
             traversed = None
             entry_reset = 0
+            reentry_note = None
             if vanished and not is_open:
                 traversed = price_traversed(con, coin, last_seen,
                                             last_seen + vanish_win, last_liq, is_short)
-                back = next_perp_row(con, addr, coin, last_seen,
-                                     last_seen + timedelta(hours=PARAMS["reentry_hours"]))
-                if back and back["entry_price"] and last_entry:
-                    entry_reset = int(abs(back["entry_price"] - last_entry)
-                                      / max(abs(last_entry), 1e-9) > 0.001)
+                entry_reset, reentry_note = reentry_check(
+                    con, addr, coin, last_seen, last_entry, last_size, last_liq)
 
             ep = {
                 "key": f"{addr}:{coin}:{iso(min_dist_time)}",
@@ -439,14 +477,17 @@ def build(con, labels_only=False, verbose=False):
                 "price_traversed_liq": traversed,
                 "entry_price_reset": entry_reset,
                 "is_open": is_open,
+                "reentry_note": reentry_note,
                 "built_at": now_iso(),
             }
             ep["verdict"], ep["classifiable"] = decide(ep)
             ep.pop("is_open")
+            note = ep.pop("reentry_note")
             out.append(ep)
             if verbose:
-                print(f"  {ep['key'][:24]}... {coin:12} "
-                      f"min={min_dist:.3f} n={len(erows):4} -> {ep['verdict']}")
+                tail = f"  [{note}]" if note else ""
+                print(f"  {ep['key'][:44]} {coin:12} "
+                      f"min={min_dist:.3f} n={len(erows):4} -> {ep['verdict']}{tail}")
     return mv, out
 
 
