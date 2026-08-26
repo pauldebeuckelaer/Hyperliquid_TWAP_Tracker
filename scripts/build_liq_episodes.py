@@ -64,7 +64,7 @@ PARAMS = {
     "start_date": "2026-08-14T00:00:00",
 }
 
-METHOD_TAG = "v3"   # v3: reentry check branches on side flip vs same-side blending
+METHOD_TAG = "v4"   # v4: vanish window measured on the perp clock, not the liquidation-table clock
 
 DEFAULT_DB = str(Path(__file__).resolve().parent.parent / "data" / "twap.db")
 
@@ -155,6 +155,30 @@ def pair_series(con, address, coin):
 # ---------------------------------------------------------------------------
 # stage 2 — cadence + approach splitting
 # ---------------------------------------------------------------------------
+
+def perp_cadence(con, address, coin, t0, t1):
+    """Median inter-row gap in perp_snapshots for this pair.
+
+    This is a DIFFERENT CLOCK from the liquidation_snapshots cadence.
+    liquidation_snapshots only writes while the position sits within 20% of
+    its liquidation price, so during an active ladder the position drops out
+    of that window repeatedly and its measured cadence is meaningless as a
+    basis for "how long is too long between rows". perp_snapshots writes every
+    cycle for any OPEN position, so absence there is the real signal.
+    """
+    rows = con.execute(
+        """SELECT snapshot_time FROM perp_snapshots
+           WHERE address = ? AND snapshot_time BETWEEN ? AND ? AND coin = ?
+           ORDER BY snapshot_time""",
+        (address, iso(t0), iso(t1), coin)).fetchall()
+    ts = [parse_ts(r["snapshot_time"]) for r in rows]
+    ts = [t for t in ts if t]
+    if len(ts) < 2:
+        return None
+    gaps = [(ts[i] - ts[i - 1]).total_seconds() for i in range(1, len(ts))]
+    gaps = [g for g in gaps if g > 0]
+    return statistics.median(gaps) if gaps else None
+
 
 def observed_cadence(times):
     """Median inter-row gap in seconds. The wallet's real clock, including
@@ -436,7 +460,15 @@ def build(con, labels_only=False, verbose=False):
             else:
                 is_short = last_size < 0
 
-            vanish_win = timedelta(seconds=max((cadence or 60) * PARAMS["vanish_multiple"],
+            # The vanish window must be measured against the PERP clock, not
+            # the liquidation_snapshots clock — see perp_cadence(). Measure it
+            # over a wide window around the episode so an active ladder does
+            # not distort it.
+            p_cad = perp_cadence(con, addr, coin,
+                                 t_start - timedelta(hours=24),
+                                 t_end + timedelta(hours=24))
+            vanish_win = timedelta(seconds=max((p_cad or cadence or 60)
+                                               * PARAMS["vanish_multiple"],
                                                PARAMS["vanish_floor_minutes"] * 60))
             nxt = next_perp_row(con, addr, coin, last_seen, last_seen + vanish_win)
             vanished = int(nxt is None)
@@ -464,7 +496,9 @@ def build(con, labels_only=False, verbose=False):
                 "min_dist": min_dist,
                 "peak_notional": peak_notional,
                 "margin_mode": mode,
-                "obs_cadence_s": cadence,
+                # The wallet's real polling clock. The liquidation_snapshots
+                # cadence is not it — that table gates on proximity to liq.
+                "obs_cadence_s": p_cad or cadence,
                 "n_rows": len(erows),
                 "max_gap_s": max_gap,
                 "size_changed": size_changed,
