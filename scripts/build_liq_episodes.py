@@ -16,11 +16,13 @@ Column-name trap: liquidation_snapshots.liq_price
                   perp_snapshots.liquidation_price
 Same quantity, two names.
 
-REQUIRES (run once before the first v6 build):
-    ALTER TABLE liq_episodes ADD COLUMN truncated INTEGER;
+REQUIRES (run once each, before the first build that needs them):
+    ALTER TABLE liq_episodes ADD COLUMN truncated INTEGER;          -- v6
+    ALTER TABLE liq_episodes ADD COLUMN cadence_snapped_s REAL;     -- v7
 """
 
 import argparse
+import math
 import sqlite3
 import statistics
 import sys
@@ -56,9 +58,13 @@ PARAMS = {
     "baseline_hours": 48,
     # After the last seen row, how long to look for the position coming back
     # before calling it vanished (also the window for the price-traversal
-    # check). Multiple of cadence, floored.
+    # check). Multiple of the LOCAL cadence, floored.
     "vanish_multiple": 3,
     "vanish_floor_minutes": 15,
+    # How many perp rows before last_seen to measure the local cadence over.
+    # Small on purpose: the point is the sampling rate AT THE MOMENT the rows
+    # stopped, not the wallet's average over the surrounding days.
+    "cadence_window_rows": 6,
     # How long after a vanish to look for a re-entry with a reset entry_price.
     "reentry_hours": 24,
     # Relative size move that counts as a real size change.
@@ -76,8 +82,16 @@ PARAMS = {
     "start_date": "2026-08-14T00:00:00",
 }
 
-METHOD_TAG = "v6"   # v6: truncation — refuse vanish-based verdicts during a collection blackout
+METHOD_TAG = "v7"   # v7: vanish window from LOCAL cadence snapped to TIER_FREQUENCIES
 
+# trackers/tier_manager.py TIER_FREQUENCIES, in seconds. Cycles are 1 minute:
+#   vip/T1: 1   T2: 5   T3: 15   T4: 30   T5: 60
+# These are the ONLY sampling rates the collector produces, so a measured
+# median landing between two of them is jitter, not a real rate. Demotions are
+# never persisted — tier_manager computes `demoted` and only logger.debug's it
+# — so the tier a wallet held at a given moment cannot be read from the DB. It
+# has to be inferred from row spacing and snapped back onto this ladder.
+TIER_CADENCES_S = (60, 300, 900, 1800, 3600)
 
 DEFAULT_DB = str(Path(__file__).resolve().parent.parent / "data" / "twap.db")
 
@@ -128,6 +142,19 @@ def connect(path):
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA busy_timeout = 30000")
     return con
+
+
+def snap_to_tier_cadence(measured_s):
+    """Snap a measured median gap onto the TIER_CADENCES_S ladder.
+
+    Ratio distance, not absolute: the ladder is multiplicative, so 600s is
+    genuinely ambiguous between 300 and 900 in a way that 1800 vs 1801 is not.
+    Anything above the top rung snaps to it — a gap longer than T5 is missed
+    polls, not a slower tier.
+    """
+    if not measured_s or measured_s <= 0:
+        return None
+    return min(TIER_CADENCES_S, key=lambda c: abs(math.log(measured_s / c)))
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +216,39 @@ def deactivations(con):
 # stage 2 — cadence + approach splitting
 # ---------------------------------------------------------------------------
 
+def local_perp_cadence(con, address, coin, t_ref):
+    """Median inter-row gap over the last few perp rows at or before t_ref.
+
+    Replaces the +/-24h median used through v6. Tier tracks position size, so
+    a wallet that de-risks gets demoted and sampled more slowly — and a
+    two-day median hides that behind the fast rows on either side.
+    0x90b5e0c5 sat at 1800s through an entire morning while the wide median
+    still read ~300s, which set a 15-minute vanish window on a wallet being
+    polled every 30 minutes. Three of its episodes then "vanished" while the
+    collector was working perfectly.
+
+    Local, and short: what matters is the sampling rate at the moment the rows
+    stopped, not the wallet's average over the surrounding days.
+    """
+    rows = con.execute(
+        """SELECT snapshot_time FROM perp_snapshots
+           WHERE address = ? AND coin = ? AND snapshot_time <= ?
+           ORDER BY snapshot_time DESC LIMIT ?""",
+        (address, coin, iso(t_ref), PARAMS["cadence_window_rows"])).fetchall()
+    ts = sorted(t for t in (parse_ts(r["snapshot_time"]) for r in rows) if t)
+    if len(ts) < 2:
+        return None
+    gaps = [(ts[i] - ts[i - 1]).total_seconds() for i in range(1, len(ts))]
+    gaps = [g for g in gaps if g > 0]
+    return statistics.median(gaps) if gaps else None
+
+
 def perp_cadence(con, address, coin, t0, t1):
-    """Median inter-row gap in perp_snapshots for this pair.
+    """Median inter-row gap in perp_snapshots over a wide window.
+
+    Kept only as the FALLBACK for local_perp_cadence() — used when the local
+    window holds fewer than two rows, which happens on a single-row episode at
+    the very start of a wallet's collection history.
 
     This is a DIFFERENT CLOCK from the liquidation_snapshots cadence.
     liquidation_snapshots only writes while the position sits within 20% of
@@ -198,12 +256,6 @@ def perp_cadence(con, address, coin, t0, t1):
     of that window repeatedly and its measured cadence is meaningless as a
     basis for "how long is too long between rows". perp_snapshots writes every
     cycle for any OPEN position, so absence there is the real signal.
-
-    KNOWN LIMITATION: the caller passes a +/-24h window, so a wallet that
-    spent a few hours at a coarser tier inside two days of fast rows still
-    reports the fast median. Tier changes track position size, so this
-    understates cadence exactly when a wallet has de-risked. Not fixed here —
-    it wants its own pass and its own falsification.
     """
     rows = con.execute(
         """SELECT snapshot_time FROM perp_snapshots
@@ -220,15 +272,22 @@ def perp_cadence(con, address, coin, t0, t1):
 
 
 def observed_cadence(times):
-    """Median inter-row gap in seconds. The wallet's real clock, including
-    any mid-window tier migration — which the tier column would lie about."""
+    """Median inter-row gap across the liquidation_snapshots series for the
+    pair. Used only for the approach split, which reads that table."""
     gaps = [(times[i] - times[i - 1]).total_seconds() for i in range(1, len(times))]
     gaps = [g for g in gaps if g > 0]
     return statistics.median(gaps) if gaps else None
 
 
 def split_approaches(rows, cadence_s):
-    """Hysteresis + relative-gap split. Returns lists of row-index ranges."""
+    """Hysteresis + relative-gap split. Returns lists of row-index ranges.
+
+    NOTE: still splits on gaps in the CENSORED table (rows above 20% distance
+    are never written) and still uses that table's own cadence. Both are known
+    problems — one wallet's episodes span genuine position boundaries (side
+    flip, size->0) that this cannot see. Left alone deliberately: segmenting on
+    position identity is its own rule change and wants its own version.
+    """
     entry = PARAMS["entry_threshold"]
     exit_ = PARAMS["exit_threshold"]
     max_gap = (cadence_s or 60) * PARAMS["gap_multiple"]
@@ -524,14 +583,16 @@ def build(con, labels_only=False, verbose=False):
             else:
                 is_short = last_size < 0
 
-            # The vanish window must be measured against the PERP clock, not
-            # the liquidation_snapshots clock — see perp_cadence(). Measure it
-            # over a wide window around the episode so an active ladder does
-            # not distort it.
-            p_cad = perp_cadence(con, addr, coin,
-                                 t_start - timedelta(hours=24),
-                                 t_end + timedelta(hours=24))
-            vanish_win = timedelta(seconds=max((p_cad or cadence or 60)
+            # Vanish window, on the PERP clock, measured LOCALLY at last_seen
+            # and snapped onto the tier ladder. Falls back to the wide-window
+            # median, then to the liquidation-table cadence, then to the floor.
+            p_cad = local_perp_cadence(con, addr, coin, last_seen)
+            if p_cad is None:
+                p_cad = perp_cadence(con, addr, coin,
+                                     t_start - timedelta(hours=24),
+                                     t_end + timedelta(hours=24))
+            snapped = snap_to_tier_cadence(p_cad or cadence)
+            vanish_win = timedelta(seconds=max((snapped or p_cad or cadence or 60)
                                                * PARAMS["vanish_multiple"],
                                                PARAMS["vanish_floor_minutes"] * 60))
             nxt = next_perp_row(con, addr, coin, last_seen, last_seen + vanish_win)
@@ -569,9 +630,11 @@ def build(con, labels_only=False, verbose=False):
                 "min_dist": min_dist,
                 "peak_notional": peak_notional,
                 "margin_mode": mode,
-                # The wallet's real polling clock. The liquidation_snapshots
-                # cadence is not it — that table gates on proximity to liq.
+                # Raw local median, and the tier rung it snapped to. Keep both:
+                # a large gap between them means the wallet was migrating tiers
+                # inside the measurement window.
                 "obs_cadence_s": p_cad or cadence,
+                "cadence_snapped_s": snapped,
                 "n_rows": len(erows),
                 "max_gap_s": max_gap,
                 "size_changed": size_changed,
@@ -596,17 +659,20 @@ def build(con, labels_only=False, verbose=False):
                 tail = f"  [{note}]" if note else ""
                 if ep["truncated"]:
                     tail += "  [blackout]"
+                cad = f"{int(snapped)}s" if snapped else "?"
                 print(f"  {ep['key'][:44]} {coin:12} "
-                      f"min={min_dist:.3f} n={len(erows):4} -> {ep['verdict']}{tail}")
+                      f"min={min_dist:.3f} n={len(erows):4} cad={cad:>5} "
+                      f"-> {ep['verdict']}{tail}")
     return mv, out
 
 
 COLS = ["key", "method_version", "address", "coin", "approach_start",
         "min_dist_time", "approach_end", "min_dist", "peak_notional",
-        "margin_mode", "obs_cadence_s", "n_rows", "max_gap_s", "size_changed",
-        "size_change_pct", "liq_moved", "liq_reprints_per_hr", "liq_informative",
-        "last_seen", "position_vanished", "price_traversed_liq",
-        "entry_price_reset", "truncated", "verdict", "classifiable", "built_at"]
+        "margin_mode", "obs_cadence_s", "cadence_snapped_s", "n_rows",
+        "max_gap_s", "size_changed", "size_change_pct", "liq_moved",
+        "liq_reprints_per_hr", "liq_informative", "last_seen",
+        "position_vanished", "price_traversed_liq", "entry_price_reset",
+        "truncated", "verdict", "classifiable", "built_at"]
 
 
 def write(con, mv, episodes, chunk=200):
@@ -652,9 +718,16 @@ def main():
         tally[e["verdict"]] = tally.get(e["verdict"], 0) + 1
     for k in sorted(tally):
         print(f"  {k:12} {tally[k]}")
+
     n_trunc = sum(1 for e in eps if e["truncated"])
     if n_trunc:
         print(f"  ({n_trunc} episode(s) overlap a collection blackout)")
+    cad_tally = {}
+    for e in eps:
+        cad_tally[e["cadence_snapped_s"]] = cad_tally.get(e["cadence_snapped_s"], 0) + 1
+    print("  cadence: " + ", ".join(
+        f"{int(k) if k else '?'}s={v}"
+        for k, v in sorted(cad_tally.items(), key=lambda kv: (kv[0] is None, kv[0]))))
 
     if a.dry_run:
         print("\ndry run — nothing written")
