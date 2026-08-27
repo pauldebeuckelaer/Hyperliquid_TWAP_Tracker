@@ -15,6 +15,9 @@ left alone so two rule sets can coexist for diffing.
 Column-name trap: liquidation_snapshots.liq_price
                   perp_snapshots.liquidation_price
 Same quantity, two names.
+
+REQUIRES (run once before the first v6 build):
+    ALTER TABLE liq_episodes ADD COLUMN truncated INTEGER;
 """
 
 import argparse
@@ -60,11 +63,21 @@ PARAMS = {
     "reentry_hours": 24,
     # Relative size move that counts as a real size change.
     "size_change_eps": 0.01,
+    # A capout deactivation stops collection for the wallet entirely. Perp
+    # rows then stop for exactly the same reason they stop when a position
+    # closes, so every vanish-based inference below is reading a gap the
+    # observer created rather than the wallet. The event is written by the
+    # tier refresh, which lags the actual drop-out by up to one refresh
+    # interval — hence a lookahead past last_seen rather than a containment
+    # test against the approach window. Measured lag on the five known cases
+    # was ~2h, so 3h covers it with room.
+    "truncation_lookahead_hours": 3,
     # margin_mode ground truth only exists after the mid-Aug-14 migration.
     "start_date": "2026-08-14T00:00:00",
 }
 
-METHOD_TAG = "v5"   # v5: blended-entry return outranks the price-traversal check
+METHOD_TAG = "v6"   # v6: truncation — refuse vanish-based verdicts during a collection blackout
+
 
 DEFAULT_DB = str(Path(__file__).resolve().parent.parent / "data" / "twap.db")
 
@@ -152,6 +165,26 @@ def pair_series(con, address, coin):
     return con.execute(sql, (address, coin, PARAMS["start_date"])).fetchall()
 
 
+def deactivations(con):
+    """address -> sorted list of deactivate times.
+
+    Loaded in one pass because the table is small and the alternative is a
+    query per episode. A deactivate means the wallet left the tiered set and
+    the collector stopped polling it entirely — both perp_snapshots and
+    liquidation_snapshots go silent, for a reason that has nothing to do with
+    what the position did.
+    """
+    out = {}
+    for r in con.execute(
+            """SELECT address, event_time FROM whale_lifecycle_events
+               WHERE event_type = 'deactivate' AND event_time >= ?
+               ORDER BY address, event_time""", (PARAMS["start_date"],)):
+        t = parse_ts(r["event_time"])
+        if t:
+            out.setdefault(r["address"], []).append(t)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # stage 2 — cadence + approach splitting
 # ---------------------------------------------------------------------------
@@ -165,6 +198,12 @@ def perp_cadence(con, address, coin, t0, t1):
     of that window repeatedly and its measured cadence is meaningless as a
     basis for "how long is too long between rows". perp_snapshots writes every
     cycle for any OPEN position, so absence there is the real signal.
+
+    KNOWN LIMITATION: the caller passes a +/-24h window, so a wallet that
+    spent a few hours at a coarser tier inside two days of fast rows still
+    reports the fast median. Tier changes track position size, so this
+    understates cadence exactly when a wallet has de-risked. Not fixed here —
+    it wants its own pass and its own falsification.
     """
     rows = con.execute(
         """SELECT snapshot_time FROM perp_snapshots
@@ -372,18 +411,31 @@ def decide(ep):
     have a solid verdict and an unreadable defense channel; that combination
     is exactly the one to exclude from any defense-vs-outcome statistic.
 
-    PRECEDENCE. The returning position outranks the price check. A liquidated
-    position comes back as a NEW position, so a same-side return with a
-    BLENDED entry proves the old one was never closed — it was cut and re-added
-    inside the gap. In that case a price crossing means only that the stored
-    liq level was stale, not that anything died. NBIS was the case: a 75-minute
-    gap in the middle of a ladder, size 1646 -> 845 -> 1953, entry walking down
-    the whole way, position still open a week later.
+    TRUNCATION outranks everything except is_open. If the wallet was dropped
+    from collection around the time its rows stopped, then "the position
+    disappeared" and "we stopped looking" have identical signatures, and every
+    downstream test is reading a gap we manufactured. That includes
+    entry_price_reset: across a blackout of hours the wallet can close and
+    open a genuinely new position, which the reset check would score as a
+    death. Refuse the verdict rather than guess it. 0x30afce2f/xyz:SP500 was
+    the case — passive and frozen at 0.74%, rows stop, deactivate two hours
+    later, and the explorer showed a voluntary close a day afterwards. The old
+    rules called it survived and happened to be right by luck.
+
+    PRECEDENCE below that. The returning position outranks the price check. A
+    liquidated position comes back as a NEW position, so a same-side return
+    with a BLENDED entry proves the old one was never closed — it was cut and
+    re-added inside the gap. In that case a price crossing means only that the
+    stored liq level was stale, not that anything died. NBIS was the case: a
+    75-minute gap in the middle of a ladder, size 1646 -> 845 -> 1953, entry
+    walking down the whole way, position still open a week later.
     """
     defense_readable = int(ep["n_rows"] >= PARAMS["min_rows"])
 
     if ep["is_open"]:
         return "open", defense_readable
+    if ep["position_vanished"] == 1 and ep["truncated"] == 1:
+        return "truncated", 0
     if ep["entry_price_reset"] == 1:
         return "dead", defense_readable
     if ep["reentry_note"] == "blended_add":
@@ -407,6 +459,7 @@ def build(con, labels_only=False, verbose=False):
     mv = method_version()
     data_tail = parse_ts(con.execute(
         "SELECT MAX(snapshot_time) AS t FROM liquidation_snapshots").fetchone()["t"])
+    deacts = deactivations(con)
     out = []
 
     for pair in candidate_pairs(con, labels_only):
@@ -487,6 +540,15 @@ def build(con, labels_only=False, verbose=False):
             is_open = int(data_tail is not None
                           and (data_tail - last_seen) < vanish_win)
 
+            # Was the wallet dropped from collection around the time its rows
+            # stopped? Window runs from the start of the approach to a
+            # lookahead past last_seen, because the deactivate is written by
+            # the tier refresh and lags the actual drop-out.
+            trunc_end = last_seen + timedelta(
+                hours=PARAMS["truncation_lookahead_hours"])
+            truncated = int(any(t_start <= d <= trunc_end
+                                for d in deacts.get(addr, ())))
+
             traversed = None
             entry_reset = 0
             reentry_note = None
@@ -521,6 +583,7 @@ def build(con, labels_only=False, verbose=False):
                 "position_vanished": vanished,
                 "price_traversed_liq": traversed,
                 "entry_price_reset": entry_reset,
+                "truncated": truncated,
                 "is_open": is_open,
                 "reentry_note": reentry_note,
                 "built_at": now_iso(),
@@ -531,6 +594,8 @@ def build(con, labels_only=False, verbose=False):
             out.append(ep)
             if verbose:
                 tail = f"  [{note}]" if note else ""
+                if ep["truncated"]:
+                    tail += "  [blackout]"
                 print(f"  {ep['key'][:44]} {coin:12} "
                       f"min={min_dist:.3f} n={len(erows):4} -> {ep['verdict']}{tail}")
     return mv, out
@@ -541,7 +606,7 @@ COLS = ["key", "method_version", "address", "coin", "approach_start",
         "margin_mode", "obs_cadence_s", "n_rows", "max_gap_s", "size_changed",
         "size_change_pct", "liq_moved", "liq_reprints_per_hr", "liq_informative",
         "last_seen", "position_vanished", "price_traversed_liq",
-        "entry_price_reset", "verdict", "classifiable", "built_at"]
+        "entry_price_reset", "truncated", "verdict", "classifiable", "built_at"]
 
 
 def write(con, mv, episodes, chunk=200):
@@ -587,6 +652,9 @@ def main():
         tally[e["verdict"]] = tally.get(e["verdict"], 0) + 1
     for k in sorted(tally):
         print(f"  {k:12} {tally[k]}")
+    n_trunc = sum(1 for e in eps if e["truncated"])
+    if n_trunc:
+        print(f"  ({n_trunc} episode(s) overlap a collection blackout)")
 
     if a.dry_run:
         print("\ndry run — nothing written")
