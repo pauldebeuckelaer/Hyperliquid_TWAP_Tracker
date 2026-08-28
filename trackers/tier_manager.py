@@ -385,8 +385,14 @@ class TierManager:
             # Recording both as 'activate' inflated reactivation counts, which
             # is the exact measurement the protected-grants-tier rule depends on.
             lifecycle_event = None
+            prev_tier = None
             if address not in active_tiered_set:
                 lifecycle_event = 'tier_grant' if address in active_set else 'activate'
+            else:
+                old_tier = old_tiers.get(address)
+                if old_tier is not None and old_tier != effective_tier:
+                    lifecycle_event = 'tier_change'
+                    prev_tier = old_tier
 
             self._update_address_tier(
                 address, effective_tier,
@@ -400,6 +406,7 @@ class TierManager:
                     event_type=lifecycle_event,
                     source='tier_update',
                     tier=effective_tier,
+                    prev_tier=prev_tier,
                     position_value=pos_value,
                     raw_usd_value=raw_usd,
                     spot_value=spot_val,

@@ -166,6 +166,7 @@ class WhaleStorage(BaseStorage):
                         event_type TEXT NOT NULL,
                         source TEXT NOT NULL,
                         tier INTEGER,
+                        prev_tier INTEGER,
                         position_value REAL,
                         raw_usd_value REAL,
                         spot_value REAL
@@ -191,6 +192,8 @@ class WhaleStorage(BaseStorage):
 
         # Migration: ensure whale_lifecycle_events exists (idempotent).
         self._migrate_lifecycle_events()
+
+        self._migrate_prev_tier()
 
     def _migrate_pending_deactivation(self):
         """Add pending_deactivation column to existing DBs. Idempotent.
@@ -305,6 +308,7 @@ class WhaleStorage(BaseStorage):
                     event_type TEXT NOT NULL,
                     source TEXT NOT NULL,
                     tier INTEGER,
+                    prev_tier INTEGER,
                     position_value REAL,
                     raw_usd_value REAL,
                     spot_value REAL
@@ -312,6 +316,23 @@ class WhaleStorage(BaseStorage):
             """)
             self.conn.commit()
             logger.info("Migration: created whale_lifecycle_events table")
+
+    def _migrate_prev_tier(self):
+        """Add prev_tier to whale_lifecycle_events. Idempotent.
+
+        The tier a wallet held BEFORE this event. Populated only on
+        'tier_change' rows; NULL on activate/tier_grant/deactivate, where
+        the prior tier is either absent by definition or already in `tier`.
+        Direction is derived, not stored: prev_tier > tier is a promotion
+        (lower number = higher tier), prev_tier < tier a demotion."""
+        self.cursor.execute("PRAGMA table_info(whale_lifecycle_events)")
+        cols = {row[1] for row in self.cursor.fetchall()}
+        if "prev_tier" not in cols:
+            self.cursor.execute(
+                "ALTER TABLE whale_lifecycle_events ADD COLUMN prev_tier INTEGER"
+            )
+            self.conn.commit()
+            logger.info("Migration: added prev_tier to whale_lifecycle_events")
 
     def _create_indexes(self):
         """Create whale tracking indexes."""
@@ -844,6 +865,7 @@ class WhaleStorage(BaseStorage):
             event_type: str,
             source: str,
             tier: Optional[int] = None,
+            prev_tier: Optional[int] = None,
             position_value: Optional[float] = None,
             raw_usd_value: Optional[float] = None,
             spot_value: Optional[float] = None,
@@ -857,11 +879,11 @@ class WhaleStorage(BaseStorage):
             self.cursor.execute("""
                 INSERT INTO whale_lifecycle_events (
                     address, event_time, event_type, source,
-                    tier, position_value, raw_usd_value, spot_value
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    tier, prev_tier, position_value, raw_usd_value, spot_value
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 address, datetime.now().isoformat(), event_type, source,
-                tier, position_value, raw_usd_value, spot_value,
+                tier, prev_tier, position_value, raw_usd_value, spot_value,
             ))
         except Exception as e:
             logger.warning(f"Failed to record lifecycle event for {address[:10]}...: {e}")
