@@ -872,6 +872,14 @@ class WhaleStorage(BaseStorage):
     ):
         """Append one activate/deactivate transition. Never raises.
 
+        Does NOT commit — the caller owns the transaction. tier_manager
+        batches a whole refresh into one commit at the end, and
+        _deactivate_address needs this row and the zeroing UPDATE to land
+        together. A commit here would split both.
+
+        Callers that commit as a side effect (update_whale_status) must
+        call this BEFORE that commit, not after.
+
         Instrumentation must not be able to break collection, so a failure
         here is logged and swallowed rather than propagated.
         """

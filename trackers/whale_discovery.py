@@ -299,12 +299,18 @@ class WhaleDiscovery:
         # Already exists — check if it's an inactive whale we need to reactivate
         existing_active = set(self.storage.get_active_whale_addresses())
         if address not in existing_active:
-            self.storage.update_whale_status(address, is_active=True)
+            # Event BEFORE status: update_whale_status commits, so this
+            # ordering lands both in one transaction. Reversed, the event
+            # sat uncommitted until an unrelated write flushed it — on the
+            # WS discovery thread (own connection) that may be never, and
+            # storage.close() discards it. Matches whale_state_collector.
+            # persist() and tier_manager._deactivate_address.
             self.storage.record_lifecycle_event(
                 address=address,
                 event_type='activate',
                 source=source,
             )
+            self.storage.update_whale_status(address, is_active=True)
             logger.info(f"Reactivated previously-inactive whale: {address}")
             return True
 
