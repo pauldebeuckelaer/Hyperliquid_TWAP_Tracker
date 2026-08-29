@@ -45,7 +45,8 @@ def main():
         hit = cur.execute(
             "SELECT prev_tier, tier FROM whale_lifecycle_events "
             "WHERE address=? AND event_type='tier_change' "
-            "AND event_time >= ? AND event_time < datetime(?, '+2 minutes')",
+            "AND event_time >= ? "
+            "AND event_time < strftime('%Y-%m-%dT%H:%M:%f', ?, '+2 minutes')",
             (addr, ts, ts.replace("T", " "))).fetchone()
         if hit and hit == (prev, tier):
             ok += 1
