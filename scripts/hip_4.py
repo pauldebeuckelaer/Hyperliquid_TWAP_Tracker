@@ -1,24 +1,39 @@
 #!/usr/bin/env python3
 """
-Polymarket HYPE/Hyperliquid Discovery Probe (v2)
-=================================================
+Hyperliquid HIP-4 Outcome Market Probe (v1)
+===========================================
 
-v2 changes:
-- PAGE_SIZE corrected to 100 (Gamma's real limit)
-- MAX_PAGES bumped to 50 to walk past the top-volume political/sports markets
-- datetime.utcnow() -> datetime.now(timezone.utc) to silence DeprecationWarning
-- Added running keyword-match counter so you can see progress
+Purpose: find out whether HIP-4 outcome positions are visible for addresses we
+already track, before deciding whether any collector is worth building.
 
-Purpose: Discover what HYPE/Hyperliquid-related markets exist on Polymarket.
-Read-only probe. No DB writes, no auth.
+READ-ONLY. No writes to twap.db. No auth. No orders. Nothing is placed.
+
+Runs in three stages, each gated so nothing hammers the API by accident:
+
+  Stage 1  outcomeMeta          -> what markets exist, what the payload looks like
+  Stage 2  spotClearinghouseState for ONE address
+                                -> THE LOAD-BEARING TEST. Do outcome token
+                                   balances surface here at all? If not, the
+                                   cross-instrument join is dead and we learn it
+                                   in one call instead of after a build.
+  Stage 3  same, looped over tracked addresses   (OFF by default)
+
+Encoding, per Hyperliquid docs:
+    encoding    = 10 * outcome + side      (side is 0 or 1 only)
+    spot coin   = #<encoding>
+    token name  = +<encoding>
+    asset id    = 100_000_000 + encoding
+
+Drop this in scripts/ next to build_liq_episodes.py and run it from PyCharm.
 """
 
-import csv
+import json
+import sqlite3
 import time
-from dataclasses import dataclass, asdict, field
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -26,221 +41,306 @@ import requests
 # CONFIG
 # ---------------------------------------------------------------------------
 
-GAMMA_API = "https://gamma-api.polymarket.com/markets"
-KEYWORDS = ["hyperliquid", "hype"]
+INFO_API = "https://api.hyperliquid.xyz/info"
+REQUEST_TIMEOUT = 30
+SLEEP_BETWEEN_CALLS = 0.30          # gentle; we are a guest here
 
-# Filtering knobs
-MIN_VOLUME_USD = 0           # Set to e.g. 1000 to filter out micro-markets
-EXCLUDE_5MIN_NOISE = True    # Drop the 5-minute "Up or Down" markets
-PAGE_SIZE = 100              # Gamma silently caps the limit param at 100
-MAX_PAGES = 50               # 100 * 50 = 5,000 markets scanned
+# DB path is resolved from THIS FILE's location, never the working directory.
+# Assumes the script lives in scripts/ so the repo root is one level up.
+# This is deliberate: a relative path would silently hit the 0-byte twap.db
+# that sits at repo root and every query would return nothing, with no error.
+SCRIPT_DIR = Path(__file__).resolve().parent
+DB_PATH = SCRIPT_DIR.parent / "data" / "twap.db"
 
-OUTPUT_CSV = Path("polymarket_hype_markets.csv")
+# Stage 2: which address to probe. None -> pull the lowest-tier (highest
+# priority) active address out of whale_addresses.
+PROBE_ADDRESS: Optional[str] = None
+
+# Stage 3: population scan. Leave False until Stage 2 proves the concept.
+RUN_POPULATION_SCAN = False
+POPULATION_LIMIT = 25               # raise once you know the call is cheap
+
+OUT_DIR = SCRIPT_DIR / "outcome_probe_out"
+
 
 # ---------------------------------------------------------------------------
-# DATA MODEL
+# ENCODING HELPERS
 # ---------------------------------------------------------------------------
 
-@dataclass
-class HypeMarket:
-    question: str
-    slug: str
-    condition_id: str
-    yes_price: float
-    no_price: float
-    volume_total_usd: float
-    volume_24h_usd: float
-    liquidity_usd: float
-    spread: float
-    start_date: str
-    end_date: str
-    closed: bool
-    active: bool
-    category: str = ""
-    url: str = field(init=False)
+def encode(outcome_id: int, side: int) -> int:
+    if side not in (0, 1):
+        raise ValueError(f"side must be 0 or 1, got {side}")
+    return 10 * outcome_id + side
 
-    def __post_init__(self):
-        self.url = f"https://polymarket.com/event/{self.slug}" if self.slug else ""
+
+def spot_coin(enc: int) -> str:
+    return f"#{enc}"
+
+
+def token_name(enc: int) -> str:
+    return f"+{enc}"
+
+
+def asset_id(enc: int) -> int:
+    return 100_000_000 + enc
+
+
+def decode(enc: int) -> tuple[int, int]:
+    """Inverse of encode(). Returns (outcome_id, side)."""
+    return divmod(enc, 10)
+
+
+def looks_like_outcome(coin: str) -> bool:
+    """Outcome spot coins are '#<n>', outcome tokens are '+<n>'."""
+    if not coin:
+        return False
+    return (coin[0] in "#+") and coin[1:].isdigit()
+
 
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------
 
-def fetch_page(offset: int = 0, limit: int = PAGE_SIZE) -> list[dict]:
-    """One page of active markets from Gamma, sorted by 24h volume desc."""
-    params = {
-        "limit": limit,
-        "offset": offset,
-        "active": "true",
-        "closed": "false",
-        "order": "volume24hr",
-        "ascending": "false",
-    }
+def post_info(body: dict) -> Optional[Any]:
+    """POST to the info endpoint. Returns parsed JSON or None on failure."""
     try:
-        r = requests.get(GAMMA_API, params=params, timeout=30)
+        r = requests.post(
+            INFO_API,
+            json=body,
+            headers={"Content-Type": "application/json"},
+            timeout=REQUEST_TIMEOUT,
+        )
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        print(f"  [ERROR offset={offset}] {e}")
-        return []
-
-def fetch_all_active() -> list[dict]:
-    """Walk pages until we get an empty page or hit MAX_PAGES."""
-    all_markets = []
-    matched_running = 0
-    for page in range(MAX_PAGES):
-        offset = page * PAGE_SIZE
-        batch = fetch_page(offset, PAGE_SIZE)
-        if not batch:
-            print(f"  page {page:3d}: empty, stopping")
-            break
-        all_markets.extend(batch)
-        page_matched = sum(1 for m in batch if matches_keyword(m, KEYWORDS))
-        matched_running += page_matched
-        print(f"  page {page:3d}: +{len(batch):4d}  (total {len(all_markets):5d}, "
-              f"matched_this_page {page_matched:2d}, matched_running {matched_running:3d})")
-        if len(batch) < PAGE_SIZE:
-            break
-        time.sleep(0.25)  # Gentle on the API
-    return all_markets
-
-# ---------------------------------------------------------------------------
-# FILTERING
-# ---------------------------------------------------------------------------
-
-def matches_keyword(market: dict, keywords: list[str]) -> bool:
-    """True if any keyword appears in question/slug/description (case-insensitive)."""
-    fields = [
-        (market.get("question") or "").lower(),
-        (market.get("slug") or "").lower(),
-        (market.get("description") or "").lower(),
-    ]
-    text = " ".join(fields)
-    return any(kw in text for kw in keywords)
-
-def is_5min_noise(market: dict) -> bool:
-    """The 5-minute Up/Down markets — high count, no analytical value."""
-    q = (market.get("question") or "").lower()
-    slug = (market.get("slug") or "").lower()
-    if "up or down" in q or "updown" in slug:
-        return True
-    if "5m" in slug or "-5m-" in slug:
-        return True
-    return False
-
-# ---------------------------------------------------------------------------
-# NORMALIZATION
-# ---------------------------------------------------------------------------
-
-def to_market(m: dict) -> Optional[HypeMarket]:
-    """Coerce a Gamma market dict into our typed model. None if malformed."""
-    try:
-        return HypeMarket(
-            question=m.get("question") or "",
-            slug=m.get("slug") or "",
-            condition_id=m.get("conditionId") or "",
-            yes_price=float(m.get("lastTradePrice") or 0),
-            no_price=round(1 - float(m.get("lastTradePrice") or 0), 4),
-            volume_total_usd=float(m.get("volume") or 0),
-            volume_24h_usd=float(m.get("volume24hr") or 0),
-            liquidity_usd=float(m.get("liquidity") or 0),
-            spread=float(m.get("spread") or 0),
-            start_date=(m.get("startDate") or "")[:10],
-            end_date=(m.get("endDate") or "")[:10],
-            closed=bool(m.get("closed")),
-            active=bool(m.get("active")),
-            category=m.get("category") or "",
-        )
-    except Exception as e:
-        print(f"  [skip malformed market] {e}")
+        print(f"  [ERROR] {body.get('type')}: {e}")
         return None
 
+
 # ---------------------------------------------------------------------------
-# REPORTING
+# SHAPE INSPECTION
+#   We do not know the outcomeMeta payload shape. Describe it rather than
+#   assuming keys, then let the structure drive the next version.
 # ---------------------------------------------------------------------------
 
-def print_market(idx: int, m: HypeMarket) -> None:
-    print(f"\n[{idx}] {m.question[:90]}")
-    print(f"    slug:       {m.slug}")
-    print(f"    yes/no:     {m.yes_price:.3f} / {m.no_price:.3f}")
-    print(f"    vol_total:  ${m.volume_total_usd:>14,.0f}")
-    print(f"    vol_24h:    ${m.volume_24h_usd:>14,.0f}")
-    print(f"    liquidity:  ${m.liquidity_usd:>14,.0f}")
-    print(f"    window:     {m.start_date}  ->  {m.end_date}")
-    print(f"    url:        {m.url}")
-
-def summary(markets: list[HypeMarket]) -> None:
-    print("\n" + "=" * 90)
-    print(f"SUMMARY")
-    print("=" * 90)
-    print(f"  Total matched markets:    {len(markets)}")
-    if not markets:
+def describe(obj: Any, indent: int = 0, max_items: int = 2, depth: int = 0) -> None:
+    pad = "  " * (indent + 1)
+    if depth > 4:
+        print(f"{pad}...")
         return
-    total_vol = sum(m.volume_total_usd for m in markets)
-    total_24h = sum(m.volume_24h_usd for m in markets)
-    total_liq = sum(m.liquidity_usd for m in markets)
-    print(f"  Aggregate total volume:   ${total_vol:>16,.0f}")
-    print(f"  Aggregate 24h volume:     ${total_24h:>16,.0f}")
-    print(f"  Aggregate liquidity:      ${total_liq:>16,.0f}")
-    print(f"  Top market by 24h vol:    {markets[0].question[:70]}")
-    print(f"     volume_24h:  ${markets[0].volume_24h_usd:,.0f}")
 
-def write_csv(markets: list[HypeMarket], path: Path) -> None:
-    if not markets:
-        return
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(asdict(markets[0]).keys()))
-        writer.writeheader()
-        for m in markets:
-            writer.writerow(asdict(m))
-    print(f"\n  CSV written: {path.resolve()}")
+    if isinstance(obj, dict):
+        print(f"{pad}dict, {len(obj)} keys: {list(obj.keys())[:12]}")
+        for k, v in list(obj.items())[:max_items]:
+            print(f"{pad}  .{k} ->")
+            describe(v, indent + 2, max_items, depth + 1)
+    elif isinstance(obj, list):
+        print(f"{pad}list, len={len(obj)}")
+        for v in obj[:max_items]:
+            describe(v, indent + 1, max_items, depth + 1)
+    else:
+        val = repr(obj)
+        if len(val) > 80:
+            val = val[:77] + "..."
+        print(f"{pad}{type(obj).__name__}: {val}")
+
+
+def dump_raw(obj: Any, name: str) -> None:
+    OUT_DIR.mkdir(exist_ok=True)
+    path = OUT_DIR / f"{name}.json"
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2)
+    print(f"  raw payload written: {path}")
+
+
+# ---------------------------------------------------------------------------
+# DB (read-only)
+# ---------------------------------------------------------------------------
+
+def check_db() -> bool:
+    if not DB_PATH.exists():
+        print(f"  [FATAL] no DB at {DB_PATH}")
+        return False
+    size = DB_PATH.stat().st_size
+    if size == 0:
+        print(f"  [FATAL] DB at {DB_PATH} is 0 bytes -- wrong path")
+        return False
+    print(f"  DB: {DB_PATH}  ({size / 1e9:.1f} GB)")
+    return True
+
+
+def fetch_addresses(limit: int) -> list[str]:
+    """Active tracked addresses, best tier first. Read-only."""
+    try:
+        con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT address
+            FROM whale_addresses
+            WHERE is_active = 1 AND tier IS NOT NULL
+            ORDER BY tier ASC, position_value DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = [r[0] for r in cur.fetchall()]
+        con.close()
+        return rows
+    except Exception as e:
+        print(f"  [ERROR] address query failed: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# STAGES
+# ---------------------------------------------------------------------------
+
+def stage1_outcome_meta() -> Optional[Any]:
+    print("\n" + "=" * 78)
+    print("STAGE 1  outcomeMeta")
+    print("=" * 78)
+
+    meta = post_info({"type": "outcomeMeta"})
+    if meta is None:
+        print("  no payload -- endpoint name may differ, or it may be gated")
+        return None
+
+    print("\n  STRUCTURE:")
+    describe(meta)
+    dump_raw(meta, "outcome_meta")
+
+    # Try to count outcomes without hard-coding a schema we have not seen.
+    if isinstance(meta, dict):
+        for key in ("outcomes", "universe", "meta", "outcomeMeta"):
+            if key in meta and isinstance(meta[key], list):
+                print(f"\n  {key}: {len(meta[key])} entries")
+                if meta[key]:
+                    print("  first entry:")
+                    describe(meta[key][0], indent=1, max_items=20)
+                break
+    elif isinstance(meta, list):
+        print(f"\n  top-level list: {len(meta)} entries")
+        if meta:
+            print("  first entry:")
+            describe(meta[0], indent=1, max_items=20)
+
+    return meta
+
+
+def stage2_single_address(address: str) -> bool:
+    """Returns True if any outcome-shaped balance was found."""
+    print("\n" + "=" * 78)
+    print("STAGE 2  spotClearinghouseState  (the load-bearing test)")
+    print("=" * 78)
+    print(f"  address: {address}")
+
+    state = post_info({"type": "spotClearinghouseState", "user": address})
+    if state is None:
+        return False
+
+    print("\n  STRUCTURE:")
+    describe(state)
+    dump_raw(state, f"spot_state_{address[:10]}")
+
+    balances = state.get("balances", []) if isinstance(state, dict) else []
+    print(f"\n  balances: {len(balances)}")
+
+    outcome_rows, normal_rows = [], []
+    for b in balances:
+        coin = str(b.get("coin") or b.get("token") or "")
+        (outcome_rows if looks_like_outcome(coin) else normal_rows).append((coin, b))
+
+    print(f"    normal spot tokens:  {len(normal_rows)}")
+    print(f"    outcome-shaped:      {len(outcome_rows)}")
+
+    if normal_rows:
+        print("\n  sample normal balances:")
+        for coin, b in normal_rows[:5]:
+            print(f"    {coin:<16} total={b.get('total')}")
+
+    if not outcome_rows:
+        print("\n  -> no outcome tokens in this wallet.")
+        print("     Ambiguous: either they hold none, or outcomes do not surface")
+        print("     here at all. Try a few more addresses before concluding.")
+        return False
+
+    print("\n  -> OUTCOME POSITIONS FOUND:")
+    for coin, b in outcome_rows:
+        enc = int(coin[1:])
+        oid, side = decode(enc)
+        print(f"    {coin:<12} outcome={oid:<6} side={side}  "
+              f"total={b.get('total')}  asset_id={asset_id(enc)}")
+    return True
+
+
+def stage3_population(addresses: list[str]) -> None:
+    print("\n" + "=" * 78)
+    print(f"STAGE 3  population scan  ({len(addresses)} addresses)")
+    print("=" * 78)
+
+    holders, counts = [], Counter()
+    for i, addr in enumerate(addresses, 1):
+        state = post_info({"type": "spotClearinghouseState", "user": addr})
+        time.sleep(SLEEP_BETWEEN_CALLS)
+        if not isinstance(state, dict):
+            continue
+
+        found = [
+            str(b.get("coin") or b.get("token") or "")
+            for b in state.get("balances", [])
+            if looks_like_outcome(str(b.get("coin") or b.get("token") or ""))
+        ]
+        flag = f"{len(found)} outcome" if found else "-"
+        print(f"  [{i:3d}/{len(addresses)}] {addr[:12]}...  {flag}")
+
+        if found:
+            holders.append((addr, found))
+            counts.update(found)
+
+    print("\n" + "-" * 78)
+    print(f"  addresses scanned:  {len(addresses)}")
+    print(f"  holding outcomes:   {len(holders)}")
+    if holders:
+        print("\n  most-held outcome tokens:")
+        for coin, n in counts.most_common(10):
+            oid, side = decode(int(coin[1:]))
+            print(f"    {coin:<12} outcome={oid:<6} side={side}  held_by={n}")
+
 
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
 
-def main():
+def main() -> None:
     started = datetime.now(timezone.utc)
-    print(f"Polymarket HYPE/Hyperliquid Discovery Probe (v2)")
+    print("Hyperliquid HIP-4 Outcome Market Probe (v1)")
     print(f"  Started: {started.isoformat()}")
-    print(f"  Keywords: {KEYWORDS}")
-    print(f"  Filters:  min_vol={MIN_VOLUME_USD}  exclude_5min={EXCLUDE_5MIN_NOISE}")
-    print(f"  Pagination: {PAGE_SIZE} per page, up to {MAX_PAGES} pages "
-          f"({PAGE_SIZE * MAX_PAGES} markets max)")
-    print(f"\nFetching active markets (paged):")
+    print("  READ-ONLY: no DB writes, no orders, no auth")
 
-    raw = fetch_all_active()
-    print(f"\n  Total active markets scanned: {len(raw)}")
+    if not check_db():
+        return
 
-    # Stage 1: keyword match
-    matched_raw = [m for m in raw if matches_keyword(m, KEYWORDS)]
-    print(f"  After keyword filter:         {len(matched_raw)}")
+    stage1_outcome_meta()
 
-    # Stage 2: 5-min noise filter
-    if EXCLUDE_5MIN_NOISE:
-        matched_raw = [m for m in matched_raw if not is_5min_noise(m)]
-        print(f"  After 5min-noise filter:      {len(matched_raw)}")
+    address = PROBE_ADDRESS
+    if address is None:
+        picked = fetch_addresses(1)
+        if not picked:
+            print("\n  no tracked address available -- set PROBE_ADDRESS manually")
+            return
+        address = picked[0]
 
-    # Stage 3: normalize
-    markets = [m for m in (to_market(d) for d in matched_raw) if m is not None]
+    stage2_single_address(address)
 
-    # Stage 4: min volume
-    if MIN_VOLUME_USD > 0:
-        markets = [m for m in markets if m.volume_total_usd >= MIN_VOLUME_USD]
-        print(f"  After min-volume filter:      {len(markets)}")
-
-    # Sort by 24h volume desc
-    markets.sort(key=lambda m: -m.volume_24h_usd)
-
-    # Display
-    for i, m in enumerate(markets, 1):
-        print_market(i, m)
-
-    summary(markets)
-    write_csv(markets, OUTPUT_CSV)
+    if RUN_POPULATION_SCAN:
+        stage3_population(fetch_addresses(POPULATION_LIMIT))
+    else:
+        print("\n  Stage 3 skipped (RUN_POPULATION_SCAN = False)")
 
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     print(f"\n  Elapsed: {elapsed:.1f}s")
+
 
 if __name__ == "__main__":
     main()
