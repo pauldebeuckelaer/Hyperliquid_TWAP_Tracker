@@ -127,54 +127,43 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorag
         Aggregate and clean up old market data.
 
         Strategy:
-        - market_snapshots: Aggregate into 10-min candles, then purge (3 days)
+        - market_snapshots: Aggregate into 10-min candles, then purge
         - All other tables: KEEP FOREVER for backtesting
 
-        Args:
-            days_to_keep: Days of raw market_snapshots to retain (default: 3)
-            batch_size: Rows to delete per batch (default: 5000)
+        No VACUUM: on a multi-GB file it rewrites the whole DB under an
+        exclusive lock for tens of minutes, blocking every writer on twap.db.
+        Freed pages are reused by the next day's inserts anyway.
 
-        Returns:
-            Dict with aggregation and deletion counts
+        Keys ending in '_s' are step timings in seconds, not row counts.
         """
         import time
         logger = logging.getLogger(__name__)
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
 
         result = {}
+        t0 = time.perf_counter()
 
-        # =================================================================
         # STEP 1: Aggregate market_snapshots into 10-min candles
-        # =================================================================
         try:
             candles_created = self.aggregate_market_snapshots(before_time=cutoff)
             if candles_created > 0:
                 result['candles_created'] = candles_created
-                logger.info(f"Created {candles_created} candles from market_snapshots")
         except Exception as e:
             logger.error(f"Aggregation failed: {e} — skipping purge to avoid data loss")
+            result['aggregate_s'] = round(time.perf_counter() - t0, 1)
             return result
+        t1 = time.perf_counter()
+        result['aggregate_s'] = round(t1 - t0, 1)
 
-        # =================================================================
         # STEP 2: Purge raw market_snapshots (only table we purge)
-        # =================================================================
         deleted = self._batched_delete(
             'market_snapshots', 'snapshot_time', cutoff, batch_size
         )
         if deleted > 0:
             result['market_snapshots_deleted'] = deleted
-
-        total_deleted = sum(v for k, v in result.items() if 'deleted' in k)
-
-        if total_deleted > 0:
-            logger.info(f"Cleanup complete: {result}")
-            # Only VACUUM if we deleted a lot
-            if total_deleted > 50000:
-                logger.info("Running VACUUM to reclaim space...")
-                self.cursor.execute("VACUUM")
-                logger.info("VACUUM complete")
-        else:
-            logger.info("Cleanup complete: no old data to remove")
+        t2 = time.perf_counter()
+        result['delete_s'] = round(t2 - t1, 1)
+        result['total_s'] = round(t2 - t0, 1)
 
         return result
 

@@ -429,7 +429,7 @@ class TWAPBot:
             storage = SQLiteBackend(self.db_path)
             deleted = storage.cleanup_old_data(days_to_keep=7)
             if deleted:
-                total = sum(deleted.values())
+                total = sum(v for k, v in deleted.items() if not k.endswith('_s'))
                 logger.info(f"Daily cleanup removed {total} rows: {deleted}")
             else:
                 logger.info("Daily cleanup: no old data to remove")
