@@ -133,7 +133,13 @@ def main():
             log(f"waiting {wait / 3600:.1f}h until {START:%Y-%m-%d %H:%M} UTC")
             time.sleep(wait)
 
-    subs = load_subs(con)
+    while True:  # never die at the start line over a transient API failure
+        try:
+            subs = load_subs(con)
+            break
+        except Exception as e:
+            log(f"subAccounts failed, retrying in 30s: {e}")
+            time.sleep(30)
     refreshed = time.time()
     base = (now_ms() if args.once else int(START.timestamp() * 1000)) - LOOKBACK_MS
     since = {u: base for u in subs}
@@ -168,7 +174,12 @@ def main():
         if args.once or datetime.now(timezone.utc) >= END:
             break
         if time.time() - refreshed > REFRESH_SUBS_S:
-            for u, d in load_subs(con).items():
+            try:
+                fresh = load_subs(con)
+            except Exception as e:  # a failed refresh must not end the capture
+                log(f"sub refresh failed, keeping current list: {e}")
+                fresh = {}
+            for u, d in fresh.items():
                 if u not in subs:
                     subs[u] = d
                     since[u] = now_ms() - LOOKBACK_MS
