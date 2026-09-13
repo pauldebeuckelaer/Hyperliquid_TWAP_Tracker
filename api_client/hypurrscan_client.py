@@ -571,6 +571,43 @@ class HypurrScanClient:
         logger.info(f"Got {len(result)} recent platform fee snapshots")
         return result
 
+    def get_transfers(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get the most recent page of venue-wide transfers from HypurrScan.
+
+        Endpoint: GET /transfers
+        Returns ~500 records covering roughly the last 8 minutes. There is no
+        address parameter - this is the ONLY venue-wide transfer feed, which
+        is what makes it a discovery instrument rather than a lookup one.
+
+        FORWARD-ONLY: the windowed variant 401s, so there is no backfill.
+        Anything not collected while it was on this page is gone permanently.
+        Unlike /fees, this cannot be caught up later.
+
+        Each record carries 'hash' (unique, stable across overlapping pages -
+        use it as the dedup key), 'time' (MILLISECONDS), 'user' (the signer),
+        'action' (a dict whose 'type' is one of eight kinds), and 'error'
+        (non-null on roughly 1 in 5 records - a failed action still evidences
+        a relationship, so keep them and filter at query time).
+
+        Returns:
+            List of transfer record dicts, or None on API failure.
+        """
+        logger.info("Fetching venue-wide transfers via /transfers...")
+
+        result = self._get('transfers')
+
+        if result is None:
+            logger.warning("Failed to fetch transfers")
+            return None
+
+        if not isinstance(result, list):
+            logger.warning(f"Unexpected /transfers response type: {type(result).__name__}")
+            return None
+
+        logger.info(f"Got {len(result)} transfer records")
+        return result
+
     # ========== LEGACY METHODS (kept for compatibility) ==========
 
     def discover_address_endpoints(self, address: str, symbol: str = 'HYPE') -> Dict[str, Any]:
