@@ -263,6 +263,20 @@ def _extract(rec: Dict, inserted_at: str) -> tuple:
         else:
             src, dst = sub, signer
 
+    elif kind == "usdClassTransfer":
+        # No destination in the payload - a wallet moving its OWN USDC between
+        # spot and perp. Not an edge between two addresses. Stored as a
+        # self-loop so `WHERE src != dst` excludes it from graph queries while
+        # keeping it as a capital-deployment signal: money moving INTO perp
+        # (toPerp true) usually precedes trading.
+        src = dst = signer
+
+    elif kind in ("SystemSendAssetAction", "SystemSpotSendAction"):
+        # Protocol-generated, zero errors. Signers are system addresses
+        # (0x2000...) or a single protocol address, so signer IS the source.
+        src = signer
+        dst = _norm(action.get("destination"))
+
     elif kind in ("usdSend", "spotSend"):
         src = signer
         dst = _norm(action.get("destination"))
