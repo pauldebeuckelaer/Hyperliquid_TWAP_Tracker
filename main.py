@@ -25,6 +25,7 @@ import sys
 import json
 import asyncio
 import aiohttp
+import threading
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
@@ -62,6 +63,7 @@ class TWAPBot:
 
         self.config = config
         self.running = False
+        self._stop_event = threading.Event()
         self.db_path = Path('data/twap.db')
 
         # Event-driven snapshot queues (for TWAP start/end)
@@ -476,155 +478,159 @@ class TWAPBot:
                 logger.error(f"Fees backfill failed at startup: {e}", exc_info=True)
                 # Don't abort startup - collector will retry on next poll
 
-        while self.running:
-            try:
-                loop_start = time.time()
+        try:
+            while self.running:
+                try:
+                    loop_start = time.time()
 
-                # =============================================================
-                # CYCLE MANAGEMENT
-                # =============================================================
+                    # =============================================================
+                    # CYCLE MANAGEMENT
+                    # =============================================================
 
-                if self.tier_manager:
-                    # Increment cycle (1-60)
-                    cycle = self.tier_manager.increment_cycle()
+                    if self.tier_manager:
+                        # Increment cycle (1-60)
+                        cycle = self.tier_manager.increment_cycle()
 
-                    # Refresh tiers every 60 cycles (hourly)
-                    if self.tier_manager.should_refresh_tiers():
-                        logger.info("Hourly tier refresh triggered")
-                        self.tier_manager.refresh_tiers_from_snapshots()
-                        pending = self.tier_manager.pop_verify_candidates()
-                        if pending and self.collector:
-                            pending = pending[:50]
-                            asyncio.run(self._verify_deactivation_candidates(pending))
+                        # Refresh tiers every 60 cycles (hourly)
+                        if self.tier_manager.should_refresh_tiers():
+                            logger.info("Hourly tier refresh triggered")
+                            self.tier_manager.refresh_tiers_from_snapshots()
+                            pending = self.tier_manager.pop_verify_candidates()
+                            if pending and self.collector:
+                                pending = pending[:50]
+                                asyncio.run(self._verify_deactivation_candidates(pending))
 
-                    # Log cycle status every 10 cycles
-                    if cycle % 10 == 0:
-                        self.tier_manager.log_status()
+                        # Log cycle status every 10 cycles
+                        if cycle % 10 == 0:
+                            self.tier_manager.log_status()
 
-                # =============================================================
-                # TWAP TRACKING (existing event-driven system)
-                # =============================================================
+                    # =============================================================
+                    # TWAP TRACKING (existing event-driven system)
+                    # =============================================================
 
-                # Fetch TWAP data (triggers on_order_start/on_order_end callbacks)
-                self._fetch_all_coins()
+                    # Fetch TWAP data (triggers on_order_start/on_order_end callbacks)
+                    self._fetch_all_coins()
 
-                # Process queued order events (portfolio snapshots)
-                if self.hyperliquid_enabled:
-                    asyncio.run(self._process_order_events())
+                    # Process queued order events (portfolio snapshots)
+                    if self.hyperliquid_enabled:
+                        asyncio.run(self._process_order_events())
 
-                # =============================================================
-                # PLATFORM FEES POLL (hourly, ~1 HTTP call)
-                # =============================================================
+                    # =============================================================
+                    # PLATFORM FEES POLL (hourly, ~1 HTTP call)
+                    # =============================================================
 
-                if self.fees_collector and self.tier_manager:
-                    current_cycle = self.tier_manager.get_current_cycle()
-                    if self.fees_collector.should_poll(current_cycle):
-                        self.fees_collector.poll()
+                    if self.fees_collector and self.tier_manager:
+                        current_cycle = self.tier_manager.get_current_cycle()
+                        if self.fees_collector.should_poll(current_cycle):
+                            self.fees_collector.poll()
 
-                # =============================================================
-                # MARKET DATA SNAPSHOT (lightweight - 1 API call)
-                # =============================================================
+                    # =============================================================
+                    # MARKET DATA SNAPSHOT (lightweight - 1 API call)
+                    # =============================================================
 
-                if self.market_tracker:
-                    market_result = self.market_tracker.take_snapshot()
-                    prices = market_result.get('prices', {})
-                else:
-                    prices = {}
+                    if self.market_tracker:
+                        market_result = self.market_tracker.take_snapshot()
+                        prices = market_result.get('prices', {})
+                    else:
+                        prices = {}
 
-                # =============================================================
-                # CYCLE-DRIVEN WHALE STATE COLLECTION + ANALYSIS
-                # Collector produces whale_states; analyzers consume them.
-                # This replaces the LiquidationTracker dual-write path.
-                # =============================================================
+                    # =============================================================
+                    # CYCLE-DRIVEN WHALE STATE COLLECTION + ANALYSIS
+                    # Collector produces whale_states; analyzers consume them.
+                    # This replaces the LiquidationTracker dual-write path.
+                    # =============================================================
 
-                if self.collector:
-                    whale_states = asyncio.run(
-                        self.collector.collect_async(prices=prices)
+                    if self.collector:
+                        whale_states = asyncio.run(
+                            self.collector.collect_async(prices=prices)
+                        )
+
+                        try:
+                            from trackers.position_board import dump_t1_board
+                            dump_t1_board(self.storage)
+                        except Exception as e:
+                            logger.warning(f"T1 board dump failed: {e}")
+
+                        try:
+                            from trackers.cash_board import dump_cash_board
+                            dump_cash_board(self.storage)
+                        except Exception as e:
+                            logger.warning(f"Cash board dump failed: {e}")
+
+                        try:
+                            from trackers.spot_board import dump_spot_board
+                            dump_spot_board(self.storage)
+                        except Exception as e:
+                            logger.warning(f"Spot board dump failed: {e}")
+
+                        # Liquidation analysis (writes liquidation_snapshots)
+                        if self.liquidation_tracker and whale_states:
+                            self.liquidation_tracker.analyze(whale_states, prices)
+
+                        # Event detection (writes whale_events)
+                        if self.event_detector and whale_states:
+                            events = self.event_detector.detect(whale_states, prices)
+                            if events:
+                                self.event_detector.log_summary(events)
+                                self.storage.save_whale_events(events)
+                        # =========================================================
+                        # SLOW LADDER (Step 4b) — portfolio/spot/vault per-tier cadence
+                        # Fires only at cycle 7 when a tier is due (1/2/4/8h ladder).
+                        # Returns 0 on most cycles.
+                        # =========================================================
+                        asyncio.run(self.collector.collect_slow_async())
+
+                    # =============================================================
+                    # DAILY MAINTENANCE
+                    # =============================================================
+
+                    current_date = datetime.now(timezone.utc).date()
+                    if last_cleanup_date != current_date:
+                        logger.info("Running daily maintenance...")
+
+                        # Database cleanup
+                        self._run_daily_cleanup()
+                        last_cleanup_date = current_date
+
+                        # Generate previous day's summaries
+                        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+                        try:
+                            storage = SQLiteBackend(self.db_path)
+                            generate_daily_summaries(storage, yesterday)
+                            storage.close()
+                        except Exception as e:
+                            logger.error(f"Failed to generate daily summaries: {e}")
+
+                    # =============================================================
+                    # TIMING
+                    # =============================================================
+
+                    elapsed = time.time() - loop_start
+                    sleep_time = max(0.1, FETCH_INTERVAL - elapsed)
+
+                    if elapsed > FETCH_INTERVAL:
+                        logger.warning(
+                            f"Cycle took {elapsed:.1f}s, exceeded {FETCH_INTERVAL}s target"
+                        )
+
+                    # Interruptible: the shutdown handler sets the event,
+                    # so a stop during the sleep ends the loop immediately.
+                    self._stop_event.wait(sleep_time)
+
+                except KeyboardInterrupt:
+                    break
+                except Exception as e:
+                    logger.error(f"Loop error: {e}")
+                    logger.exception(e)
+                    self._send_alert(
+                        "LOOP_ERROR",
+                        f"Main loop error: {str(e)[:100]}",
+                        {"exception_type": type(e).__name__}
                     )
-
-                    try:
-                        from trackers.position_board import dump_t1_board
-                        dump_t1_board(self.storage)
-                    except Exception as e:
-                        logger.warning(f"T1 board dump failed: {e}")
-
-                    try:
-                        from trackers.cash_board import dump_cash_board
-                        dump_cash_board(self.storage)
-                    except Exception as e:
-                        logger.warning(f"Cash board dump failed: {e}")
-
-                    try:
-                        from trackers.spot_board import dump_spot_board
-                        dump_spot_board(self.storage)
-                    except Exception as e:
-                        logger.warning(f"Spot board dump failed: {e}")
-
-                    # Liquidation analysis (writes liquidation_snapshots)
-                    if self.liquidation_tracker and whale_states:
-                        self.liquidation_tracker.analyze(whale_states, prices)
-
-                    # Event detection (writes whale_events)
-                    if self.event_detector and whale_states:
-                        events = self.event_detector.detect(whale_states, prices)
-                        if events:
-                            self.event_detector.log_summary(events)
-                            self.storage.save_whale_events(events)
-                    # =========================================================
-                    # SLOW LADDER (Step 4b) — portfolio/spot/vault per-tier cadence
-                    # Fires only at cycle 7 when a tier is due (1/2/4/8h ladder).
-                    # Returns 0 on most cycles.
-                    # =========================================================
-                    asyncio.run(self.collector.collect_slow_async())
-
-                # =============================================================
-                # DAILY MAINTENANCE
-                # =============================================================
-
-                current_date = datetime.now(timezone.utc).date()
-                if last_cleanup_date != current_date:
-                    logger.info("Running daily maintenance...")
-
-                    # Database cleanup
-                    self._run_daily_cleanup()
-                    last_cleanup_date = current_date
-
-                    # Generate previous day's summaries
-                    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-                    try:
-                        storage = SQLiteBackend(self.db_path)
-                        generate_daily_summaries(storage, yesterday)
-                        storage.close()
-                    except Exception as e:
-                        logger.error(f"Failed to generate daily summaries: {e}")
-
-                # =============================================================
-                # TIMING
-                # =============================================================
-
-                elapsed = time.time() - loop_start
-                sleep_time = max(0.1, FETCH_INTERVAL - elapsed)
-
-                if elapsed > FETCH_INTERVAL:
-                    logger.warning(
-                        f"Cycle took {elapsed:.1f}s, exceeded {FETCH_INTERVAL}s target"
-                    )
-
-                time.sleep(sleep_time)
-
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                logger.error(f"Loop error: {e}")
-                logger.exception(e)
-                self._send_alert(
-                    "LOOP_ERROR",
-                    f"Main loop error: {str(e)[:100]}",
-                    {"exception_type": type(e).__name__}
-                )
-                time.sleep(FETCH_INTERVAL)
-
-        logger.info("Tracking stopped")
+                    self._stop_event.wait(FETCH_INTERVAL)
+        finally:
+            logger.info("Tracking stopped")
+            self._cleanup()
 
     def _send_alert(self, error_type: str, message: str, details: dict = None):
         """Send alert via Telegram (fire-and-forget from sync context)"""
@@ -636,29 +642,38 @@ class TWAPBot:
             logger.error(f"Failed to send alert: {e}")
 
     def _shutdown_handler(self, signum, frame):
-        """Handle shutdown gracefully"""
-        logger.info("Shutdown signal received")
-        self.running = False
+        """Signal handler: request a stop, nothing else.
 
+        Runs in the main thread BETWEEN bytecodes of whatever the loop is
+        doing — possibly mid-transaction. Closing the DB here pulled the
+        connection out from under the running iteration (the 'Cannot operate
+        on a closed database' on every restart) and rolled back uncommitted
+        writes. Cleanup now runs in start() after the current cycle finishes.
+        """
+        logger.info(f"Shutdown signal received ({signum}) — finishing current cycle")
+        self.running = False
+        self._stop_event.set()
+
+    def _cleanup(self):
+        """Post-loop shutdown. Stats BEFORE close — both stats calls read the DB."""
         if self.alerter:
             try:
                 asyncio.run(self.alerter.send_alert(
-                    "SHUTDOWN",
-                    "🔴 Whale tracker stopped",
-                    {"signal": signum}
+                    "SHUTDOWN", "🔴 Whale tracker stopped", {}
                 ))
                 asyncio.run(self.alerter.disconnect())
             except Exception:
                 pass
 
-        # Close database connections
+        try:
+            self._log_final_stats()
+        except Exception as e:
+            logger.warning(f"Final stats failed: {e}")
+
         logger.info("Closing database connections...")
         self.tracker.close()
         if self.storage:
             self.storage.close()
-
-        # Log final stats
-        self._log_final_stats()
 
     def _log_final_stats(self):
         """Log final statistics on shutdown"""
