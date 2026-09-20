@@ -6,7 +6,7 @@ Event-driven whale discovery: probe portfolio value, threshold check, register.
 
 Lifecycle of a newly-discovered whale:
 1. TWAP order fires → main._process_order_events calls discovery.evaluate(address)
-2. evaluate() fetches full state from Hyperliquid (perp + spot + vault + HIP-3)
+2. evaluate() fetches perp + spot (+ HIP-3); vault equities are fetched only after the gate passes
 3. If any ONE axis (position / cash / spot) clears TIER_THRESHOLDS[axis][5], returns a WhaleState; else None
 4. main calls discovery.register(address) → INSERT, or reactivate if the address exists but is inactive
    (is_active=1, tier=NULL, tier_perp_amount=NULL — UNTIERED until next refresh)
@@ -234,7 +234,7 @@ class WhaleDiscovery:
         Fetch full state for an address and return WhaleState if it qualifies.
 
         Returns None if:
-        - All three core APIs failed (no data to evaluate)
+        - Both core APIs (perp, spot) failed
         - No axis clears its T5 threshold (position / cash / spot)
 
         Returns a WhaleState if the address qualifies as a whale. The caller
@@ -265,6 +265,11 @@ class WhaleDiscovery:
                 f"(pos ${pos_val:,.0f}, cash ${cash_val:,.0f}, spot ${spot_val:,.0f})"
             )
             return None
+
+        # Gate passed — only now pay for userVaultEquities (weight 20).
+        # The gate never reads vault data; fetching it for every probe
+        # spent ~78% of vault calls on wallets that were then discarded.
+        await self._attach_vaults_async(address, session, state)
 
         total = state.total_value()
         logger.info(
@@ -326,7 +331,7 @@ class WhaleDiscovery:
             session: aiohttp.ClientSession,
     ) -> Optional[WhaleState]:
         """
-        Fetch perp + spot + vault (+ HIP-3 if enabled) in parallel, parse
+        Fetch perp + spot (+ HIP-3 if enabled) in parallel, parse
         into a WhaleState. Returns None if no usable data came back.
 
         This mirrors what WhaleMetricsManager.fetch_whale_data_async does
@@ -338,7 +343,6 @@ class WhaleDiscovery:
         tasks = [
             self.hl_client.get_user_state_async(address, session),
             self.hl_client.get_spot_clearinghouse_state_async(address, session),
-            self.hl_client.get_user_vault_equities_async(address, session),
         ]
 
         hip3_dexes: List[str] = []
@@ -351,12 +355,13 @@ class WhaleDiscovery:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        state_result, spot_result, vault_result = results[0], results[1], results[2]
-        hip3_results = results[3:] if hip3_dexes else []
+        state_result, spot_result = results[0], results[1]
+        hip3_results = results[2:] if hip3_dexes else []
 
-        # If all three core fetches failed, there's nothing to evaluate
+        # If both core fetches failed, there's nothing to evaluate.
+        # Vault is no longer fetched here — see _attach_vaults_async.
         if all(isinstance(r, Exception) or not r
-               for r in (state_result, spot_result, vault_result)):
+               for r in (state_result, spot_result)):
             logger.warning(
                 f"All core APIs failed for {address[:10]}..., skipping"
             )
@@ -418,17 +423,60 @@ class WhaleDiscovery:
             except Exception as e:
                 logger.warning(f"Failed to parse spot state for {address}: {e}")
 
-        # --- 4. Vault holdings ---
-        if vault_result and not isinstance(vault_result, Exception):
+        self._finalize_totals(portfolio_data, positions)
+
+        return WhaleState(
+            portfolio_data=portfolio_data,
+            positions=positions,
+            spot_balances=spot_balances,
+            vaults=vaults,
+            account_data=account_data,
+        )
+
+
+    # -------------------------------------------------------------------------
+    # INTERNAL: PARSERS (one per API response)
+    # -------------------------------------------------------------------------
+
+    async def _attach_vaults_async(
+            self,
+            address: str,
+            session: aiohttp.ClientSession,
+            state: WhaleState,
+    ) -> None:
+        """Fetch vault equities for a gate-passed wallet and fold them in.
+
+        Mutates state in place. On any failure the wallet keeps an empty
+        vaults list and vault_value 0.0 — same outcome as the old parallel
+        fetch failing.
+        """
+        try:
+            vault_result = await self.hl_client.get_user_vault_equities_async(
+                address, session
+            )
+        except Exception as e:
+            logger.warning(f"Vault fetch failed for {address[:10]}...: {e}")
+            return
+
+        if vault_result:
             try:
                 self._parse_vault_state(
                     cast(List, vault_result),
-                    portfolio_data, vaults,
+                    state.portfolio_data, state.vaults,
                 )
             except Exception as e:
                 logger.warning(f"Failed to parse vaults for {address}: {e}")
 
-        # --- Totals ---
+        # Totals and leverage_ratio depend on vault_value — recompute.
+        self._finalize_totals(state.portfolio_data, state.positions)
+
+    @staticmethod
+    def _finalize_totals(portfolio_data: Dict, positions: List[Dict]) -> None:
+        """total_portfolio_value and leverage_ratio from the component values.
+
+        Called once after the core fetch and again after vaults are attached,
+        so the persisted figures match what the old single-pass fetch produced.
+        """
         portfolio_data["total_portfolio_value"] = (
             portfolio_data["perp_value"]
             + portfolio_data["spot_value"]
@@ -442,18 +490,6 @@ class WhaleDiscovery:
             portfolio_data["leverage_ratio"] = round(
                 position_value / portfolio_data["total_portfolio_value"], 2
             )
-
-        return WhaleState(
-            portfolio_data=portfolio_data,
-            positions=positions,
-            spot_balances=spot_balances,
-            vaults=vaults,
-            account_data=account_data,
-        )
-
-    # -------------------------------------------------------------------------
-    # INTERNAL: PARSERS (one per API response)
-    # -------------------------------------------------------------------------
 
     def _parse_perp_state(
             self,
