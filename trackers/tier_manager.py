@@ -424,16 +424,28 @@ class TierManager:
         # invisible to active_tiered_set (which requires tier IS NOT NULL), so
         # without this arm they accumulate forever — discovery adds them, they
         # never qualify, nothing can deactivate them. Route through the cap-out
-        # path (policy drop: no verify, no breaker). VIPs exempt. 3h grace lets
-        # a freshly-discovered whale get a refresh (incl. one slow-ladder spot
-        # snapshot) to qualify before becoming eligible.
+        # path (policy drop: no verify, no breaker). VIPs exempt.
+        #
+        # 3h grace lets a wallet get a refresh (incl. one slow-ladder spot
+        # snapshot) to qualify before becoming eligible. The grace clock starts
+        # at the LATER of:
+        #   - first_seen          — new wallets (add_whale_address records no event)
+        #   - last 'activate' event — reactivated wallets (first_seen never
+        #                             updates on reactivation, which let 1,056 of
+        #                             1,059 sweeps skip the grace entirely)
         grace_cutoff = (datetime.now() - timedelta(hours=3)).isoformat()
         self.storage.cursor.execute("""
-                SELECT address FROM whale_addresses
-                WHERE is_active = 1 AND tier IS NULL
-                  AND address NOT IN (SELECT address FROM vip_addresses)
-                  AND first_seen < ?
-            """, (grace_cutoff,))
+                SELECT w.address FROM whale_addresses w
+                WHERE w.is_active = 1 AND w.tier IS NULL
+                  AND w.address NOT IN (SELECT address FROM vip_addresses)
+                  AND w.first_seen < ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM whale_lifecycle_events e
+                      WHERE e.address = w.address
+                        AND e.event_type = 'activate'
+                        AND e.event_time >= ?
+                  )
+            """, (grace_cutoff, grace_cutoff))
         untiered_orphans = {row[0] for row in self.storage.cursor.fetchall()}
         for address in untiered_orphans:
             if address not in new_tiers:  # didn't qualify on any axis this refresh
