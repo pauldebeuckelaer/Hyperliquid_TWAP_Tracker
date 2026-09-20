@@ -43,6 +43,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import aiohttp
+from api_client.request_meter import METER
 
 from .whale_discovery import WhaleState
 
@@ -896,12 +897,14 @@ class WhaleStateCollector:
                     headers={"Content-Type": "application/json"},
                     timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
+                METER.record('clearinghouseState', 'fast_ladder', response.status)
                 if response.status == 200:
                     data = await response.json()
                     return {"address": address, "state": data}
                 logger.warning(f"Failed to fetch state for {address}: {response.status}")
                 return None
         except asyncio.TimeoutError:
+            METER.record('clearinghouseState', 'fast_ladder', 'timeout')
             logger.warning(f"Timeout fetching state for {address}")
             return None
         except Exception as e:
@@ -920,12 +923,14 @@ class WhaleStateCollector:
                     headers={"Content-Type": "application/json"},
                     timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
+                METER.record('spotClearinghouseState', 'fast_ladder', response.status)
                 if response.status == 200:
                     data = await response.json()
                     return {"address": address, "spot": data}
                 logger.warning(f"Failed to fetch spot for {address}: {response.status}")
                 return None
         except asyncio.TimeoutError:
+            METER.record('spotClearinghouseState', 'fast_ladder', 'timeout')
             logger.warning(f"Timeout fetching spot for {address}")
             return None
         except Exception as e:
@@ -944,6 +949,7 @@ class WhaleStateCollector:
                     headers={"Content-Type": "application/json"},
                     timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
+                METER.record('clearinghouseState', 'fast_ladder_hip3', response.status)
                 if response.status == 200:
                     data = await response.json()
                     return {"address": address, "dex": dex, "state": data}
@@ -952,6 +958,7 @@ class WhaleStateCollector:
                 )
                 return None
         except asyncio.TimeoutError:
+            METER.record('clearinghouseState', 'fast_ladder_hip3', 'timeout')
             logger.debug(f"HIP-3 '{dex}' timeout for {address[:10]}...")
             return None
         except Exception as e:

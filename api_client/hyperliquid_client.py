@@ -20,6 +20,8 @@ import asyncio
 from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timedelta
 
+from api_client.request_meter import METER
+
 logger = logging.getLogger(__name__)
 
 UNDERLYING_NAME_OVERRIDES = {
@@ -90,6 +92,8 @@ class HyperliquidClient:
 
                 logger.debug(f"   Response status: {response.status_code}")
 
+                METER.record(request_type, 'client', response.status_code)
+
                 response.raise_for_status()
 
                 result = response.json()
@@ -106,6 +110,7 @@ class HyperliquidClient:
                 return result
 
             except requests.exceptions.Timeout:
+                METER.record(request_type, 'client', 'timeout')
                 logger.warning(
                     f"⏱️  Timeout for {request_type} "
                     f"(attempt {attempt + 1}/{retry_count + 1})"
@@ -1395,6 +1400,7 @@ class HyperliquidClient:
                             timeout=aiohttp.ClientTimeout(total=self.timeout)
                     ) as response:
                         logger.debug(f"   Response status: {response.status}")
+                        METER.record(request_type, 'client', response.status)
 
                         if response.status != 200:
                             text = await response.text()
@@ -1408,6 +1414,7 @@ class HyperliquidClient:
                         return result
 
                 except asyncio.TimeoutError:
+                    METER.record(request_type, 'client', 'timeout')
                     logger.warning(f"⏱️  Async timeout for {request_type} (attempt {attempt + 1}/{retry_count + 1})")
                     if attempt == retry_count:
                         logger.error(f"❌ {request_type} failed after {retry_count + 1} attempts (timeout)")

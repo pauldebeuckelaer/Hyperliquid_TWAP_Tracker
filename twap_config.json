@@ -95,7 +95,7 @@
       },
       {
         "path": "logs/api_client.log",
-        "modules": ["api_client.hyperliquid_client"]
+        "modules": ["api_client.hyperliquid_client", "api.load"]
       }
     ],
     "modules": {
