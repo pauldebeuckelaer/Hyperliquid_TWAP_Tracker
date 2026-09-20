@@ -676,21 +676,15 @@ class TWAPBot:
             self.storage.close()
 
     def _log_final_stats(self):
-        """Log final statistics on shutdown"""
-        stats = self.tracker.get_current_stats()
+        """Log final statistics on shutdown.
 
+        tracker.get_current_stats() is deliberately NOT called here — it takes
+        ~44s on the full DB (measured Sep 20), which blew the systemd stop
+        timeout and got the process SIGKILLed mid-cleanup.
+        """
         logger.info("=" * 70)
         logger.info("FINAL STATS")
         logger.info("=" * 70)
-        logger.info(f"Total coins tracked: {stats['total_coins_tracked']}")
-        logger.info(f"Coins with activity: {stats['coins_with_activity']}")
-        logger.info(f"Total orders: {stats['total_orders']}")
-        logger.info(f"Active orders: {stats['total_active_orders']}")
-        logger.info(f"Addresses seen: {stats['all_time_addresses']}")
-
-        if 'db_stats' in stats:
-            db_stats = stats['db_stats']
-            logger.info(f"Database size: {db_stats.get('db_size_mb', 0)} MB")
 
         # Market tracker stats
         if self.market_tracker:
