@@ -505,6 +505,16 @@ class TWAPBot:
                             self.tier_manager.log_status()
 
                     # =============================================================
+                    # MARKET DATA SNAPSHOT (lightweight - 1 API call)
+                    # =============================================================
+
+                    if self.market_tracker:
+                        market_result = self.market_tracker.take_snapshot()
+                        prices = market_result.get('prices', {})
+                    else:
+                        prices = {}
+
+                    # =============================================================
                     # TWAP TRACKING (existing event-driven system)
                     # =============================================================
 
@@ -524,15 +534,7 @@ class TWAPBot:
                         if self.fees_collector.should_poll(current_cycle):
                             self.fees_collector.poll()
 
-                    # =============================================================
-                    # MARKET DATA SNAPSHOT (lightweight - 1 API call)
-                    # =============================================================
 
-                    if self.market_tracker:
-                        market_result = self.market_tracker.take_snapshot()
-                        prices = market_result.get('prices', {})
-                    else:
-                        prices = {}
 
                     # =============================================================
                     # CYCLE-DRIVEN WHALE STATE COLLECTION + ANALYSIS

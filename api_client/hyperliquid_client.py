@@ -63,6 +63,10 @@ class HyperliquidClient:
         self._hip3_dex_cache_ttl = config.get('hip3_dex_cache_ttl', 3600)  # 1 hour
         # =====================================================================
 
+        # metaAndAssetCtxs responses, keyed by dex ('' = mainnet).
+        self._meta_ctx_cache: Dict[str, tuple] = {}
+        self._meta_ctx_cache_ttl = config.get('meta_ctx_cache_ttl', 15)
+
         logger.info(f"Hyperliquid client initialized: {self.api_url}")
 
     def _make_request(self, request_type: str, params: Dict[str, Any], retry_count: int = 2) -> Optional[Any]:
@@ -1081,6 +1085,30 @@ class HyperliquidClient:
         """
         return self._make_request("perpDexs", {})
 
+    def _get_meta_and_asset_ctxs_raw(self, dex: str = "") -> Optional[list]:
+        """Raw metaAndAssetCtxs response for one dex ('' = mainnet), cached.
+
+        market_data_tracker and get_hip3_mids both need the full per-dex
+        response; uncached, they each paid weight 20 per dex for identical
+        data (~21 calls/min, 36% of daily API weight, measured Sep 21).
+
+        Only successful responses are cached. The TTL must stay SHORTER than
+        every consumer's own interval, so no consumer ever receives its own
+        previous response and stores it again as a new market snapshot.
+        """
+        hit = self._meta_ctx_cache.get(dex)
+        if hit:
+            age = (datetime.now() - hit[0]).total_seconds()
+            if age < self._meta_ctx_cache_ttl:
+                logger.debug(f"📦 Using cached metaAndAssetCtxs '{dex or 'mainnet'}' (age: {age:.1f}s)")
+                return hit[1]
+
+        params = {"dex": dex} if dex else {}
+        result = self._make_request("metaAndAssetCtxs", params)
+        if isinstance(result, list) and len(result) >= 2:
+            self._meta_ctx_cache[dex] = (datetime.now(), result)
+        return result
+
     def get_meta_and_asset_ctxs(self) -> Optional[Dict]:
         """
         Get perp metadata + asset contexts (funding, OI, volume, prices)
@@ -1098,7 +1126,7 @@ class HyperliquidClient:
             }
             or None on error
         """
-        result = self._make_request("metaAndAssetCtxs", {})
+        result = self._get_meta_and_asset_ctxs_raw()
 
         if not result or len(result) < 2:
             logger.warning("Failed to get metaAndAssetCtxs")
@@ -1168,7 +1196,7 @@ class HyperliquidClient:
             # Fetch metaAndAssetCtxs for each dex
             for dex_name in dex_names:
                 try:
-                    result = self._make_request("metaAndAssetCtxs", {"dex": dex_name})
+                    result = self._get_meta_and_asset_ctxs_raw(dex_name)
 
                     if not result or not isinstance(result, list) or len(result) < 2:
                         logger.debug(f"No data for HIP-3 dex '{dex_name}'")
@@ -1233,7 +1261,7 @@ class HyperliquidClient:
             }
             or None on error
         """
-        result = self._make_request("metaAndAssetCtxs", {"dex": dex})
+        result = self._get_meta_and_asset_ctxs_raw(dex)
 
         if not result or not isinstance(result, list) or len(result) < 2:
             logger.warning(f"Failed to get metaAndAssetCtxs for HIP-3 dex '{dex}'")
@@ -1470,6 +1498,7 @@ class HyperliquidClient:
         self._all_mids_cache = None
         self._all_mids_cache_time = None
         self._token_name_cache = {}
+        self._meta_ctx_cache = {}
         logger.info("🗑️  Cleared all price caches")
 
     def get_cache_stats(self) -> Dict:
