@@ -12,31 +12,36 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 _QUERY = """
-WITH latest_pos AS (
-  SELECT ps.address, ps.coin, ps.side, ps.size, ps.entry_price, ps.snapshot_time
-  FROM perp_snapshots ps
-  JOIN (SELECT address, MAX(snapshot_time) latest FROM perp_snapshots
-        WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f','now','-10 minutes')
-        GROUP BY address) lt
-    ON ps.address = lt.address AND ps.snapshot_time = lt.latest
+WITH t1 AS (
+  SELECT address FROM whale_addresses
+  WHERE tier_position = 1 AND is_active = 1
 ),
-latest_px AS (
-  SELECT coin, mark_px FROM market_snapshots m
-  JOIN (SELECT coin c, MAX(snapshot_time) latest FROM market_snapshots
-        WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f','now','-10 minutes')
-        GROUP BY coin) lm
-    ON m.coin = lm.c AND m.snapshot_time = lm.latest
+lt AS (
+  -- Latest snapshot per T1 wallet: one index seek on (address, snapshot_time)
+  -- per wallet. The old GROUP BY over perp_snapshots made SQLite walk the
+  -- whole address/time index (141.7M rows) every cycle — ~130s, measured
+  -- with py-spy on Sep 21.
+  SELECT t1.address,
+         (SELECT MAX(p.snapshot_time) FROM perp_snapshots p
+           WHERE p.address = t1.address
+             AND p.snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f','now','-10 minutes')) AS latest
+  FROM t1
+),
+lp AS (
+  SELECT ps.address, ps.coin, ps.side, ps.size, ps.entry_price, ps.snapshot_time,
+         (SELECT m.mark_px FROM market_snapshots m
+           WHERE m.coin = ps.coin
+             AND m.snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f','now','-10 minutes')
+           ORDER BY m.snapshot_time DESC LIMIT 1) AS mark_px
+  FROM lt CROSS JOIN perp_snapshots ps   -- CROSS JOIN: keep lt as the outer loop
+  WHERE ps.address = lt.address AND ps.snapshot_time = lt.latest
 )
-SELECT lp.address, lp.coin, lp.side, lp.size,
-       px.mark_px,
-       ABS(lp.size * px.mark_px)        AS mark_ntl,
-       ABS(lp.size * lp.entry_price)    AS entry_ntl,
-       lp.snapshot_time
-FROM latest_pos lp
-JOIN whale_addresses w ON w.address = lp.address
-LEFT JOIN latest_px px ON px.coin = lp.coin
-WHERE w.tier_position = 1 AND w.is_active = 1
-ORDER BY lp.address, mark_ntl DESC
+SELECT address, coin, side, size, mark_px,
+       ABS(size * mark_px)     AS mark_ntl,
+       ABS(size * entry_price) AS entry_ntl,
+       snapshot_time
+FROM lp
+ORDER BY address, mark_ntl DESC
 """
 
 
