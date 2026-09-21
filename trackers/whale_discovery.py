@@ -298,6 +298,17 @@ class WhaleDiscovery:
         """
         added = self.storage.add_whale_address(address)
         if added:
+            # Event AFTER the insert, not before: add_whale_address returns
+            # False on a duplicate, and an event recorded first would log an
+            # arrival that never happened. add_whale_address has already
+            # committed, so this row needs its own commit — on the WS discovery
+            # thread (own connection) no later write may come to flush it.
+            self.storage.record_lifecycle_event(
+                address=address,
+                event_type='activate',
+                source=source,
+            )
+            self.storage.conn.commit()
             logger.info(f"Registered new whale: {address}")
             return True
 
