@@ -429,7 +429,8 @@ class TierManager:
         # 3h grace lets a wallet get a refresh (incl. one slow-ladder spot
         # snapshot) to qualify before becoming eligible. The grace clock starts
         # at the LATER of:
-        #   - first_seen          — new wallets (add_whale_address records no event)
+        #   - first_seen          — new wallets (register() also emits 'activate'
+        #                           since Sep 21; first_seen kept as fallback)
         #   - last 'activate' event — reactivated wallets (first_seen never
         #                             updates on reactivation, which let 1,056 of
         #                             1,059 sweeps skip the grace entirely)
@@ -647,13 +648,19 @@ class TierManager:
         Returns:
             Dict of address -> total_position_value
         """
+
+        # INDEXED BY forces a range read of the time window. Without it the
+        # planner (no sqlite_stat1) scans all of idx_perp_address_time to
+        # serve GROUP BY address: ~130s per refresh on 141.7M rows, blocking
+        # the main loop. Measured Sep 22: 0.45s forced. Same fix in the cash
+        # and spot loaders. If the index is ever renamed this fails loudly.
         self.storage.cursor.execute("""
-            WITH latest_times AS (
+                        WITH latest_times AS (
                 SELECT address, MAX(snapshot_time) as latest_time
-                FROM perp_snapshots
+                FROM perp_snapshots INDEXED BY idx_perp_time
                 WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-130 minutes')
                 GROUP BY address
-            )
+            )  
             SELECT 
                 ps.address,
                 SUM(ABS(ps.size * ps.entry_price)) as total_position_value
@@ -690,9 +697,10 @@ class TierManager:
         self.storage.cursor.execute("""
             WITH latest_times AS (
                 SELECT address, MAX(snapshot_time) as latest_time
-                FROM perp_account_snapshots
+                FROM perp_account_snapshots INDEXED BY idx_perp_account_time
                 WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-130 minutes')
                 GROUP BY address
+                
             )
             SELECT 
                 pas.address,
@@ -753,7 +761,7 @@ class TierManager:
         self.storage.cursor.execute("""
             WITH latest_times AS (
                 SELECT address, MAX(snapshot_time) as latest_time
-                FROM portfolio_snapshots
+                FROM portfolio_snapshots INDEXED BY idx_portfolio_time
                 WHERE snapshot_time >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-540 minutes')
                 GROUP BY address
             )
