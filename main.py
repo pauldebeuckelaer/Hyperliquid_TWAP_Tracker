@@ -42,6 +42,7 @@ from coin_registry import init_dynamic_registry
 from storage import SQLiteBackend
 from trackers.whale_discovery import WhaleDiscovery, TokenFilter
 from trackers.whale_state_collector import WhaleStateCollector
+from trackers.phase_timer import PhaseTimer
 
 from generators.daily_summary import generate_daily_summaries
 from telegram.telegram_alerter import TelegramAlerter
@@ -482,6 +483,7 @@ class TWAPBot:
             while self.running:
                 try:
                     loop_start = time.time()
+                    timer = PhaseTimer()
 
                     # =============================================================
                     # CYCLE MANAGEMENT
@@ -490,15 +492,19 @@ class TWAPBot:
                     if self.tier_manager:
                         # Increment cycle (1-60)
                         cycle = self.tier_manager.increment_cycle()
+                        timer.cycle = cycle
+                        timer.mark('tiers')
 
                         # Refresh tiers every 60 cycles (hourly)
                         if self.tier_manager.should_refresh_tiers():
                             logger.info("Hourly tier refresh triggered")
                             self.tier_manager.refresh_tiers_from_snapshots()
+                            timer.mark('tier_refresh')
                             pending = self.tier_manager.pop_verify_candidates()
                             if pending and self.collector:
                                 pending = pending[:50]
                                 asyncio.run(self._verify_deactivation_candidates(pending))
+                                timer.mark('verify')
 
                         # Log cycle status every 10 cycles
                         if cycle % 10 == 0:
@@ -513,6 +519,7 @@ class TWAPBot:
                         prices = market_result.get('prices', {})
                     else:
                         prices = {}
+                    timer.mark('market')
 
                     # =============================================================
                     # TWAP TRACKING (existing event-driven system)
@@ -520,10 +527,12 @@ class TWAPBot:
 
                     # Fetch TWAP data (triggers on_order_start/on_order_end callbacks)
                     self._fetch_all_coins()
+                    timer.mark('twap')
 
                     # Process queued order events (portfolio snapshots)
                     if self.hyperliquid_enabled:
                         asyncio.run(self._process_order_events())
+                    timer.mark('orders')
 
                     # =============================================================
                     # PLATFORM FEES POLL (hourly, ~1 HTTP call)
@@ -533,6 +542,7 @@ class TWAPBot:
                         current_cycle = self.tier_manager.get_current_cycle()
                         if self.fees_collector.should_poll(current_cycle):
                             self.fees_collector.poll()
+                            timer.mark('fees')
 
 
 
@@ -546,28 +556,32 @@ class TWAPBot:
                         whale_states = asyncio.run(
                             self.collector.collect_async(prices=prices)
                         )
-
+                        timer.mark('collect')
                         try:
                             from trackers.position_board import dump_t1_board
                             dump_t1_board(self.storage)
                         except Exception as e:
                             logger.warning(f"T1 board dump failed: {e}")
+                        timer.mark('t1_board')
 
                         try:
                             from trackers.cash_board import dump_cash_board
                             dump_cash_board(self.storage)
                         except Exception as e:
                             logger.warning(f"Cash board dump failed: {e}")
+                        timer.mark('cash_board')
 
                         try:
                             from trackers.spot_board import dump_spot_board
                             dump_spot_board(self.storage)
                         except Exception as e:
                             logger.warning(f"Spot board dump failed: {e}")
+                        timer.mark('spot_board')
 
                         # Liquidation analysis (writes liquidation_snapshots)
                         if self.liquidation_tracker and whale_states:
                             self.liquidation_tracker.analyze(whale_states, prices)
+                        timer.mark('liq')
 
                         # Event detection (writes whale_events)
                         if self.event_detector and whale_states:
@@ -575,13 +589,14 @@ class TWAPBot:
                             if events:
                                 self.event_detector.log_summary(events)
                                 self.storage.save_whale_events(events)
+                        timer.mark('detect')
                         # =========================================================
                         # SLOW LADDER (Step 4b) — portfolio/spot/vault per-tier cadence
                         # Fires only at cycle 7 when a tier is due (1/2/4/8h ladder).
                         # Returns 0 on most cycles.
                         # =========================================================
                         asyncio.run(self.collector.collect_slow_async())
-
+                        timer.mark('slow')
                     # =============================================================
                     # DAILY MAINTENANCE
                     # =============================================================
@@ -602,12 +617,14 @@ class TWAPBot:
                             storage.close()
                         except Exception as e:
                             logger.error(f"Failed to generate daily summaries: {e}")
+                        timer.mark('daily')
 
                     # =============================================================
                     # TIMING
                     # =============================================================
 
                     elapsed = time.time() - loop_start
+                    timer.log()
                     sleep_time = max(0.1, FETCH_INTERVAL - elapsed)
 
                     if elapsed > FETCH_INTERVAL:

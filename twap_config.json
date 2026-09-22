@@ -96,6 +96,10 @@
       {
         "path": "logs/api_client.log",
         "modules": ["api_client.hyperliquid_client", "api.load"]
+      },
+      {
+        "path": "logs/loop_timing.log",
+        "modules": ["loop.timing"]
       }
     ],
     "modules": {
@@ -112,6 +116,7 @@
       "trackers.fees_collector": "INFO",
       "coin_registry": "INFO",
       "trackers.hip3_ws_discovery": "INFO",
+      "loop.timing": "INFO",
       "__main__": "DEBUG"
     }
   },
