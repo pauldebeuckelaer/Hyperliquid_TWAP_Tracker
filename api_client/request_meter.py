@@ -24,7 +24,7 @@ from collections import Counter
 
 logger = logging.getLogger('api.load')
 
-IP_BUDGET_PER_MIN = 1200
+IP_BUDGET_PER_MIN = 2000  # warn threshold only (flag at 80%). Documented limit is 1200; measured rejections start ~2500 (Sep 21 meter).
 DEFAULT_WEIGHT = 20
 WEIGHTS = {
     'clearinghouseState': 2,

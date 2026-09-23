@@ -55,6 +55,10 @@ FETCH_INTERVAL = 60  # All coins every 60 seconds
 # Whale snapshot settings (for event-driven TWAP snapshots)
 WHALE_MIN_PORTFOLIO = 50000  # Minimum portfolio value to snapshot
 
+# Daily maintenance runs on a quiet cycle: not a multiple of 5,
+# after the slow ladder (always done by cycle 19), away from cycle 60.
+DAILY_MAINT_CYCLE = 41
+CLEANUP_STATE_FILE = Path('data/last_cleanup_date')
 
 class TWAPBot:
     """TWAP tracker for all coins on Hyperliquid"""
@@ -440,6 +444,19 @@ class TWAPBot:
         except Exception as e:
             logger.error(f"Cleanup error: {e}")
 
+    def _load_last_cleanup_date(self):
+        """Persisted so a restart doesn't re-run maintenance that already ran today."""
+        try:
+            return datetime.fromisoformat(CLEANUP_STATE_FILE.read_text().strip()).date()
+        except Exception:
+            return None
+
+    def _save_last_cleanup_date(self, d):
+        try:
+            CLEANUP_STATE_FILE.write_text(d.isoformat())
+        except Exception as e:
+            logger.warning(f"Could not persist last_cleanup_date: {e}")
+
     def start(self):
         """Start the tracking loop"""
         logger.info(f"Starting TWAP tracking loop (interval: {FETCH_INTERVAL}s)")
@@ -460,7 +477,7 @@ class TWAPBot:
                 self.alerter = None
 
         self.running = True
-        last_cleanup_date = None
+        last_cleanup_date = self._load_last_cleanup_date()
 
         # Initial tier refresh
         if self.tier_manager:
@@ -592,8 +609,9 @@ class TWAPBot:
                         timer.mark('detect')
                         # =========================================================
                         # SLOW LADDER (Step 4b) — portfolio/spot/vault per-tier cadence
-                        # Fires only at cycle 7 when a tier is due (1/2/4/8h ladder).
-                        # Returns 0 on most cycles.
+                        # Starts at cycle 7 (~:00 past the hour) and drains across the
+                        # following cycles: 2 cycles (1h tier) up to 13 (1h+2h+4h+8h).
+                        # Returns 0 outside that window.
                         # =========================================================
                         asyncio.run(self.collector.collect_slow_async())
                         timer.mark('slow')
@@ -602,12 +620,15 @@ class TWAPBot:
                     # =============================================================
 
                     current_date = datetime.now(timezone.utc).date()
-                    if last_cleanup_date != current_date:
+                    if (last_cleanup_date != current_date
+                            and getattr(timer, 'cycle', None) == DAILY_MAINT_CYCLE):
                         logger.info("Running daily maintenance...")
 
                         # Database cleanup
                         self._run_daily_cleanup()
                         last_cleanup_date = current_date
+                        self._save_last_cleanup_date(current_date)
+                        timer.mark('cleanup')
 
                         # Generate previous day's summaries
                         yesterday = datetime.now(timezone.utc) - timedelta(days=1)
@@ -617,7 +638,7 @@ class TWAPBot:
                             storage.close()
                         except Exception as e:
                             logger.error(f"Failed to generate daily summaries: {e}")
-                        timer.mark('daily')
+                        timer.mark('summaries')
 
                     # =============================================================
                     # TIMING
@@ -626,11 +647,6 @@ class TWAPBot:
                     elapsed = time.time() - loop_start
                     timer.log()
                     sleep_time = max(0.1, FETCH_INTERVAL - elapsed)
-
-                    if elapsed > FETCH_INTERVAL:
-                        logger.warning(
-                            f"Cycle took {elapsed:.1f}s, exceeded {FETCH_INTERVAL}s target"
-                        )
 
                     # Interruptible: the shutdown handler sets the event,
                     # so a stop during the sleep ends the loop immediately.
