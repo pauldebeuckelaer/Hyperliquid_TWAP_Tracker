@@ -524,7 +524,7 @@ class TwapStorage(BaseStorage):
                 GROUP BY symbol 
                 HAVING timestamp = MAX(timestamp)
             ) s ON o.symbol = s.symbol
-            WHERE o.status = 'running'
+            WHERE o.status = 'active'
             ORDER BY o.size DESC
             LIMIT ?
         """, (limit,))
@@ -541,7 +541,7 @@ class TwapStorage(BaseStorage):
         self.cursor.execute("SELECT COUNT(*) FROM orders")
         stats['total_orders'] = self.cursor.fetchone()[0]
 
-        self.cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'running'")
+        self.cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'active'")
         stats['active_orders'] = self.cursor.fetchone()[0]
 
         self.cursor.execute("SELECT COUNT(*) FROM snapshots")

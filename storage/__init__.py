@@ -221,7 +221,7 @@ class SQLiteBackend(TwapStorage, WhaleStorage, MarketStorage, MarketCandleStorag
         self.cursor.execute("SELECT COUNT(*) FROM orders")
         stats['total_orders'] = self.cursor.fetchone()[0]
 
-        self.cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'running'")
+        self.cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'active'")
         stats['active_orders'] = self.cursor.fetchone()[0]
 
         self.cursor.execute("SELECT COUNT(*) FROM snapshots")
