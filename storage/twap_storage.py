@@ -71,7 +71,7 @@ class TwapStorage(BaseStorage):
                 net_pressure REAL NOT NULL DEFAULT 0,
                 unique_addresses INTEGER NOT NULL DEFAULT 0,
                 asset_id INTEGER,
-                UNIQUE(timestamp, symbol),
+                UNIQUE(timestamp, symbol)
                 
             )
         """)
