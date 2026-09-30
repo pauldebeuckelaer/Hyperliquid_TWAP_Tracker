@@ -421,6 +421,7 @@ class AllCoinsStateTracker:
                 'elapsed_minutes': order.get('elapsed_minutes'),
                 'progress_percent': order.get('progress_percent'),
                 'asset_id': order.get('asset_id'),
+                'placed_at_ms': order.get('placed_at_ms'),
             }
         return {
             'address': order.full_address,
@@ -433,6 +434,7 @@ class AllCoinsStateTracker:
             'elapsed_minutes': order.elapsed_minutes,
             'progress_percent': order.progress_percent,
             'asset_id': getattr(order, 'asset_id', None),
+            'placed_at_ms': getattr(order, 'placed_at_ms', None),
         }
 
     def _log_coin_snapshot(self, symbol: str, snapshot: TWAPSnapshot, changes: Dict):

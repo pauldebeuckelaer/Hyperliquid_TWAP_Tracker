@@ -42,7 +42,14 @@ class TwapStorage(BaseStorage):
                 last_seen_at TEXT NOT NULL,
                 completed_at TEXT,
                 canceled_at TEXT,
-                final_progress_percent REAL
+                final_progress_percent REAL,
+                asset_id INTEGER,
+                placed_at_ms INTEGER,
+                end_source TEXT,
+                chain_status TEXT,
+                executed_sz REAL,
+                executed_ntl REAL,
+                chain_end_s INTEGER
             )
         """)
 
@@ -63,7 +70,9 @@ class TwapStorage(BaseStorage):
                 perp_sell_pressure REAL NOT NULL DEFAULT 0,
                 net_pressure REAL NOT NULL DEFAULT 0,
                 unique_addresses INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(timestamp, symbol)
+                asset_id INTEGER,
+                UNIQUE(timestamp, symbol),
+                
             )
         """)
 
@@ -81,7 +90,8 @@ class TwapStorage(BaseStorage):
                 product_type TEXT NOT NULL,
                 duration_minutes INTEGER,
                 elapsed_minutes INTEGER,
-                progress_percent REAL
+                progress_percent REAL,
+                asset_id INTEGER
             )
         """)
 
@@ -98,6 +108,52 @@ class TwapStorage(BaseStorage):
 
         self.conn.commit()
 
+        # Migration: columns added after the original schema (idempotent).
+        self._migrate_twap_columns()
+
+    # (table, column, type). Checked one by one so a half-applied
+    # migration heals on the next startup.
+    _TWAP_MIGRATIONS = [
+        ("orders",    "asset_id",     "INTEGER"),
+        ("events",    "asset_id",     "INTEGER"),
+        ("snapshots", "asset_id",     "INTEGER"),
+        ("orders",    "placed_at_ms", "INTEGER"),
+        ("orders",    "end_source",   "TEXT"),
+        ("orders",    "chain_status", "TEXT"),
+        ("orders",    "executed_sz",  "REAL"),
+        ("orders",    "executed_ntl", "REAL"),
+        ("orders",    "chain_end_s",  "INTEGER"),
+    ]
+
+    def _migrate_twap_columns(self):
+        """Add post-launch columns to TWAP tables. Idempotent.
+
+        asset_id: was added to the live DB by hand but never to the CREATE
+        TABLEs; listed here so a fresh DB gets it too.
+
+        orders chain columns (ground truth from twapHistory, set by the
+        verifier; NULL until an order is verified):
+          placed_at_ms  Placement time in MILLISECONDS. Hypurrscan 'time' ==
+                        twapHistory state.timestamp. The binding key with
+                        address. Set on insert from Sep 30 2026; NULL on
+                        older rows (legacy binding is fuzzy, see backfill).
+          end_source    Who decided the ending: 'twapHistory' (verified),
+                        'hypurrscan_label', 'disappearance', 'cleanup'.
+          chain_status  Raw status.status of the terminal twapHistory entry:
+                        finished / terminated / error / stopped / ...
+                        Kept separate from `status` so no label is lossy.
+          executed_sz   executedSz from the terminal entry. COIN units.
+                        Only valid on terminal entries; 'activated' is 0.0.
+          executed_ntl  executedNtl from the terminal entry. USD.
+          chain_end_s   Outer 'time' of the terminal entry. SECONDS, not ms."""
+        for table, col, coltype in self._TWAP_MIGRATIONS:
+            self.cursor.execute(f"PRAGMA table_info({table})")
+            cols = {row[1] for row in self.cursor.fetchall()}
+            if col not in cols:
+                self.cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+                self.conn.commit()
+                logger.info(f"Migration: added {col} to {table}")
+
     def _create_indexes(self):
         """Create TWAP indexes."""
         indexes = [
@@ -111,6 +167,7 @@ class TwapStorage(BaseStorage):
             "CREATE INDEX IF NOT EXISTS idx_events_address ON events(address)",
             "CREATE INDEX IF NOT EXISTS idx_events_symbol ON events(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)",
+            "CREATE INDEX IF NOT EXISTS idx_orders_address_placed ON orders(address, placed_at_ms)",
         ]
         self._execute_index_list(indexes)
 
@@ -218,6 +275,7 @@ class TwapStorage(BaseStorage):
         duration = order.get('duration_minutes', 0)
         status = order.get('status', 'active')
         asset_id = order.get('asset_id')
+        placed_at_ms = order.get('placed_at_ms')
 
         if existing:
             self.cursor.execute("""
@@ -225,20 +283,21 @@ class TwapStorage(BaseStorage):
                     last_seen_at = ?,
                     status = ?,
                     size = ?,
-                    asset_id = COALESCE(asset_id, ?)
+                    asset_id = COALESCE(asset_id, ?),
+                    placed_at_ms = COALESCE(placed_at_ms, ?)
                 WHERE order_hash = ?
-            """, (timestamp, status, size, asset_id, order_hash))
+            """, (timestamp, status, size, asset_id, placed_at_ms, order_hash))
         else:
             self.cursor.execute("""
                 INSERT INTO orders (
                     order_hash, address, symbol, side, size,
                     product_type, duration_minutes, status,
-                    first_seen_at, last_seen_at, asset_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    first_seen_at, last_seen_at, asset_id, placed_at_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 order_hash, address, symbol, side, size,
                 product_type, duration, status,
-                timestamp, timestamp, asset_id
+                timestamp, timestamp, asset_id, placed_at_ms
             ))
 
     def _upsert_order_from_change(self, symbol: str, order, timestamp: str):
@@ -252,6 +311,7 @@ class TwapStorage(BaseStorage):
             duration = order.duration_minutes
             status = order.status
             asset_id = getattr(order, 'asset_id', None)
+            placed_at_ms = getattr(order, 'placed_at_ms', None)
         else:
             order_hash = order.get('order_hash', '')
             address = order.get('address', order.get('full_address', ''))
@@ -261,6 +321,7 @@ class TwapStorage(BaseStorage):
             duration = order.get('duration_minutes', 0)
             status = order.get('status', 'active')
             asset_id = order.get('asset_id')
+            placed_at_ms = order.get('placed_at_ms')
         if not order_hash:
             return
 
@@ -275,20 +336,21 @@ class TwapStorage(BaseStorage):
                 UPDATE orders SET
                     last_seen_at = ?,
                     status = ?,
-                    asset_id = COALESCE(asset_id, ?)
+                    asset_id = COALESCE(asset_id, ?),
+                    placed_at_ms = COALESCE(placed_at_ms, ?)
                 WHERE order_hash = ?
-            """, (timestamp, status, asset_id, order_hash))
+            """, (timestamp, status, asset_id, placed_at_ms, order_hash))
         else:
             self.cursor.execute("""
                 INSERT INTO orders (
                     order_hash, address, symbol, side, size,
                     product_type, duration_minutes, status,
-                    first_seen_at, last_seen_at, asset_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    first_seen_at, last_seen_at, asset_id, placed_at_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 order_hash, address, symbol, side, size,
                 product_type, duration, status,
-                timestamp, timestamp, asset_id
+                timestamp, timestamp, asset_id, placed_at_ms
             ))
 
     def _mark_order_completed(self, order, timestamp: str):

@@ -53,6 +53,7 @@ class TWAPOrder:
     duration_minutes: int
     order_hash: str = ""
     asset_id: Optional[int] = None
+    placed_at_ms: Optional[int] = None  # Hypurrscan 'time' == twapHistory state.timestamp (ms)
 
     # Calculated/optional fields
     elapsed_minutes: Optional[int] = None
@@ -138,6 +139,7 @@ class TWAPOrder:
             progress_percent=progress_percent,
             order_hash=raw_order.get('order_hash', raw_order.get('hash', '')),
             asset_id=asset_id,
+            placed_at_ms=int(start_time_ms) if start_time_ms else None,
             timestamp=datetime.now(),
             raw_data=raw_order
         )
