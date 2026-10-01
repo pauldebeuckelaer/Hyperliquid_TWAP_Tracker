@@ -4,6 +4,7 @@ Usage: python3 scripts/dump_twap_history.py [min_orders]   (default 1000)"""
 import sqlite3, requests, json, time, sys
 from pathlib import Path
 from datetime import datetime, timezone
+import sqlite3, requests, json, time, sys, gzip
 
 URL = "https://api.hyperliquid.xyz/info"
 min_orders = int(sys.argv[1]) if len(sys.argv) > 1 else 1000
@@ -16,9 +17,9 @@ addrs = [r[0] for r in con.execute(
     (min_orders,))]
 con.close()
 
-path = out / f"twap_history_{stamp}.jsonl"
+path = out / f"twap_history_{stamp}.gz"
 ok = fail = 0
-with path.open("w") as fh:
+with path.open("wt") as fh:
     for i, a in enumerate(addrs, 1):
         try:
             h = requests.post(URL, json={"type": "twapHistory", "user": a}, timeout=30).json() or []
