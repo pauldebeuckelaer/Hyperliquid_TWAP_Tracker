@@ -17,9 +17,9 @@ addrs = [r[0] for r in con.execute(
     (min_orders,))]
 con.close()
 
-path = out / f"twap_history_{stamp}.gz"
+path = out / f"twap_history_{stamp}.jsonl.gz"
 ok = fail = 0
-with path.open("wt") as fh:
+with gzip.open(path, "wt") as fh:
     for i, a in enumerate(addrs, 1):
         try:
             h = requests.post(URL, json={"type": "twapHistory", "user": a}, timeout=30).json() or []
