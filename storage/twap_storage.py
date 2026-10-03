@@ -49,7 +49,8 @@ class TwapStorage(BaseStorage):
                 chain_status TEXT,
                 executed_sz REAL,
                 executed_ntl REAL,
-                chain_end_s INTEGER
+                chain_end_s INTEGER,
+                twap_id INTEGER
             )
         """)
 
@@ -123,6 +124,7 @@ class TwapStorage(BaseStorage):
         ("orders",    "executed_sz",  "REAL"),
         ("orders",    "executed_ntl", "REAL"),
         ("orders",    "chain_end_s",  "INTEGER"),
+        ("orders",    "twap_id", "INTEGER"),
     ]
 
     def _migrate_twap_columns(self):
@@ -145,7 +147,16 @@ class TwapStorage(BaseStorage):
           executed_sz   executedSz from the terminal entry. COIN units.
                         Only valid on terminal entries; 'activated' is 0.0.
           executed_ntl  executedNtl from the terminal entry. USD.
-          chain_end_s   Outer 'time' of the terminal entry. SECONDS, not ms."""
+          chain_end_s   Outer 'time' of the terminal entry. SECONDS, not ms.
+
+          twap_id       twapHistory twapId. Unique per order on chain. Set by
+                        the verifier when it binds a row via (address,
+                        placed_at_ms). NULL on unverified rows, and always
+                        NULL for orders placed before 2025-10-12, where
+                        twapHistory has no twapId field.
+
+                        """
+
         for table, col, coltype in self._TWAP_MIGRATIONS:
             self.cursor.execute(f"PRAGMA table_info({table})")
             cols = {row[1] for row in self.cursor.fetchall()}
@@ -168,6 +179,7 @@ class TwapStorage(BaseStorage):
             "CREATE INDEX IF NOT EXISTS idx_events_symbol ON events(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)",
             "CREATE INDEX IF NOT EXISTS idx_orders_address_placed ON orders(address, placed_at_ms)",
+            "CREATE INDEX IF NOT EXISTS idx_orders_twap_id ON orders(twap_id)",
         ]
         self._execute_index_list(indexes)
 
