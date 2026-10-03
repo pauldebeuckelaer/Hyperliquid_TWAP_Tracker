@@ -218,13 +218,12 @@ def main():
     # ---- real misses: on chain after the cutoff, never in the DB ----
     if misses:
         print(f"\nREAL MISSES (placed after cutoff, not in DB)")
-        print(f"{'placed (UTC)':<15} {'coin':<16} {'min':>5} {'chain':<11} {'exec_ntl':>12}  twap_id")
+        print(f"{'placed (UTC)':<15} {'coin':<16} {'min':>5} {'lived':>7} {'chain':<11} {'exec_ntl':>12}  twap_id")
         for o in (misses if show_all else misses[:25]):
             ntl = f"{o['executed_ntl']:,.0f}" if o["executed_ntl"] is not None else "-"
-            print(f"{fmt_ms(o['placed_at_ms']):<15} {o['coin']:<16} {o['minutes'] or '':>5} "
+            lived = f"{(o['chain_end_s'] - o['placed_at_ms'] / 1000) / 60:.1f}" if o["chain_end_s"] else "-"
+            print(f"{fmt_ms(o['placed_at_ms']):<15} {o['coin']:<16} {o['minutes'] or '':>5} {lived:>7} "
                   f"{o['chain_state']:<11} {ntl:>12}  {o['twap_id']}")
-        if not show_all and len(misses) > 25:
-            print(f"  ... {len(misses) - 25} more (use --all)")
 
 
 if __name__ == "__main__":
