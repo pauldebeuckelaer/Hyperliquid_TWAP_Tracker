@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path('data')
 DB_PATH = DATA_DIR / 'twap.db'
 
+# Frozen-coin fix: a coin absent from Hypurrscan's list for this many
+# consecutive polls (60s each) has its remaining active orders closed.
+EMPTY_POLLS_TO_CLOSE = 5
+# Brake: if at least BRAKE_MIN_COINS held coins vanish in the same poll AND
+# they exceed BRAKE_MAX_SHARE of all held coins, distrust the poll.
+BRAKE_MIN_COINS = 5
+BRAKE_MAX_SHARE = 0.3
+
 
 def format_size(size: float) -> str:
     """Format size with appropriate precision based on magnitude"""
@@ -94,6 +102,7 @@ class CoinState:
         self.update_count = 0
         self.current_snapshot: Optional[TWAPSnapshot] = None
         self.previous_snapshot: Optional[TWAPSnapshot] = None
+        self.empty_polls = 0
 
 
 class AllCoinsStateTracker:
@@ -209,10 +218,56 @@ class AllCoinsStateTracker:
             'status_changes': filtered_status_changes
         }
 
+    def _coins_to_close(self, all_coins_data: Dict[str, List[Dict]]) -> Set[str]:
+        """Frozen-coin fix. Hypurrscan omits a coin entirely once its last
+        order is gone, so the main loop never visits it and its active
+        orders freeze. Count consecutive absent polls per held coin and
+        return the coins that reached EMPTY_POLLS_TO_CLOSE."""
+        present = {s for s, r in all_coins_data.items() if r}
+        held = {
+            s for s, cs in self.coin_states.items()
+            if cs.current_snapshot and cs.current_snapshot.active_orders
+            and s not in self.exclude_coins
+        }
+
+        for s in present:
+            if s in self.coin_states:
+                self.coin_states[s].empty_polls = 0
+
+        missing = held - present
+        newly_missing = {s for s in missing if self.coin_states[s].empty_polls == 0}
+
+        if (len(newly_missing) >= BRAKE_MIN_COINS
+                and len(newly_missing) > BRAKE_MAX_SHARE * len(held)):
+            logger.warning(
+                f"Frozen-coin brake: {len(newly_missing)}/{len(held)} held coins "
+                f"vanished in one poll — distrusting this response, no counters advanced"
+            )
+            return set()
+
+        to_close = set()
+        for s in missing:
+            cs = self.coin_states[s]
+            cs.empty_polls += 1
+            if cs.empty_polls >= EMPTY_POLLS_TO_CLOSE:
+                to_close.add(s)
+
+        if to_close:
+            logger.info(
+                f"Frozen-coin close: {len(to_close)} coin(s) absent "
+                f"{EMPTY_POLLS_TO_CLOSE}+ polls: {', '.join(sorted(to_close))}"
+            )
+        return to_close
+
     def update(self, all_coins_data: Dict[str, List[Dict]], prices: Dict[str, float] = None):
         """Update with new TWAP data for all coins."""
         prices = prices or {}
         self.global_update_count += 1
+
+        all_coins_data = dict(all_coins_data)  # don't mutate the caller's dict
+        to_close = self._coins_to_close(all_coins_data)
+        for symbol in to_close:
+            all_coins_data[symbol] = []
 
         logger.info("\n" + "=" * 70)
         logger.info(f"ALL COINS UPDATE #{self.global_update_count}")
@@ -228,7 +283,7 @@ class AllCoinsStateTracker:
                 logger.debug(f"Skipping excluded coin: {symbol}")
                 continue
 
-            if not raw_orders:
+            if not raw_orders and symbol not in to_close:
                 continue
 
             if symbol not in self.coin_states:

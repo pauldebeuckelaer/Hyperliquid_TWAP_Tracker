@@ -218,12 +218,12 @@ class TwapStorage(BaseStorage):
                 self._record_event('new', symbol, order, timestamp)
 
             for order in changes.get('completed_orders', []):
-                self._record_event('completed', symbol, order, timestamp)
-                self._mark_order_completed(order, timestamp)
+                if self._mark_order_completed(order, timestamp):
+                    self._record_event('completed', symbol, order, timestamp)
 
             for order in changes.get('canceled_orders', []):
-                self._record_event('canceled', symbol, order, timestamp)
-                self._mark_order_canceled(order, timestamp)
+                if self._mark_order_canceled(order, timestamp):
+                    self._record_event('canceled', symbol, order, timestamp)
 
             # 5. Update addresses
             addresses_in_snapshot = set()
@@ -375,15 +375,16 @@ class TwapStorage(BaseStorage):
             progress = order.get('progress_percent')
 
         if not order_hash:
-            return
+            return False
 
         self.cursor.execute("""
-            UPDATE orders SET
-                status = 'completed',
-                completed_at = ?,
-                final_progress_percent = ?
-            WHERE order_hash = ? AND status = 'active'
-        """, (timestamp, progress, order_hash))
+                    UPDATE orders SET
+                        status = 'completed',
+                        completed_at = ?,
+                        final_progress_percent = ?
+                    WHERE order_hash = ? AND status = 'active'
+                """, (timestamp, progress, order_hash))
+        return self.cursor.rowcount > 0
 
     def _mark_order_canceled(self, order, timestamp: str):
         """Mark an order as canceled."""
@@ -395,15 +396,16 @@ class TwapStorage(BaseStorage):
             progress = order.get('progress_percent')
 
         if not order_hash:
-            return
+            return False
 
         self.cursor.execute("""
-            UPDATE orders SET
-                status = 'canceled',
-                canceled_at = ?,
-                final_progress_percent = ?
-            WHERE order_hash = ?
-        """, (timestamp, progress, order_hash))
+                    UPDATE orders SET
+                        status = 'canceled',
+                        canceled_at = ?,
+                        final_progress_percent = ?
+                    WHERE order_hash = ? AND status = 'active'
+                """, (timestamp, progress, order_hash))
+        return self.cursor.rowcount > 0
 
     def _record_event(self, event_type: str, symbol: str, order, timestamp: str):
         """Record an event (new/completed/canceled)."""
