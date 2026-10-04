@@ -382,7 +382,7 @@ class TwapStorage(BaseStorage):
                 status = 'completed',
                 completed_at = ?,
                 final_progress_percent = ?
-            WHERE order_hash = ?
+            WHERE order_hash = ? AND status = 'active'
         """, (timestamp, progress, order_hash))
 
     def _mark_order_canceled(self, order, timestamp: str):
