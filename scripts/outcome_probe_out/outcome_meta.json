@@ -1,0 +1,633 @@
+{
+  "outcomes": [
+    {
+      "outcome": 1209,
+      "name": "template:priceTouch",
+      "description": "perp:HYPE|priceDescription:HYPE-USDC perp mark |seconds:1|target:100|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1210,
+      "name": "template:binaryPrice",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|threshold:100000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1211,
+      "name": "template:priceTouch",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|target:100000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1212,
+      "name": "template:priceTouch",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|target:95000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1213,
+      "name": "template:priceTouch",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|target:90000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1214,
+      "name": "template:priceTouch",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|target:85000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1215,
+      "name": "template:priceTouch",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|target:70000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1216,
+      "name": "template:priceTouch",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|target:65000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1217,
+      "name": "template:priceTouch",
+      "description": "perp:BTC|priceDescription:BTC-USDC mark|seconds:1|target:60000|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1226,
+      "name": "template fallback",
+      "description": "other",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1227,
+      "name": "template:policyRateNoChange",
+      "description": "",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1228,
+      "name": "template:policyRateDecrease",
+      "description": "",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1229,
+      "name": "template:policyRateIncrease",
+      "description": "",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1230,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:CL|priceDescription:xyz:CL|seconds:1|threshold:83.196|time:20260929-2100",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1233,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:SP500|priceDescription:xyz:SP500-USDC perp mark|seconds:3|threshold:7718.8|time:20260831-2000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1234,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:DRAM|priceDescription:xyz:DRAM-USDC perp mark|seconds:3|threshold:56.378|time:20260831-2000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1235,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:SNDK|priceDescription:xyz:SNDK-USDC perp mark|seconds:3|threshold:1489.6|time:20260831-2000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1236,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:SPCX|priceDescription:xyz:SPCX-USDC perp mark|seconds:3|threshold:140.54|time:20260831-2000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1237,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:NBIS|priceDescription:xyz:NBIS-USDC perp mark|seconds:3|threshold:209.86|time:20260831-2000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1238,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:XYZ100|priceDescription:xyz:XYZ100-USDC perp mark|seconds:3|threshold:29505|time:20260831-2000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1239,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:GOLD|priceDescription:xyz:GOLD-USDC perp mark|seconds:3|threshold:4465.2|time:20260831-2100",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1240,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:SILVER|priceDescription:xyz:SILVER-USDC perp mark|seconds:3|threshold:66.646|time:20260831-2100",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1241,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:CL|priceDescription:xyz:CL-USDC perp mark|seconds:3|threshold:82.941|time:20260831-2100",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1242,
+      "name": "Recurring",
+      "description": "class:priceBinary|underlying:BTC|expiry:20260831-0600|targetPrice:78100|period:1d",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1243,
+      "name": "Recurring",
+      "description": "class:priceBinary|underlying:ETH|expiry:20260831-0600|targetPrice:2455.7|period:1d",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1244,
+      "name": "Recurring",
+      "description": "class:priceBinary|underlying:SOL|expiry:20260831-0600|targetPrice:105.02|period:1d",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1245,
+      "name": "Recurring",
+      "description": "class:priceBinary|underlying:HYPE|expiry:20260831-0600|targetPrice:83.14|period:1d",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1246,
+      "name": "Recurring Fallback",
+      "description": "other",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1247,
+      "name": "Recurring Named Outcome",
+      "description": "index:0",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1248,
+      "name": "Recurring Named Outcome",
+      "description": "index:1",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1249,
+      "name": "Recurring Named Outcome",
+      "description": "index:2",
+      "sideSpecs": [
+        {
+          "name": "Yes"
+        },
+        {
+          "name": "No"
+        }
+      ],
+      "quoteToken": "USDC"
+    },
+    {
+      "outcome": 1250,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:SKHX|priceDescription:xyz:SKHX-USDC perp mark|seconds:3|threshold:1233.6|time:20260901-0630",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1251,
+      "name": "template:priceTouch",
+      "description": "perp:HYPE|priceDescription:HYPE-USDC perp mark|seconds:3|target:90|time:20261001-0000",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 1252,
+      "name": "template:binaryPrice",
+      "description": "perp:ZEC|priceDescription:ZEC-USDC perp mark|seconds:3|threshold:840.69|time:20260831-0600",
+      "sideSpecs": [
+        {
+          "name": "template:Yes"
+        },
+        {
+          "name": "template:No"
+        }
+      ],
+      "quoteToken": "USDC",
+      "venue": "out",
+      "deployerFeeScale": "1.0"
+    }
+  ],
+  "questions": [
+    {
+      "question": 191,
+      "name": "template:policyRateDecision",
+      "description": "decisionDeadline:20261028-2359|decisionLabel:September 2026|institution:Federal Reserve's Open Market Committee|officialSource:Federal Reserve's Open Market Committee|policyMeasure:the upper bound target range for the federal funds rate|scheduledDecision:20260916-1800",
+      "fallbackOutcome": 1226,
+      "namedOutcomes": [
+        1227,
+        1228,
+        1229
+      ],
+      "settledNamedOutcomes": []
+    },
+    {
+      "question": 192,
+      "name": "Recurring",
+      "description": "class:priceBucket|underlying:BTC|expiry:20260831-0600|priceThresholds:76538,79662|period:1d",
+      "fallbackOutcome": 1246,
+      "namedOutcomes": [
+        1247,
+        1248,
+        1249
+      ],
+      "settledNamedOutcomes": []
+    }
+  ],
+  "deployers": [
+    {
+      "deployer": "0x08e9c89f46dccee91bdb85c6532eb93a4c335efe",
+      "venue": "skew",
+      "subDeployers": [
+        [
+          "registerAndAssociateNamedOutcomeFromTemplate",
+          [
+            "0x1c867861e0cffb0eba07d9d94f716189c130dac6"
+          ]
+        ],
+        [
+          "registerQuestionFromTemplate",
+          [
+            "0x1c867861e0cffb0eba07d9d94f716189c130dac6"
+          ]
+        ],
+        [
+          "registerStandaloneOutcomeFromTemplate",
+          [
+            "0x1c867861e0cffb0eba07d9d94f716189c130dac6"
+          ]
+        ],
+        [
+          "settleOutcome",
+          [
+            "0x1c867861e0cffb0eba07d9d94f716189c130dac6"
+          ]
+        ],
+        [
+          "settleQuestion",
+          [
+            "0x1c867861e0cffb0eba07d9d94f716189c130dac6"
+          ]
+        ]
+      ]
+    },
+    {
+      "deployer": "0x0c46eb73fae2816f219fcf11f50d6d3c59b5819e",
+      "venue": "out",
+      "subDeployers": [
+        [
+          "registerAndAssociateNamedOutcomeFromTemplate",
+          [
+            "0xf1923927d7d2847191fb7ef8b1a16028aa5ae754"
+          ]
+        ],
+        [
+          "registerQuestionFromTemplate",
+          [
+            "0xf1923927d7d2847191fb7ef8b1a16028aa5ae754"
+          ]
+        ],
+        [
+          "registerStandaloneOutcomeFromTemplate",
+          [
+            "0xf1923927d7d2847191fb7ef8b1a16028aa5ae754"
+          ]
+        ],
+        [
+          "settleOutcome",
+          [
+            "0xf1923927d7d2847191fb7ef8b1a16028aa5ae754"
+          ]
+        ],
+        [
+          "settleQuestion",
+          [
+            "0xf1923927d7d2847191fb7ef8b1a16028aa5ae754"
+          ]
+        ]
+      ]
+    }
+  ],
+  "feeScale": "1.0"
+}
