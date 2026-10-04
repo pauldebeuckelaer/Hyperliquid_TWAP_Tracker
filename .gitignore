@@ -54,3 +54,7 @@ analysis/
 # Chart output
 *.png
 *.boxbak
+data/twap_history_dump/
+data/audit_*.json
+audit_*.json
+data/last_cleanup_date
