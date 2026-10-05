@@ -359,7 +359,7 @@ class AllCoinsStateTracker:
                     'new_orders': new_snapshot.active_orders,
                     'completed_orders': [],
                     'canceled_orders': [],
-                    'out_of_window_orders': []
+                    'out_of_window_orders': [],
                     'status_changes': [],
                 }
 
