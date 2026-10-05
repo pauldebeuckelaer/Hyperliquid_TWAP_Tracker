@@ -237,6 +237,7 @@ class AllCoinsStateTracker:
             'new_orders': raw_changes.get('new_orders', []),
             'completed_orders': completed_orders,
             'canceled_orders': canceled_orders,
+            'out_of_window_orders': out_of_window_orders,
             'status_changes': filtered_status_changes
         }
 
