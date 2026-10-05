@@ -22,6 +22,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Set
 from pathlib import Path
+import time
 
 # Import models
 from api_client.models import TWAPOrder, TWAPSnapshot
@@ -42,6 +43,25 @@ EMPTY_POLLS_TO_CLOSE = 5
 # they exceed BRAKE_MAX_SHARE of all held coins, distrust the poll.
 BRAKE_MIN_COINS = 5
 BRAKE_MAX_SHARE = 0.3
+
+# Hypurrscan's /twap/* lists an order for 24h after placement only.
+# A longer order that vanishes at that mark has left the window; it has
+# not ended. The verifier resolves it from twapHistory.
+HYPURRSCAN_WINDOW_MIN = 1440
+WINDOW_EDGE_MARGIN_MIN = 2
+
+
+def _left_window(order) -> bool:
+    """True if a vanished order is a >24h TWAP that aged out of Hypurrscan's list."""
+    if order.duration_minutes <= HYPURRSCAN_WINDOW_MIN:
+        return False
+    if order.placed_at_ms:
+        age_min = (time.time() * 1000 - order.placed_at_ms) / 60000
+    elif order.elapsed_minutes is not None:
+        age_min = order.elapsed_minutes
+    else:
+        return False
+    return age_min >= HYPURRSCAN_WINDOW_MIN - WINDOW_EDGE_MARGIN_MIN
 
 
 def format_size(size: float) -> str:
@@ -177,14 +197,16 @@ class AllCoinsStateTracker:
         """Process raw changes to separate completed/canceled orders"""
         completed_orders = []
         canceled_orders = []
+        out_of_window_orders = []
         handled_hashes = set()
 
         for order in raw_changes.get('completed_orders', []):
+            handled_hashes.add(order.order_hash)
             if order.status in ['canceled', 'error']:
-                handled_hashes.add(order.order_hash)
                 continue
+            if _left_window(order):
+                out_of_window_orders.append(order)
             else:
-                handled_hashes.add(order.order_hash)
                 completed_orders.append(order)
 
         for change in raw_changes.get('status_changes', []):
@@ -202,7 +224,8 @@ class AllCoinsStateTracker:
                         'status': change['new_status'],
                         'elapsed_minutes': change.get('elapsed_minutes'),
                         'progress_percent': change.get('progress_percent'),
-                        'time_remaining_minutes': change.get('time_remaining_minutes')
+                        'time_remaining_minutes': change.get('time_remaining_minutes'),
+                        'out_of_window_orders': out_of_window_orders,
                     })
 
         filtered_status_changes = [
@@ -337,7 +360,8 @@ class AllCoinsStateTracker:
                     'new_orders': new_snapshot.active_orders,
                     'completed_orders': [],
                     'canceled_orders': [],
-                    'status_changes': []
+                    'status_changes': [],
+                    'out_of_window_orders': []
                 }
 
             # Log this coin's snapshot
@@ -450,7 +474,8 @@ class AllCoinsStateTracker:
             changes_for_db = {
                 'new_orders': changes.get('new_orders', []),
                 'completed_orders': changes.get('completed_orders', []),
-                'canceled_orders': changes.get('canceled_orders', [])
+                'canceled_orders': changes.get('canceled_orders', []),
+                'out_of_window_orders': changes.get('out_of_window_orders', []),
             }
 
             # Save to database
@@ -649,6 +674,18 @@ class AllCoinsStateTracker:
                     progress_str = f" | {progress_str}"
                 logger.info(
                     f"    COMPLETED: {order.full_address} {order.side:4s} {format_size(order.size)} "
+                    f"{order.product_type} {order.duration_hours:.1f}h{progress_str}"
+                )
+
+        out_of_window = changes.get('out_of_window_orders', [])
+        if out_of_window:
+            logger.info(f"  ⏳ [{symbol}] Left 24h window: {len(out_of_window)}")
+            for order in out_of_window:
+                progress_str = format_progress(order)
+                if progress_str:
+                    progress_str = f" | {progress_str}"
+                logger.info(
+                    f"    OUT_OF_WINDOW: {order.full_address} {order.side:4s} {format_size(order.size)} "
                     f"{order.product_type} {order.duration_hours:.1f}h{progress_str}"
                 )
 

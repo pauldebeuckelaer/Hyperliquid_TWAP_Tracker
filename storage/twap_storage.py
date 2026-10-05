@@ -225,6 +225,10 @@ class TwapStorage(BaseStorage):
                 if self._mark_order_canceled(order, timestamp):
                     self._record_event('canceled', symbol, order, timestamp)
 
+            for order in changes.get('out_of_window_orders', []):
+                if self._mark_order_out_of_window(order):
+                    self._record_event('out_of_window', symbol, order, timestamp)
+
             # 5. Update addresses
             addresses_in_snapshot = set()
             for order in active_orders:
@@ -240,6 +244,28 @@ class TwapStorage(BaseStorage):
             logger.error(f"Error saving snapshot for {symbol}: {e}")
             self.conn.rollback()
             raise
+
+    def _mark_order_out_of_window(self, order):
+        """A >24h order aged out of Hypurrscan's 24h list. Not an ending:
+        completed_at stays NULL, last_seen_at marks when it left the window.
+        The verifier resolves the real end from twapHistory."""
+        if hasattr(order, 'order_hash'):
+            order_hash = order.order_hash
+            progress = order.progress_percent
+        else:
+            order_hash = order.get('order_hash', '')
+            progress = order.get('progress_percent')
+
+        if not order_hash:
+            return False
+
+        self.cursor.execute("""
+                    UPDATE orders SET
+                        status = 'out_of_window',
+                        final_progress_percent = ?
+                    WHERE order_hash = ? AND status = 'active'
+                """, (progress, order_hash))
+        return self.cursor.rowcount > 0
 
     def _save_snapshot_summary(self, timestamp: str, symbol: str, price: Optional[float], summary: Dict):
         """Insert or replace snapshot summary."""
