@@ -225,7 +225,6 @@ class AllCoinsStateTracker:
                         'elapsed_minutes': change.get('elapsed_minutes'),
                         'progress_percent': change.get('progress_percent'),
                         'time_remaining_minutes': change.get('time_remaining_minutes'),
-                        'out_of_window_orders': out_of_window_orders,
                     })
 
         filtered_status_changes = [
@@ -360,8 +359,8 @@ class AllCoinsStateTracker:
                     'new_orders': new_snapshot.active_orders,
                     'completed_orders': [],
                     'canceled_orders': [],
-                    'status_changes': [],
                     'out_of_window_orders': []
+                    'status_changes': [],
                 }
 
             # Log this coin's snapshot
