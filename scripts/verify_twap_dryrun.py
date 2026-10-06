@@ -136,6 +136,21 @@ def get_cutoff_ms(con):
 
 # ---------------------------------------------------------------- core
 
+SIDE = {"B": "BUY", "A": "SELL"}
+
+
+def tiebreak(db_rows, chain_orders):
+    """Same-ms group: bind on side when every side appears exactly once on
+    both sides. Anything less clean returns None and stays ambiguous."""
+    d_by, c_by = defaultdict(list), defaultdict(list)
+    for r in db_rows:
+        d_by[r["side"]].append(r)
+    for o in chain_orders:
+        c_by[SIDE.get(o["side"], o["side"])].append(o)
+    if set(d_by) != set(c_by) or any(len(v) != 1 for v in [*d_by.values(), *c_by.values()]):
+        return None
+    return [(d_by[s][0], c_by[s][0]) for s in d_by]
+
 def analyze(addr, con, cutoff_ms):
     """Fetch + collapse + bind one address. Returns a dict, prints nothing."""
     entries = fetch(addr)
@@ -167,7 +182,11 @@ def analyze(addr, con, cutoff_ms):
         elif not c:
             (outside if oldest_ms and ms < oldest_ms else unmatched).extend(d)
         else:
-            ambiguous.append((ms, d, c))
+            pairs = tiebreak(d, c)
+            if pairs:
+                bound.extend(pairs)
+            else:
+                ambiguous.append((ms, d, c))
     chain_only = [o for ms, v in chain_by_ms.items() if ms not in db_by_ms for o in v]
     misses = sorted((o for o in chain_only if o["placed_at_ms"] > cutoff_ms),
                     key=lambda o: o["placed_at_ms"], reverse=True)
