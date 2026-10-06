@@ -12,7 +12,7 @@ from pathlib import Path
 
 from api_client.models import TWAPOrder
 from storage import SQLiteBackend
-from trackers.state_tracker import _left_window
+from trackers.state_tracker import _left_window, AllCoinsStateTracker
 
 NOW_MS = int(time.time() * 1000)
 results = []
@@ -39,6 +39,21 @@ check("7d order gone at 24h -> out of window", _left_window(mk('0x1', 10080, 144
 check("7d order gone at 10h -> real ending", not _left_window(mk('0x2', 10080, 600)))
 check("30m order gone late -> never out of window", not _left_window(mk('0x3', 30, 1441)))
 check("no placed_at_ms, elapsed 1439 -> fallback works", _left_window(mk('0x4', 4320, 1439, placed=False)))
+
+# 3. Wiring: _detect_changes must carry aged-out orders into its return dict.
+# This is the layer that broke on Oct 5 (key misplaced, then missing).
+t = AllCoinsStateTracker.__new__(AllCoinsStateTracker)  # skip __init__: no real DB
+aged = mk('0xd1', 10080, 1441)
+early = mk('0xd2', 10080, 600)
+ch = t._detect_changes('XMR', {'new_orders': [], 'completed_orders': [aged, early],
+                               'status_changes': []})
+oow = [x.order_hash for x in ch.get('out_of_window_orders', [])]
+comp = [x.order_hash for x in ch.get('completed_orders', [])]
+check("_detect_changes returns out_of_window_orders key", 'out_of_window_orders' in ch)
+check("aged-out order routed to out_of_window", oow == ['0xd1'])
+check("early vanish still routed to completed", comp == ['0xd2'])
+empty = t._detect_changes('XMR', {'completed_orders': [], 'status_changes': []})
+check("key present even with nothing to report", empty.get('out_of_window_orders') == [])
 
 # 2. Storage, throwaway DB
 tmp = Path(tempfile.mkdtemp()) / 'test.db'
