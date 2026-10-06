@@ -79,11 +79,12 @@ def main():
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--pause", type=float, default=3.0)
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--addr", help="verify this one wallet instead of picking")
     a = ap.parse_args()
 
     con = sqlite3.connect(a.db, timeout=10)
     con.row_factory = sqlite3.Row
-    wallets = pick_wallets(con, a.limit)
+    wallets = [a.addr.lower()] if a.addr else pick_wallets(con, a.limit)
 
     mode = "DRY RUN (each wallet rolled back)" if a.dry else "WRITE"
     print(f"{mode}  db={a.db}  wallets={len(wallets)}  pause={a.pause}s\n")
