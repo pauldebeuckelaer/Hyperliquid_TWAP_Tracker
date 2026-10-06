@@ -145,7 +145,7 @@ def analyze(addr, con, cutoff_ms):
     rows = con.execute("""
         SELECT order_hash, symbol, side, status, placed_at_ms,
                completed_at, canceled_at
-        FROM orders WHERE lower(address) = ?
+        FROM orders WHERE address = ?
     """, (addr,)).fetchall()
 
     chain_by_ms = defaultdict(list)
