@@ -37,7 +37,7 @@ class TwapStorage(BaseStorage):
                 size REAL NOT NULL,
                 product_type TEXT NOT NULL,
                 duration_minutes INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'running',
+                status TEXT NOT NULL DEFAULT 'active',
                 first_seen_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
                 completed_at TEXT,
