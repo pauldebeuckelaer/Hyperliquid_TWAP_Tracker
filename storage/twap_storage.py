@@ -501,9 +501,21 @@ class TwapStorage(BaseStorage):
             grace_end = expected_completion + timedelta(minutes=grace_period_minutes)
 
             if current_time > grace_end:
+                if duration > 1440:
+                    # Ends outside Hypurrscan's 24h window: cleanup can't
+                    # know how it ended. Label it, leave completed_at NULL;
+                    # the verifier fills the real end from twapHistory.
+                    self.cursor.execute("""
+                        UPDATE orders SET status = 'out_of_window'
+                        WHERE id = ? AND status = 'active'
+                    """, (order_id,))
+                    cleaned += 1
+                    logger.info(f"Stale >24h order to out_of_window: {symbol} {order_hash[:10]}...")
+                    continue
+
                 self.cursor.execute("""
-                    UPDATE orders 
-                    SET 
+                    UPDATE orders
+                    SET
                         status = 'completed',
                         completed_at = ?,
                         last_seen_at = ?,
