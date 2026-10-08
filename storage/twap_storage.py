@@ -536,6 +536,19 @@ class TwapStorage(BaseStorage):
     # QUERY METHODS
     # =========================================================================
 
+    def existing_order_hashes(self, hashes: List[str]) -> set:
+        """Subset of `hashes` already present in orders. Uses the UNIQUE
+        index on order_hash. Chunked to stay under SQLite's variable limit."""
+        found = set()
+        for i in range(0, len(hashes), 500):
+            chunk = hashes[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            self.cursor.execute(
+                f"SELECT order_hash FROM orders WHERE order_hash IN ({marks})", chunk
+            )
+            found.update(row[0] for row in self.cursor.fetchall())
+        return found
+
     def get_orders_by_address(self, address: str, limit: int = 100) -> List[Dict]:
         """Get orders for a specific address."""
         self.cursor.execute("""

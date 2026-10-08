@@ -364,6 +364,19 @@ class AllCoinsStateTracker:
                     'status_changes': [],
                 }
 
+            # Restart blind spot: an order already in the DB is not new,
+            # whether we lost our in-memory state (restart) or Hypurrscan
+            # flickered it out for a poll. Must run before _save_to_sqlite,
+            # which inserts truly new orders.
+            if changes['new_orders']:
+                known = self.db.existing_order_hashes(
+                    [o.order_hash for o in changes['new_orders']]
+                )
+                if known:
+                    changes['new_orders'] = [
+                        o for o in changes['new_orders'] if o.order_hash not in known
+                    ]
+
             # Log this coin's snapshot
             self._log_coin_snapshot(symbol, new_snapshot, changes)
 
