@@ -75,15 +75,12 @@ class TWAPBot:
         self._pending_order_starts: list = []
         self._pending_order_ends: list = []
 
-        # Skip first cycle (existing orders appear as "new" on startup)
-        self._first_cycle = True
 
         # Stats for event-driven snapshots
         self._snapshot_stats = {
             "start_snapshots": 0,
             "end_snapshots": 0,
             "below_threshold": 0,
-            "skipped_warmup": 0,
             "errors": 0
         }
 
@@ -249,19 +246,6 @@ class TWAPBot:
         ends = self._pending_order_ends.copy()
         self._pending_order_starts.clear()
         self._pending_order_ends.clear()
-
-        # Skip first cycle - existing orders appear as "new" on startup
-        if self._first_cycle:
-            self._first_cycle = False
-            self._snapshot_stats["skipped_warmup"] = len(starts)
-            logger.info(
-                f"⏭️  Warm-up: Skipping {len(starts)} order starts (existing orders). "
-                f"Processing {len(ends)} order ends."
-            )
-            starts = []
-
-        if not starts and not ends:
-            return
 
         # Dedupe addresses BEFORE API calls
         unique_starts = {}
