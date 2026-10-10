@@ -10,7 +10,7 @@ data/trader_metrics.json
 data/metrics_history/
 
 data/absorption_*.csv
-
+data/twap_impact.csv
 
 # Logs
 logs/
