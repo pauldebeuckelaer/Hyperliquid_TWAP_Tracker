@@ -6,9 +6,11 @@ Who absorbed ONE TWAP order, and what inventory were they carrying?
 
 Takes a single Era-2 order from `orders` (by address + placement time),
 finds its slices on the tape (prints where the TWAP wallet is TAKER inside
-[placed - 1 min, chain_end + 1 min]), checks the tape total against the
-chain-verified executed_sz / executed_ntl, then ranks the makers on the
-other side.
+[placed - 1 min, chain_end + 1 min], kept only if they sit on the order's
+30 s slice grid - other taker prints by the same wallet, e.g. a market
+order placed mid-TWAP, are listed as EXCLUDED), checks the tape total
+against the chain-verified executed_sz / executed_ntl, then ranks the
+makers on the other side.
 
 Per maker (top N by absorbed size):
     fills, slices     maker fills against the TWAP / distinct TWAP slices hit
@@ -33,10 +35,13 @@ import argparse
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 
 DB_PATH = "/home/paul/bots/Hyperliquid_TWAP_Analyzer/data/twap.db"
 PAD_MS = 60_000
+SLICE_MS = 30_000     # Hyperliquid TWAP slice interval
+GRID_TOL_MS = 5_000   # a taker moment further than this from the grid is not the TWAP
 
 
 def find_order(conn, address, placed):
@@ -112,13 +117,32 @@ def main():
     tw["maker"] = tw["seller"].where(taker_buy[is_twap], tw["buyer"])
     tw["size"] = tw["notional"] / tw["px"]
 
-    start = datetime.fromtimestamp(o["placed_ms"] / 1000, tz=timezone.utc)
+    # ---- keep only moments on the TWAP's 30 s grid ----
+    # Slices land at a fixed offset from placement (seen: ~1.3-2 s). Any other
+    # taker print by the same wallet in the window (a market order, a second
+    # order) is off-grid and would otherwise be counted as TWAP flow.
+    off = (tw["ts"] - o["placed_ms"]) % SLICE_MS
+    med = off.groupby(tw["ts"]).first().median()
+    dist = (off - med).abs()
+    dist = np.minimum(dist, SLICE_MS - dist)
+    on_grid = dist <= GRID_TOL_MS
+    excl = tw[~on_grid]
+    tw = tw[on_grid]
+
+    start =datetime.fromtimestamp(o["placed_ms"] / 1000, tz=timezone.utc)
     print(f"{coin} {o['side']} TWAP by {args.address}  placed {start:%Y-%m-%d %H:%M:%S} UTC  "
           f"{(o['end_s'] - o['placed_ms'] / 1000) / 60:.0f} min  status {o['status']}")
     print(f"  chain: {o['exec_sz']:.5f} {coin}  ${o['exec_ntl']:,.0f}")
     print(f"  tape : {tw['size'].sum():.5f} {coin}  ${tw['notional'].sum():,.0f}  "
           f"in {len(tw)} prints, {tw['ts'].nunique()} slices, "
           f"{tw['maker'].nunique()} distinct makers")
+    if not excl.empty:
+        print(f"  EXCLUDED off-grid (not TWAP): {excl['size'].sum():.5f} {coin}  "
+              f"${excl['notional'].sum():,.0f}  in {len(excl)} prints at "
+              f"{excl['ts'].nunique()} moment(s), slice offset {med / 1000:.1f}s:")
+        for ts_, grp in excl.groupby("ts"):
+            when = datetime.fromtimestamp(ts_ / 1000, tz=timezone.utc)
+            print(f"      {when:%Y-%m-%d %H:%M:%S}  {grp['size'].sum():.4f} {coin}")
     if tw.empty:
         raise SystemExit("no TWAP prints found on the tape in this window")
 
