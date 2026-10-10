@@ -8,8 +8,11 @@ Same per-order logic as absorption_by_order.py, run in a loop:
   - orders: Era 2 (placed_at_ms set), chain-verified executed_ntl >= --min-ntl,
     placed after that coin's tape started
   - slices: the TWAP wallet's TAKER prints in [placed - 1 min, chain_end + 1 min]
-    that sit on the order's 30 s grid (off-grid prints - a market order placed
-    mid-TWAP - are excluded and their notional recorded)
+    that land 0-5 s after a 30 s mark counted from placed_at_ms (off-grid
+    prints - a market order placed mid-TWAP, other trading - are excluded and
+    their notional recorded)
+  - OVERLAP: an order whose wallet ran another order on the same coin at the
+    same time is marked 'overlap' and kept out (slices can't be told apart)
   - JOIN CHECK: tape size vs chain executed_sz. Orders off by more than 1 % are
     counted and set aside; only exact-joining orders feed the roster.
 
@@ -43,7 +46,7 @@ import pandas as pd
 DB_PATH = "/home/paul/bots/Hyperliquid_TWAP_Analyzer/data/twap.db"
 PAD_MS = 60_000
 SLICE_MS = 30_000
-GRID_TOL_MS = 5_000
+GRID_LO_MS, GRID_HI_MS = 0, 5_000   # slice lands this long after each 30 s mark
 JOIN_TOL = 0.01
 TOP = 15
 DEFAULT_COINS = "BTC,ETH,FARTCOIN,HYPE,PUMP,SOL,XRP,ZEC,xyz:BRENTOIL"
@@ -61,6 +64,25 @@ def load_orders(conn, coin, t_first, t_last, min_ntl):
         "AND chain_end_s IS NOT NULL AND executed_ntl >= ? "
         "AND placed_at_ms >= ? AND chain_end_s * 1000 <= ? ORDER BY placed_at_ms",
         conn, params=(coin, min_ntl, t_first + PAD_MS, t_last - PAD_MS))
+
+
+def overlapping(conn, coin, orders):
+    """True for each order whose wallet had ANOTHER Era-2 order on the same coin
+    running at the same time (any size, unresolved ones assumed to run 24 h).
+    Their slices cannot be told apart on the tape, so they are kept out."""
+    allo = pd.read_sql_query(
+        "SELECT address, placed_at_ms AS p, "
+        "COALESCE(chain_end_s * 1000, placed_at_ms + 86400000) AS e "
+        "FROM orders WHERE symbol = ? AND placed_at_ms IS NOT NULL",
+        conn, params=(coin,))
+    by_addr = {a: g[["p", "e"]].to_numpy() for a, g in allo.groupby("address")}
+    out = []
+    for o in orders.itertuples(index=False):
+        iv = by_addr.get(o.address)
+        p, e = o.placed_at_ms, o.chain_end_s * 1000
+        out.append(iv is not None and bool(
+            ((iv[:, 0] != p) & (iv[:, 0] < e) & (iv[:, 1] > p)).any()))
+    return out
 
 
 def address_ids(conn, addresses):
@@ -97,11 +119,12 @@ def one_order(tp, o, wid):
     if hit.size == 0:
         return s, None
     ts = tp["ts"][i0:i1][hit]
+    # Slices land GRID_LO..GRID_HI ms after each 30 s mark counted from placement
+    # (1.3-2 s on every order checked by hand). Anchoring to placement - not to the
+    # median of the wallet's taker moments - stops a busy wallet's other trading
+    # from pulling the grid onto the wrong rhythm.
     off = (ts - placed) % SLICE_MS
-    _, first = np.unique(ts, return_index=True)
-    med = np.median(off[first])
-    dist = np.abs(off - med)
-    keep = np.minimum(dist, SLICE_MS - dist) <= GRID_TOL_MS
+    keep = (ts >= placed) & (off >= GRID_LO_MS) & (off <= GRID_HI_MS)
     ntl, size = tp["ntl"][i0:i1][hit], tp["size"][i0:i1][hit]
     maker = np.where(tb[hit], seller[hit], buyer[hit])
     s["excl_ntl"] = float(ntl[~keep].sum())
@@ -140,9 +163,10 @@ def main():
             print(f"{coin}: no qualifying orders")
             continue
         ids = address_ids(conn, orders["address"])
+        overlap = overlapping(conn, coin, orders)
         tp = load_tape(conn, coin, int(orders["placed_at_ms"].min()) - PAD_MS,
                        int(orders["chain_end_s"].max()) * 1000 + PAD_MS)
-        for o in orders.itertuples(index=False):
+        for o, ovl in zip(orders.itertuples(index=False), overlap):
             wid = ids.get(o.address)
             if wid is None:
                 s, m = {"tape_sz": 0.0, "tape_ntl": 0.0, "slices": 0, "makers": 0,
@@ -151,6 +175,7 @@ def main():
                 s, m = one_order(tp, o, wid)
             ratio = s["tape_sz"] / o.executed_sz if o.executed_sz else np.nan
             status = ("no_tape_id" if wid is None else "no_prints" if s["slices"] == 0
+                      else "overlap" if ovl
                       else "ok" if abs(ratio - 1) <= JOIN_TOL else "mismatch")
             key = f"{o.address}|{o.placed_at_ms}"
             order_rows.append({"coin": coin, "order": key, "address": o.address,
@@ -188,7 +213,8 @@ def main():
         tot = ok["exec_ntl"].sum()
         buy_share = ok.loc[ok["side"] == "BUY", "exec_ntl"].sum() / tot if tot else np.nan
         print(f"== {coin}: {len(oc)} orders, joined {counts.get('ok', 0)} "
-              f"(mismatch {counts.get('mismatch', 0)}, no prints {counts.get('no_prints', 0)}, "
+              f"(mismatch {counts.get('mismatch', 0)}, overlap {counts.get('overlap', 0)}, "
+              f"no prints {counts.get('no_prints', 0)}, "
               f"no tape id {counts.get('no_tape_id', 0)})  "
               f"${tot / 1e6:,.1f}M joined, {100 * buy_share:.0f}% of it BUY")
         if ok.empty:
