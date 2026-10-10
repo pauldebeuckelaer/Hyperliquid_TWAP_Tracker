@@ -22,8 +22,10 @@ the refinement.
 
 Output: data/twap_informed.csv (one row per order) + printed summary.
 Read-only (mode=ro). Run on the box:
-    venv/bin/python scripts/twap_informed.py
+    venv/bin/python scripts/twap_informed.py              # joined orders only
+    venv/bin/python scripts/twap_informed.py --status all # every order (for twap_wallets.py)
 """
+import argparse
 import sqlite3
 import time
 
@@ -64,9 +66,16 @@ def mean_se(x):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--status", choices=["ok", "all"], default="ok",
+                    help="'ok' = joined orders only; 'all' = every order in the roster CSV "
+                         "(informedness needs no tape join - only placement, side, price)")
+    args = ap.parse_args()
     t_start = time.time()
     od = pd.read_csv(ORDERS_CSV)
-    od = od[od["status"] == "ok"].copy()
+    if args.status == "ok":
+        od = od[od["status"] == "ok"]
+    od = od.copy()
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30)
     out, fits = [], []
     hmax = max(HORIZONS.values())
