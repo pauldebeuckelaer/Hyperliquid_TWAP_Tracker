@@ -12,6 +12,7 @@ data/metrics_history/
 data/absorption_*.csv
 data/twap_impact.csv
 data/twap_slices.csv
+data/twap_informed.csv
 
 # Logs
 logs/
