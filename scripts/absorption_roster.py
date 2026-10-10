@@ -12,7 +12,10 @@ Same per-order logic as absorption_by_order.py, run in a loop:
     prints - a market order placed mid-TWAP, other trading - are excluded and
     their notional recorded)
   - OVERLAP: an order whose wallet ran another order on the same coin at the
-    same time is marked 'overlap' and kept out (slices can't be told apart)
+    same time AND on a colliding slice phase (placements within 5 s of each
+    other modulo 30 s) is marked 'overlap' and kept out - those slices can't
+    be told apart. Concurrent orders on distinct phases are separated by the
+    anchored grid and go through the normal join check.
   - JOIN CHECK: tape size vs chain executed_sz. Orders off by more than 1 % are
     counted and set aside; only exact-joining orders feed the roster.
 
@@ -68,8 +71,11 @@ def load_orders(conn, coin, t_first, t_last, min_ntl):
 
 def overlapping(conn, coin, orders):
     """True for each order whose wallet had ANOTHER Era-2 order on the same coin
-    running at the same time (any size, unresolved ones assumed to run 24 h).
-    Their slices cannot be told apart on the tape, so they are kept out."""
+    running at the same time (any size, unresolved ones assumed to run 24 h)
+    AND whose 30 s slice phase collides with it - placements within
+    GRID_HI_MS of each other modulo 30 s. Only then can the two orders' slices
+    not be told apart on the tape. Overlaps with distinct phases are separated
+    by the anchored grid and judged by the join check like any other order."""
     allo = pd.read_sql_query(
         "SELECT address, placed_at_ms AS p, "
         "COALESCE(chain_end_s * 1000, placed_at_ms + 86400000) AS e "
@@ -80,8 +86,13 @@ def overlapping(conn, coin, orders):
     for o in orders.itertuples(index=False):
         iv = by_addr.get(o.address)
         p, e = o.placed_at_ms, o.chain_end_s * 1000
-        out.append(iv is not None and bool(
-            ((iv[:, 0] != p) & (iv[:, 0] < e) & (iv[:, 1] > p)).any()))
+        if iv is None:
+            out.append(False)
+            continue
+        concurrent = (iv[:, 0] != p) & (iv[:, 0] < e) & (iv[:, 1] > p)
+        phase = (iv[:, 0] - p) % SLICE_MS
+        collide = np.minimum(phase, SLICE_MS - phase) <= GRID_HI_MS
+        out.append(bool((concurrent & collide).any()))
     return out
 
 
