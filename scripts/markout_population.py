@@ -29,7 +29,14 @@ Columns (maker side only, per wallet):
     imp_pct           impulse share of the wallet's maker notional
     imp_lean/trd_lean regime's share of maker notional divided by the
                       regime's share of the clock over the wallet's own
-                      active range. >1 = leans into the regime.
+                      active range. >1 = leans into the regime. Biased up
+                      for everyone: the whole market trades more in
+                      impulses, so read the vlean columns instead.
+    imp_vlean/trd_vlean regime's share of the wallet's (labeled) maker
+                      notional divided by the regime's share of ALL makers'
+                      notional over the wallet's own active range.
+                      1 = trades like the market; this is the column
+                      that separates wallets.
 
 Read-only (mode=ro). Writes one CSV (full addresses) and prints the top rows.
 Run on the box, AFTER rebuilding tape_impulse_buckets:
@@ -141,6 +148,24 @@ def grid_shares(bts, bcode, first, last):
     return {k: (cum[k, hi] - cum[k, lo]) / total for k in (0, 1)}
 
 
+def volume_shares(m_bucket, m_reg, m_w, first, last):
+    """Per wallet: share of ALL makers' notional that traded in impulse /
+    trend buckets over [first, last]. Unlabeled buckets are left out."""
+    b = pd.DataFrame({"bucket": m_bucket, "reg": m_reg, "w": m_w})
+    b = b[b["reg"] < 3].groupby(["bucket", "reg"])["w"].sum().unstack("reg")
+    b = b.reindex(columns=range(3)).fillna(0.0).sort_index()
+    bk = b.index.values.astype("int64")
+    cum = np.zeros((4, len(bk) + 1))
+    for k in range(3):
+        cum[k, 1:] = np.cumsum(b[k].values)
+    cum[3, 1:] = cum[0, 1:] + cum[1, 1:] + cum[2, 1:]
+    lo = np.searchsorted(bk, first, side="left")
+    hi = np.searchsorted(bk, last, side="right")
+    total = cum[3, hi] - cum[3, lo]
+    total[total == 0] = np.nan
+    return {k: (cum[k, hi] - cum[k, lo]) / total for k in (0, 1)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--coin", default="BTC")
@@ -199,6 +224,9 @@ def main():
     a = m.groupby("wid").agg(**agg_spec)
     n_makers = len(a)
     a = a[(a["fills"] >= args.min_fills) & (a["ntl"] >= args.min_ntl * 1e6)].copy()
+    # market-wide volume shares, from ALL makers (before the filter below)
+    vol = volume_shares(m["bucket"].values, m["reg"].values, m["w"].values,
+                        a["first"].values, a["last"].values)
     m = m[m["wid"].isin(a.index)]
 
     res = pd.DataFrame(index=a.index)
@@ -233,6 +261,9 @@ def main():
     grid = grid_shares(bts, bcode, a["first"].values, a["last"].values)
     res["imp_lean"] = share[0].values / grid[0]
     res["trd_lean"] = share[1].values / grid[1]
+    lab = r_ntl[[0, 1, 2]].sum(axis=1).replace(0, np.nan)  # same basis as vol
+    res["imp_vlean"] = (r_ntl[0] / lab).reindex(a.index).values / vol[0]
+    res["trd_vlean"] = (r_ntl[1] / lab).reindex(a.index).values / vol[1]
     unl_pct = 100 * r_ntl[3].sum() / r_ntl.values.sum()
 
     # ---- addresses, output ----
