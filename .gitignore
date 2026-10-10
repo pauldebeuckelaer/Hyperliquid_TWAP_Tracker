@@ -9,6 +9,9 @@ data/allcoins_json_logs/
 data/trader_metrics.json
 data/metrics_history/
 
+data/absorption_*.csv
+
+
 # Logs
 logs/
 *.log
