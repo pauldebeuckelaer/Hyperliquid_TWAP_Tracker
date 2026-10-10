@@ -60,3 +60,4 @@ audit_*.json
 data/last_cleanup_date
 twaphist_*.json
 scripts/outcome_probe_out/
+data/markout_population_*.csv
