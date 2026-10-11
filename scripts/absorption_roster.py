@@ -35,11 +35,22 @@ notional on that coin:
              close to it = takes both sides; far above = mostly sells into
              buyers; far below = mostly buys from sellers.
 
+--by-operator: makers listed in scripts/operators.csv (operator,role,address,
+name - master and sub-accounts from Hyperliquid's subAccounts endpoint) are
+merged into one row per operator BEFORE ranking. Inside each order the members'
+fills are summed and the order is re-ranked, so top15 counts the operator once.
+The summary gains a 'wallets' column (distinct member addresses that absorbed on
+that coin; 1 for unlisted makers). Writes data/absorption_operators.csv as well;
+the two address-level CSVs are unchanged. Without the flag the output is
+exactly as before.
+
 Read-only (mode=ro). Run on the box:
     venv/bin/python scripts/absorption_roster.py
+    venv/bin/python scripts/absorption_roster.py --by-operator
     venv/bin/python scripts/absorption_roster.py --coins BTC,HYPE --min-ntl 250000
 """
 import argparse
+import os
 import sqlite3
 import time
 
@@ -53,6 +64,28 @@ GRID_LO_MS, GRID_HI_MS = 0, 5_000   # slice lands this long after each 30 s mark
 JOIN_TOL = 0.01
 TOP = 15
 DEFAULT_COINS = "BTC,ETH,FARTCOIN,HYPE,PUMP,SOL,XRP,ZEC,xyz:BRENTOIL"
+OPERATORS_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "operators.csv")
+
+
+def load_operators(path):
+    """address -> operator label, from the curated operators.csv."""
+    ops = pd.read_csv(path, dtype=str)
+    ops["address"] = ops["address"].str.strip().str.lower()
+    dup = ops[ops["address"].duplicated(keep=False)]
+    if not dup.empty:
+        raise SystemExit(f"{path}: address listed twice:\n{dup.to_string(index=False)}")
+    return dict(zip(ops["address"], ops["operator"].str.strip()))
+
+
+def merge_operators(mk, op_map):
+    """Sum each operator's members within an order, then re-rank every order."""
+    m = mk.assign(member=mk["maker"], maker=mk["maker"].map(op_map).fillna(mk["maker"]))
+    m = m.groupby(["coin", "side", "order", "maker"], as_index=False).agg(
+        fills=("fills", "sum"), size=("size", "sum"), ntl=("ntl", "sum"),
+        pct=("pct", "sum"), members=("member", "nunique"))
+    m = m.sort_values(["coin", "order", "ntl"], ascending=[True, True, False])
+    m["rank"] = m.groupby(["coin", "order"]).cumcount() + 1
+    return m
 
 
 def tape_span(conn, coin):
@@ -159,7 +192,10 @@ def main():
     ap.add_argument("--min-ntl", type=float, default=100_000,
                     help="minimum chain-verified executed notional per order ($)")
     ap.add_argument("--show", type=int, default=12, help="makers printed per coin")
+    ap.add_argument("--by-operator", action="store_true",
+                    help="merge known operators' wallets (scripts/operators.csv) into one row")
     args = ap.parse_args()
+    op_map = load_operators(OPERATORS_CSV) if args.by_operator else None
     t_start = time.time()
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30)
 
@@ -215,9 +251,19 @@ def main():
     mk["maker"] = mk["maker"].map(lambda i: addr.get(int(i), "?"))
     od.to_csv("data/absorption_orders.csv", index=False)
     mk.round(4).to_csv("data/absorption_makers.csv", index=False)
+    csvs = "data/absorption_orders.csv, data/absorption_makers.csv"
+    if op_map is not None:
+        # distinct member addresses per (coin, operator), taken before merging
+        lab = mk["maker"].map(op_map).fillna(mk["maker"])
+        coin_members = {c: {k: set(v) for k, v in grp.groupby(lab[grp.index])["maker"]}
+                        for c, grp in mk.groupby("coin")}
+        mk = merge_operators(mk, op_map)
+        mk.round(4).to_csv("data/absorption_operators.csv", index=False)
+        csvs += ", data/absorption_operators.csv"
+        print(f"\nby operator: {len(set(op_map.values()))} operators, "
+              f"{len(op_map)} listed addresses ({OPERATORS_CSV})")
 
-    print(f"\nruntime {time.time() - t_start:.0f}s   CSVs: data/absorption_orders.csv, "
-          f"data/absorption_makers.csv\n")
+    print(f"\nruntime {time.time() - t_start:.0f}s   CSVs: {csvs}\n")
     for coin, oc in od.groupby("coin", sort=False):
         ok = oc[oc["status"] == "ok"]
         counts = oc["status"].value_counts().to_dict()
@@ -241,6 +287,9 @@ def main():
                             "orders": [f"{n}/{len(ok)}" for n in g["orders"]],
                             "top15": g["top15"],
                             "from_buy": (100 * g["from_buy"]).round(0).astype(int)})
+        if op_map is not None:
+            members = coin_members[coin]
+            out["wallets"] = [len(members.get(k, {k})) for k in g.index]
         print(out.to_string(index=False))
         print()
 
