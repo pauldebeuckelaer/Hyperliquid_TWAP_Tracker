@@ -5,8 +5,11 @@ absorption_roster.py
 Who absorbs TWAP flow, measured over EVERY Era-2 order on the tape coins.
 
 Same per-order logic as absorption_by_order.py, run in a loop:
-  - orders: Era 2 (placed_at_ms set), chain-verified executed_ntl >= --min-ntl,
-    placed after that coin's tape started
+  - orders: Era 2 (placed_at_ms set), PERP only, chain-verified executed_ntl >=
+    --min-ntl, placed after that coin's tape started. The tape is the perp book;
+    a SPOT TWAP on the same symbol (HYPE) fills on the spot book, and a spot twin
+    placed with a perp TWAP would otherwise steal the perp's prints or mark it
+    'overlap'. Both the order list and the overlap check are PERP-only.
   - slices: the TWAP wallet's TAKER prints in [placed - 1 min, chain_end + 1 min]
     that land 0-5 s after a 30 s mark counted from placed_at_ms (off-grid
     prints - a market order placed mid-TWAP, other trading - are excluded and
@@ -96,7 +99,8 @@ def tape_span(conn, coin):
 def load_orders(conn, coin, t_first, t_last, min_ntl):
     return pd.read_sql_query(
         "SELECT address, side, placed_at_ms, chain_end_s, executed_sz, executed_ntl "
-        "FROM orders WHERE symbol = ? AND placed_at_ms IS NOT NULL "
+        "FROM orders WHERE symbol = ? AND product_type = 'PERP' "
+        "AND placed_at_ms IS NOT NULL "
         "AND chain_end_s IS NOT NULL AND executed_ntl >= ? "
         "AND placed_at_ms >= ? AND chain_end_s * 1000 <= ? ORDER BY placed_at_ms",
         conn, params=(coin, min_ntl, t_first + PAD_MS, t_last - PAD_MS))
@@ -112,7 +116,7 @@ def overlapping(conn, coin, orders):
     allo = pd.read_sql_query(
         "SELECT address, placed_at_ms AS p, "
         "COALESCE(chain_end_s * 1000, placed_at_ms + 86400000) AS e "
-        "FROM orders WHERE symbol = ? AND placed_at_ms IS NOT NULL",
+        "FROM orders WHERE symbol = ? AND product_type = 'PERP' AND placed_at_ms IS NOT NULL",
         conn, params=(coin,))
     by_addr = {a: g[["p", "e"]].to_numpy() for a, g in allo.groupby("address")}
     out = []
