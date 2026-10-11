@@ -14,6 +14,7 @@ data/twap_impact.csv
 data/twap_slices.csv
 data/twap_informed.csv
 data/twap_wallets.csv
+data/absorption_operators.csv
 
 # Logs
 logs/
