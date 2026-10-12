@@ -56,6 +56,8 @@ def main():
     ap.add_argument("--coin", default="BTC")
     ap.add_argument("--min-ntl", type=float, default=100_000,
                     help="minimum USD the operator absorbed from one order")
+    ap.add_argument("--max-min", type=float, default=120,
+                    help="drop TWAPs whose execution ran longer than this (minutes)")
     ap.add_argument("--random", type=int, default=2000, help="baseline sample size")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--held", action="store_true", help="also print the held-out half")
@@ -93,6 +95,20 @@ def main():
     ev = ev[ev["t1"].notna() & (ev["t1"] > ev["t0"])].copy()
     ev["t1"] = ev["t1"].astype("int64")
     print(f"events: {n_all} absorbed >= ${a.min_ntl:,.0f}, {n_all - len(ev)} dropped (no chain end)")
+    n0 = len(ev)
+    ev = ev[(ev["t1"] - ev["t0"]) <= a.max_min * MIN].copy()
+    print(f"duration filter: {n0 - len(ev)} dropped (ran > {a.max_min:.0f} min)")
+    # twins: same side, placed and ended in the same minute -> one event
+    ev["wallet"] = ev["order"].str.split("|").str[0].str.lower()
+    ev["k0"], ev["k1"] = ev["t0"] // MIN, ev["t1"] // MIN
+    n0 = len(ev)
+    ev = (ev.sort_values("t0")
+            .groupby(["side", "k0", "k1"], as_index=False)
+            .agg(order=("order", "first"), wallet=("wallet", "first"), op_ntl=("op_ntl", "sum"),
+                 op_pct=("op_pct", "sum"), t0=("t0", "first"), t1=("t1", "first"),
+                 chain_status=("chain_status", "first"))
+            .drop(columns=["k0", "k1"]))
+    print(f"twin merge: {n0 - len(ev)} merged")
     if ev.empty:
         raise SystemExit("no events")
 
@@ -121,9 +137,11 @@ def main():
         return np.where(i >= 0, fc[np.clip(i, 0, len(fc) - 1)], 0.0)
 
     # --- tape gaps: drop windows that touch one
+    # tape_gaps: disconnected / reconnected in ms. Treated as global (all coins),
+    # the conservative choice.
     gcols = [r[1] for r in con.execute("PRAGMA table_info(tape_gaps)")]
-    gs = next((c for c in gcols if "start" in c), None)
-    ge = next((c for c in gcols if "end" in c), None)
+    gs = "disconnected" if "disconnected" in gcols else None
+    ge = "reconnected" if "reconnected" in gcols else None
     if gs and ge:
         g = pd.read_sql(f"SELECT {gs} AS gs, {ge} AS ge FROM tape_gaps WHERE {ge}>=? AND {gs}<?",
                         con, params=(lo, hi))
@@ -148,6 +166,10 @@ def main():
 
     # --- events
     ev["s"] = np.where(ev["side"] == "BUY", -1, 1)
+    # tape coverage: a window outside the stored prints would silently score 0
+    cov = (ev["t0"] >= pt[0]) & (ev["t1"] + max(H) * MIN <= pt[-1])
+    print(f"coverage filter: {(~cov).sum()} events dropped (window outside tape)")
+    ev = ev[cov].copy()
     ok = clean(ev["t0"].to_numpy(), ev["t1"].to_numpy())
     print(f"gap filter: {(~ok).sum()} events dropped")
     ev = ev[ok].sort_values("t0").reset_index(drop=True)
@@ -179,13 +201,17 @@ def main():
     for half in halves:
         e = ev[ev["half"] == half]
         print(f"\n--- {half.upper()}: {len(e)} events, {e['day'].nunique()} days, "
+              f"{e['wallet'].nunique()} placing wallets, "
               f"{pd.to_datetime(e['t0'].min(), unit='ms'):%m-%d} -> "
               f"{pd.to_datetime(e['t0'].max(), unit='ms'):%m-%d}")
-        print(f"{'metric':<12}{'events':>12}{'se':>10}{'baseline':>12}{'t vs base':>11}")
+        print(f"{'metric':<12}{'mean':>12}{'median':>12}{'se_day':>10}{'se_wallet':>11}"
+              f"{'baseline':>12}{'t vs base':>11}")
         for c in m.columns:
-            mu, se, bm = e[c].mean(), clustered_se(e[c], e["day"]), base[c].mean()
+            mu, md, bm = e[c].mean(), e[c].median(), base[c].mean()
+            sd, sw = clustered_se(e[c], e["day"]), clustered_se(e[c], e["wallet"])
+            se = max(sd, sw)
             t = (mu - bm) / se if se > 0 else np.nan
-            print(f"{c:<12}{mu:>12,.1f}{se:>10,.1f}{bm:>12,.1f}{t:>11.2f}")
+            print(f"{c:<12}{mu:>12,.1f}{md:>12,.1f}{sd:>10,.1f}{sw:>11,.1f}{bm:>12,.1f}{t:>11.2f}")
     print(f"\nper-event rows: {out_csv}")
 
 
