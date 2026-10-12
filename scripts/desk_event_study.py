@@ -113,11 +113,17 @@ def main():
         raise SystemExit("no events")
 
     # --- tape: per-minute price, and the operator's own fills
-    lo = int(ev["t0"].min()) - 60 * MIN
-    hi = int(ev["t1"].max()) + (max(H) + 1) * MIN
+    # time range = the whole roster period (all coins' orders in the CSV), not just
+    # this coin's events -- the baseline must cover quiet days too
+    all_ms = pd.read_csv("data/absorption_makers.csv", usecols=["order"])["order"] \
+               .str.split("|").str[1].astype("int64")
+    lo = min(int(all_ms.min()), int(ev["t0"].min())) - 60 * MIN
+    hi = max(int(all_ms.max()), int(ev["t1"].max())) + (max(H) + 1) * MIN
     px = pd.read_sql("SELECT MAX(ts) AS ts, px FROM tape_prints "
                      "WHERE coin=? AND ts>=? AND ts<? GROUP BY ts/60000 ORDER BY ts",
                      con, params=(a.coin, lo, hi))
+    if px.empty:
+        raise SystemExit(f"no tape prints for {a.coin} in the roster period")
     pt, pp = px["ts"].to_numpy(), px["px"].to_numpy()
 
     qi = ",".join("?" * len(ids))
@@ -173,6 +179,8 @@ def main():
     ok = clean(ev["t0"].to_numpy(), ev["t1"].to_numpy())
     print(f"gap filter: {(~ok).sum()} events dropped")
     ev = ev[ok].sort_values("t0").reset_index(drop=True)
+    if len(ev) < 4:
+        raise SystemExit(f"only {len(ev)} usable events for {a.op} {a.coin}; too few for a fit/held split")
     m = metrics(ev["t0"], ev["t1"], ev["s"])
     ev = pd.concat([ev, m], axis=1)
     ev["day"] = pd.to_datetime(ev["t0"], unit="ms").dt.date
@@ -181,7 +189,11 @@ def main():
     # --- baseline at random times
     rng = np.random.default_rng(a.seed)
     dur = (ev["t1"] - ev["t0"]).to_numpy()
-    b_t0 = rng.integers(lo + 60 * MIN, hi - (max(H) + 1) * MIN - dur.max(), a.random)
+    # baseline windows must sit inside the tape's actual coverage
+    b_lo, b_hi = int(pt[0]), int(pt[-1]) - (max(H) + 1) * MIN - int(dur.max())
+    if b_hi <= b_lo:
+        raise SystemExit("tape coverage too short for a baseline")
+    b_t0 = rng.integers(b_lo, b_hi, a.random)
     b_t1 = b_t0 + rng.choice(dur, a.random)
     b_s = np.where(rng.random(a.random) < (ev["s"] == -1).mean(), -1, 1)
     keep = clean(b_t0, b_t1)
