@@ -33,9 +33,10 @@ or before that moment. The exit simulation looks forward, by design.
 Outputs (prefix --out, default data/replay_hype):
   _signals.csv     every candle close: inputs, decision, reason, action
   _trades.csv      simulated trades: exit, best/worst point, time to peak
-  _paths.csv       1-min return path for 360 min after EVERY entry signal,
-                   also the ones skipped while in a position. For later exit
-                   tests, on the fit half only.
+  _paths.csv       1-min return path for 420 min after EVERY entry signal,
+                   also the ones skipped while in a position (360-min hold
+                   plus the tick that triggers the time exit). Read by
+                   replay_exits.py; explore on the fit half only.
   _validation.csv  every real HYPE trade next to what the replay saw
 
 Prints: data coverage, validation against the real trades in scanner.db,
@@ -521,7 +522,7 @@ def main():
             s["action"] = "none"
 
         if s["entry"]:
-            hold, prices = price_path(t, as_of, P["max_hold_minutes"])
+            hold, prices = price_path(t, as_of, P["max_hold_minutes"] + 60)
             for h, p in zip(hold, prices):
                 paths.append((T, s["signal_type"], s["action"], round(float(h), 1),
                               round((p / s["price"] - 1) * 100, 3)))
