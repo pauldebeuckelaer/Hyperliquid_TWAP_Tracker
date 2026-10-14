@@ -59,7 +59,7 @@ def load(prefix, start, end):
     paths["T"] = to_utc(paths["T"])
     paths = paths[(paths["T"] >= start) & (paths["T"] < end)]
     by_t = {T: (g["minute"].to_numpy(), g["ret_pct"].to_numpy())
-            for T, g in paths.sort_values(["T", "minute"]).groupby("T")}
+            for T, g in paths.sort_values(["T", "minute"], kind="stable").groupby("T")}
     return sig, ent, by_t
 
 

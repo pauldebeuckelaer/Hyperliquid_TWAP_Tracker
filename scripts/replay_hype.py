@@ -524,8 +524,8 @@ def main():
         if s["entry"]:
             hold, prices = price_path(t, as_of, P["max_hold_minutes"] + 60)
             for h, p in zip(hold, prices):
-                paths.append((T, s["signal_type"], s["action"], round(float(h), 1),
-                              round((p / s["price"] - 1) * 100, 3)))
+                paths.append((T, s["signal_type"], s["action"], round(float(h), 4),
+                              round((p / s["price"] - 1) * 100, 4)))
         sig_rows.append(s)
         if (i + 1) % 1000 == 0:
             print(f"  {i + 1}/{len(closes)} candle closes ({time.time() - t0:.0f}s)", flush=True)
