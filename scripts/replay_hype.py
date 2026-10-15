@@ -37,6 +37,14 @@ Data sources (fixed Oct 15 2026):
     returned 0.0, so the gate silently always passed.) CONTRA has no BTC gate,
     as in the bot.
 
+Flow cap as intended (--flow-cap-usd 5000, added Oct 15 2026):
+  The bot's flow_cap=5000 was meant as USD but applied to HYPE size. With this
+  flag each address's signed size per bin is converted to USD at the HYPE price
+  at evaluation time (the candle close, no look-ahead), capped at +-cap_usd, and
+  summed: `flow` is then in USD and drives CONTRA/BASELINE. The as-run flow is
+  always kept in `flow_coin`, and the funnel reports how often the sign differs.
+  In this mode `flow` no longer matches the real trades' entry_z: expected.
+
 Not reproduced: the 4-position limit shared with other coins, bot downtime,
 real fills (entry = candle close, which is what the bot recorded), fees.
 
@@ -78,7 +86,8 @@ P = {
     "tp_pct": 1.5,
     "sl_pct": 2.0,
     "max_hold_minutes": 12 * 30,
-    "flow_cap": 5000,
+    "flow_cap": 5000,          # as it ran: applied in HYPE units (~$250k+), rarely binds
+    "flow_cap_usd": None,      # --flow-cap-usd: the cap as intended, flow in USD
     "flow_lookback_hours": 6,
     "ob_lookback_minutes": 30,
     "ob_stale_minutes": 5,
@@ -172,14 +181,21 @@ def add_indicators(candles, rsi_period):
     return d
 
 
-def build_capped_flow(w):
+def build_capped_flow(w, cap_usd=None, price=None):
+    """cap_usd=None: as the bot ran (size in HYPE, capped at flow_cap HYPE).
+    cap_usd set: size * price in USD, capped at +-cap_usd per address per bin."""
     if w.empty:
         return pd.DataFrame(columns=["timestamp", "capped_flow", "unique_whales"])
     df = w.copy()
     df["bin"] = df["dt"].dt.floor("30min")
     df["signed_size"] = df["size"] * df["side"].map({"BUY": 1, "SELL": -1})
+    if cap_usd is not None:
+        df["signed_size"] = df["signed_size"] * price
+        cap = cap_usd
+    else:
+        cap = P["flow_cap"]
     ab = df.groupby(["bin", "address"])["signed_size"].sum().reset_index()
-    ab["capped"] = ab["signed_size"].clip(-P["flow_cap"], P["flow_cap"])
+    ab["capped"] = ab["signed_size"].clip(-cap, cap)
     flow = ab.groupby("bin").agg(
         capped_flow=("capped", "sum"),
         unique_whales=("address", "nunique"),
@@ -188,9 +204,9 @@ def build_capped_flow(w):
     return flow
 
 
-def flow_at(t, as_of, candle_ts, quirk):
+def flow_at(t, as_of, candle_ts, quirk, cap_usd=None, price=None):
     w = t["orders"].window(as_of, pd.Timedelta(hours=P["flow_lookback_hours"]), quirk)
-    f = build_capped_flow(w)
+    f = build_capped_flow(w, cap_usd, price)
     if f.empty:
         return 0.0, 0, None
     match = f[f["timestamp"] == candle_ts]
@@ -226,7 +242,7 @@ def evaluate(t, as_of, quirk):
     """What get_signal_for_coin(HYPE) would have returned at `as_of`, plus
     the inputs it never looked at (flow and OB when VI/RSI already failed)."""
     out = {"as_of": as_of, "candle": None, "vi": np.nan, "rsi": np.nan, "price": np.nan,
-           "btc_3h": np.nan, "flow": np.nan, "whales": np.nan, "flow_bin": None,
+           "btc_3h": np.nan, "flow": np.nan, "flow_coin": np.nan, "whales": np.nan, "flow_bin": None,
            "ob_flow": np.nan, "ob_count": 0, "ob_stale": None,
            "ob_flow_30m": np.nan, "ob_stale_30m": None,
            "signal_type": "NONE", "entry": False, "reason": ""}
@@ -249,10 +265,14 @@ def evaluate(t, as_of, quirk):
     btc_r = round(float(btc_change(t, as_of, quirk)), 2)   # NaN stays NaN
     out.update(vi=vi_r, rsi=rsi_r, btc_3h=btc_r, price=round(float(price), 4))
 
-    flow, whales, fbin = flow_at(t, as_of, latest["timestamp"], quirk)
+    flow_coin, whales, fbin = flow_at(t, as_of, latest["timestamp"], quirk)
+    if P["flow_cap_usd"] is not None:
+        flow, _, _ = flow_at(t, as_of, latest["timestamp"], quirk, P["flow_cap_usd"], float(price))
+    else:
+        flow = flow_coin
     ob = ob_flow(t, as_of, quirk)
     ob30 = ob_flow(t, as_of, False)
-    out.update(flow=round(flow, 0), whales=whales, flow_bin=fbin,
+    out.update(flow=round(flow, 0), flow_coin=round(flow_coin, 0), whales=whales, flow_bin=fbin,
                ob_flow=round(ob["flow"], 0), ob_count=ob["count"], ob_stale=ob["stale"],
                ob_flow_30m=round(ob30["flow"], 0), ob_stale_30m=ob30["stale"])
 
@@ -402,6 +422,13 @@ def report_funnel(sig):
     n_nan = int(passed["btc_3h"].isna().sum())
     print(f"BTC value missing on {n_nan} of {len(passed)} candles that passed VI+RSI "
           f"(only BASELINE is gated; those show as 'BTC missing' above).")
+    if P["flow_cap_usd"] is not None and len(passed):
+        a = passed["flow"].fillna(0) < 0; b = passed["flow_coin"].fillna(0) < 0
+        diff = a != b
+        to_contra = int((a & ~b).sum()); to_base = int((~a & b).sum())
+        print(f"CONTRA/BASELINE side, USD cap ${P['flow_cap_usd']:,.0f} vs as run: differs on {int(diff.sum())} of "
+              f"{len(passed)} VI+RSI candles ({100 * diff.mean():.0f}%): "
+              f"{to_contra} become CONTRA-side, {to_base} become BASELINE-side.")
 
 
 def report_validation(sig, trades, real):
@@ -516,14 +543,19 @@ def main():
     ap.add_argument("--offset-sec", type=int, default=20,
                     help="seconds after the candle close the bot evaluated (real entries: ~13-22 s)")
     ap.add_argument("--no-quirk", action="store_true", help="use the lookback windows as written")
+    ap.add_argument("--flow-cap-usd", type=float, default=None,
+                    help="cap whale flow per address at this many USD, as intended (default: as the bot ran)")
     ap.add_argument("--out", default="data/replay_hype")
     a = ap.parse_args()
+    P["flow_cap_usd"] = a.flow_cap_usd
 
     quirk = not a.no_quirk
     start, end = pd.Timestamp(a.start, tz="UTC"), pd.Timestamp(a.end, tz="UTC")
     lo = (start - pd.Timedelta(days=3)).strftime("%Y-%m-%d")
     hi = (end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     t, src = load_tables(a.db, lo, hi)
+    print("Flow: " + (f"USD cap ${a.flow_cap_usd:,.0f} per address (as intended), flow in USD"
+                      if a.flow_cap_usd is not None else "as the bot ran (cap 5,000 HYPE), flow in HYPE"), flush=True)
     for k in ("snap", "px"):
         if len(t[k]) == 0:
             sys.exit(f"No HYPE rows in {k} for {lo}..{hi}; nothing to replay.")
@@ -590,7 +622,8 @@ def main():
     if not val.empty:
         val.to_csv(f"{out}_validation.csv", index=False)
     print(f"\nSaved {out}_signals.csv, _trades.csv, _paths.csv"
-          f"{', _validation.csv' if not val.empty else ''}  (quirk {'on' if quirk else 'off'})")
+          f"{', _validation.csv' if not val.empty else ''}  (quirk {'on' if quirk else 'off'}, "
+          f"flow cap {'$%g USD' % a.flow_cap_usd if a.flow_cap_usd is not None else '5000 HYPE as run'})")
 
 
 if __name__ == "__main__":
