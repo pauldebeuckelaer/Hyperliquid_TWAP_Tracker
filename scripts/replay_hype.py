@@ -20,9 +20,22 @@ Reproduced on purpose, quirks included:
     every lookback window really started at 00:00 UTC of the cutoff's day:
     the "last 30 minutes" of order-book flow was everything since midnight.
     On by default (faithful). --no-quirk uses the windows as written.
-  - exits: TP +1.5 % / SL -2.0 % / 360 min, checked on every price tick
-    (1-min mark price from market_snapshots), max/min tracked like the bot;
-    30-min cooldown after a TIME exit; one HYPE position at a time
+  - exits: TP +1.5 % / SL -2.0 % / 360 min, checked on every HYPE price tick
+    in `snapshots`, max/min tracked like the bot; 30-min cooldown after a TIME
+    exit; one HYPE position at a time
+
+Data sources (fixed Oct 15 2026):
+  - HYPE price for exits: ALWAYS `snapshots`, the same series the candles and
+    the entry price come from, over the whole period. (Before: market_snapshots
+    if it had any rows in the range, else snapshots. market_snapshots only keeps
+    ~7 days, so a run straddling that edge lost every path before it.)
+  - BTC for the 3h gate: `market_candles` 10-min closes, each stamped at its
+    candle's CLOSE (candle_time + 10 min) so no candle is seen before it is
+    complete, then raw `market_snapshots` from where those begin (last ~7 days).
+  - Missing BTC is NaN, never 0. A BASELINE entry with no BTC value is blocked
+    with reason "BTC missing" and shows in the funnel. (Before: no BTC rows
+    returned 0.0, so the gate silently always passed.) CONTRA has no BTC gate,
+    as in the bot.
 
 Not reproduced: the 4-position limit shared with other coins, bot downtime,
 real fills (entry = candle close, which is what the bot recorded), fees.
@@ -33,7 +46,7 @@ or before that moment. The exit simulation looks forward, by design.
 Outputs (prefix --out, default data/replay_hype):
   _signals.csv     every candle close: inputs, decision, reason, action
   _trades.csv      simulated trades: exit, best/worst point, time to peak
-  _paths.csv       1-min return path for 420 min after EVERY entry signal,
+  _paths.csv       tick return path for 420 min after EVERY entry signal,
                    also the ones skipped while in a position (360-min hold
                    plus the tick that triggers the time exit). Read by
                    replay_exits.py; explore on the fit half only.
@@ -74,6 +87,8 @@ P = {
     "snapshot_min_ticks": 10,
     "candle_lookback_hours": 30,
 }
+
+BTC_CANDLE_MIN = 10   # market_candles interval
 
 EPOCH = pd.Timestamp("1970-01-01", tz="UTC")
 BOX_CUTOVER = pd.Timestamp("2026-06-06 14:28", tz="UTC")   # GCP -> box (config.py DB_PATH edit)
@@ -193,15 +208,17 @@ def ob_flow(t, as_of, quirk):
 
 
 def btc_change(t, as_of, quirk):
+    """BTC % change over ~3h, or NaN when there is not enough BTC data.
+    NaN, not 0: a missing value must never pass the gate silently."""
     w = t["btc"].window(as_of, pd.Timedelta(hours=4), quirk)
     if len(w) < 2:
-        return 0.0
+        return np.nan
     cur = w["mark_px"].iloc[-1]
     target = w["dt"].iloc[-1] - pd.Timedelta(hours=3)
     past = w[w["dt"] <= target]
     pp = w["mark_px"].iloc[0] if past.empty else past["mark_px"].iloc[-1]
-    if pp <= 0:
-        return 0.0
+    if not pp > 0:
+        return np.nan
     return (cur - pp) / pp * 100
 
 
@@ -229,7 +246,7 @@ def evaluate(t, as_of, quirk):
 
     vi_r = round(float(vi), 3) if pd.notna(vi) else 0
     rsi_r = round(float(rsi), 1)
-    btc_r = round(btc_change(t, as_of, quirk), 2)
+    btc_r = round(float(btc_change(t, as_of, quirk)), 2)   # NaN stays NaN
     out.update(vi=vi_r, rsi=rsi_r, btc_3h=btc_r, price=round(float(price), 4))
 
     flow, whales, fbin = flow_at(t, as_of, latest["timestamp"], quirk)
@@ -247,6 +264,8 @@ def evaluate(t, as_of, quirk):
         out["reason"] = "OB flow negative"
     elif flow < 0:
         out.update(signal_type="CONTRA", entry=True, reason="CONTRA")
+    elif pd.isna(btc_r):
+        out["reason"] = "BTC missing"
     elif btc_r > P["btc_3h_min"]:
         out.update(signal_type="BASELINE", entry=True, reason="BASELINE")
     else:
@@ -309,24 +328,37 @@ def load_tables(db, lo, hi):
                "WHERE symbol='HYPE' AND first_seen_at >= ? AND first_seen_at < ?", conn, params=(lo, hi))
     ob = q("SELECT snapshot_time, net_aggressor_flow, num_trades FROM orderbook_snapshots "
            "WHERE coin='HYPE' AND snapshot_time >= ? AND snapshot_time < ?", conn, params=(lo, hi))
-    ms = q("SELECT coin, snapshot_time, mark_px FROM market_snapshots "
-           "WHERE coin IN ('BTC','HYPE') AND snapshot_time >= ? AND snapshot_time < ?", conn, params=(lo, hi))
+    ms = q("SELECT snapshot_time, mark_px FROM market_snapshots "
+           "WHERE coin='BTC' AND snapshot_time >= ? AND snapshot_time < ?", conn, params=(lo, hi))
+    mc = q("SELECT candle_time, close FROM market_candles "
+           "WHERE coin='BTC' AND candle_time >= ? AND candle_time < ?", conn, params=(lo, hi))
     conn.close()
     print(f"  loaded in {time.time() - t0:.0f}s", flush=True)
 
-    hype_px = ms[ms["coin"] == "HYPE"][["snapshot_time", "mark_px"]]
-    px_src = "market_snapshots"
-    if hype_px.empty:
-        hype_px = snap[["timestamp", "price"]].rename(columns={"timestamp": "snapshot_time", "price": "mark_px"})
-        px_src = "snapshots (fallback)"
+    # BTC: 10-min candles, stamped at their close so a candle is only visible once
+    # complete; then raw market_snapshots from where those start (last ~7 days).
+    mc = mc.dropna(subset=["close"])
+    mc_close = to_utc(mc["candle_time"]) + pd.Timedelta(minutes=BTC_CANDLE_MIN)
+    mc = pd.DataFrame({"snapshot_time": mc_close.dt.strftime("%Y-%m-%dT%H:%M:%S").to_numpy(),
+                       "mark_px": mc["close"].to_numpy()})
+    ms = ms.dropna(subset=["mark_px"])
+    if len(ms) and len(mc):
+        first_ms = to_utc(ms["snapshot_time"]).min()
+        mc = mc[(to_utc(mc["snapshot_time"]) < first_ms).to_numpy()]
+    btc = pd.concat([mc, ms], ignore_index=True)
+    src = {"px": "snapshots",
+           "btc": f"market_candles {len(mc)} + market_snapshots {len(ms)}"}
+
+    # HYPE price for exits: always snapshots (same series as candles and entry price)
+    hype_px = snap[["timestamp", "price"]].rename(columns={"timestamp": "snapshot_time", "price": "mark_px"})
     t = {
         "snap": Table(snap, "timestamp"),
         "orders": Table(orders, "first_seen_at"),
         "ob": Table(ob, "snapshot_time"),
-        "btc": Table(ms[ms["coin"] == "BTC"][["snapshot_time", "mark_px"]], "snapshot_time"),
+        "btc": Table(btc, "snapshot_time"),
         "px": Table(hype_px, "snapshot_time"),
     }
-    return t, px_src
+    return t, src
 
 
 def load_real(scanner_db, start, end):
@@ -350,11 +382,11 @@ def show(df):
         print(df.to_string(index=False))
 
 
-def report_coverage(t, px_src, n_closes, start, end):
+def report_coverage(t, src, n_closes, start, end):
     print("\n== 1. Data coverage ==")
     rows = []
     for name, key in [("snapshots", "snap"), ("orders", "orders"), ("orderbook_snapshots", "ob"),
-                      ("market_snapshots BTC", "btc"), (f"HYPE price for exits: {px_src}", "px")]:
+                      (f"BTC: {src['btc']}", "btc"), (f"HYPE price for exits: {src['px']}", "px")]:
         d = t[key].df
         rows.append({"table": name, "rows": len(d),
                      "first": d["dt"].min() if len(d) else None, "last": d["dt"].max() if len(d) else None})
@@ -366,6 +398,10 @@ def report_funnel(sig):
     print("\n== 2. Signal funnel (every candle close, before position/cooldown) ==")
     f = sig["reason"].value_counts().rename_axis("reason").reset_index(name="candles")
     show(f)
+    passed = sig[(sig["vi"] > P["vi_threshold"]) & (sig["rsi"] < P["rsi_threshold"])]
+    n_nan = int(passed["btc_3h"].isna().sum())
+    print(f"BTC value missing on {n_nan} of {len(passed)} candles that passed VI+RSI "
+          f"(only BASELINE is gated; those show as 'BTC missing' above).")
 
 
 def report_validation(sig, trades, real):
@@ -487,7 +523,7 @@ def main():
     start, end = pd.Timestamp(a.start, tz="UTC"), pd.Timestamp(a.end, tz="UTC")
     lo = (start - pd.Timedelta(days=3)).strftime("%Y-%m-%d")
     hi = (end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    t, px_src = load_tables(a.db, lo, hi)
+    t, src = load_tables(a.db, lo, hi)
     for k in ("snap", "px"):
         if len(t[k]) == 0:
             sys.exit(f"No HYPE rows in {k} for {lo}..{hi}; nothing to replay.")
@@ -534,7 +570,7 @@ def main():
     trades = pd.DataFrame(trades)
     paths = pd.DataFrame(paths, columns=["T", "signal_type", "action", "minute", "ret_pct"])
 
-    report_coverage(t, px_src, len(closes), start, end)
+    report_coverage(t, src, len(closes), start, end)
     report_funnel(sig)
     real = load_real(a.scanner_db, start, end) if Path(a.scanner_db).exists() else pd.DataFrame()
     if real.empty:
