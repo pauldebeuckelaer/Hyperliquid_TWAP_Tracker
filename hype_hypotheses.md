@@ -78,3 +78,12 @@ $PY scripts/replay_exits.py --prefix data/replay_hype_ho --start 2026-09-14 --en
   market_snapshots, missing BTC = NaN. Fit half re-run: BTC complete, gate
   blocked 0 candles, validation unchanged (box 42/44). H1/H2 unchanged.
 - One re-run follows; it stands whatever it says.
+
+
+### 2026-10-15, held-out 2026-09-14 to 2026-10-14: run 2 (valid, f43903c data fix)
+- 25 entry signals (11 CONTRA, 14 BASELINE), all with paths.
+- H1: TP1.5/SL1.0 n=9 avg -0.476% (net -0.536, t -1.56) vs SL2.0 n=8 avg -0.483%
+  (net -0.543, t -1.28). PASS by the rule; margin 0.007 pp = no real difference.
+- H2: strong CONTRA n=2 -> NOT TESTED (<5). Direction against H2: those 2 averaged
+  -1.34%, other entries (n=7) -0.31%. Carry forward.
+- Context: 0 TP hits in the month; bot's own exits lost -0.54%/trade net.
