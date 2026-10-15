@@ -66,3 +66,15 @@ $PY scripts/replay_exits.py --prefix data/replay_hype_ho --start 2026-09-14 --en
 ## Results
 
 (append each held-out run here: date run, period, n, avg_pct per arm, pass/fail)
+
+### 2026-10-15, held-out 2026-09-14 to 2026-10-14: run 1 INVALID (data)
+- Exit paths came from market_snapshots, which keeps ~7 days: 11 of 25 entry
+  signals before Oct 8 had no path; only 4 trades simulated.
+- BTC 3h value was 0.0 whenever BTC rows were missing (fit half: all 234 entries),
+  so the BASELINE gate never ran.
+- Seen before the fix: Oct 8-14 only, n=4, SL1.0 -0.23% vs SL2.0 -0.43%;
+  strong CONTRA n=0.
+- Fixed in 28663ab: paths always from snapshots, BTC from market_candles +
+  market_snapshots, missing BTC = NaN. Fit half re-run: BTC complete, gate
+  blocked 0 candles, validation unchanged (box 42/44). H1/H2 unchanged.
+- One re-run follows; it stands whatever it says.
