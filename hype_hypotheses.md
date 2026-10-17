@@ -107,3 +107,16 @@ $PY scripts/replay_exits.py --prefix data/replay_hype_ho --start 2026-09-14 --en
 - Added before Nov data (original test unchanged): result only counts as robust if
   ALSO Spearman t>=2 AND t>=2 without the top 10 |net| hours.
 - Not tradeable as is: op takes every hour, best bucket +7.9 bps < ~9 bps taker round trip.
+
+
+### 2026-10-17, fit half (Sep 4-30, n=645 hours)
+- H-TWAP1: Pearson t=+0.10, Spearman t=-0.41, without top 10 t=-0.22.
+  Quintiles flat (-2.7..+6.7 bps, se ~6). Top |A| quintile in sign of A: +1.65 bps (se 7.4).
+- Verdict: NOT SUPPORTED on fit. Held-out (Oct 1-14) deliberately NOT opened, kept clean.
+- H-TWAP2 uninformative by design: corr(A,E)=1.000. A TWAP executes linearly in time,
+  and A stops counting at cancel, so A already equals executed flow. The joint regression
+  t-values (+3.25/-3.25) are a collinearity artefact.
+- Sanity: 61.7 visible TWAPs/hour, buy-heavy (9388 BUY / 5209 SELL orders).
+
+- Check: Sep cancelled TWAPs, progress vs elapsed time fraction: mean abs diff 0.004,
+  98.5% within 5pp. Sep progress cannot identify unfilled TWAPs; that needs Oct+ executed_sz.
