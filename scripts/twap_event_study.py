@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-TWAP placement event study for HYPE perp. Implements twap_event_hypotheses.md (H-TWAP3).
+TWAP placement event study for HYPE perp. Implements twap_event_hypotheses.md
+(H-TWAP3: 60 min, default; H-TWAP4: 15 min, run with --horizon 15).
 
 Default run = FIT half only (Sep 4 - Sep 30). The held-out half (Oct 1 - Oct 14)
 is only computed with --holdout, and should be opened exactly once.
@@ -8,6 +9,7 @@ is only computed with --holdout, and should be opened exactly once.
 Usage (on the box, from the repo root):
     $PY scripts/twap_event_study.py              # fit half
     $PY scripts/twap_event_study.py --holdout    # held-out half, ONCE
+    $PY scripts/twap_event_study.py --holdout --horizon 15   # H-TWAP4 verdict
 """
 import argparse
 import sqlite3
@@ -24,7 +26,7 @@ SIZE_MIN = 7000.0
 MAX_DUR = 1440
 MERGE_MIN = 60
 HORIZON = 60
-EXTRA_H = (15, 240)
+ALL_H = (15, 60, 240)
 PRICE_TOL = pd.Timedelta(minutes=5)
 TOP_DROP = 5
 ROUND_TRIP_BPS = 9.0
@@ -99,7 +101,7 @@ def price_at(prices, times):
 def add_outcomes(ev, prices):
     p0 = price_at(prices, ev["t0"])
     ev["p0"] = p0
-    for h in (HORIZON,) + EXTRA_H:
+    for h in ALL_H:
         p1 = price_at(prices, ev["t0"] + pd.Timedelta(minutes=h))
         ev[f"S{h}"] = ev["sign"] * np.log(p1 / p0) * 1e4
     return ev
@@ -138,7 +140,8 @@ def report(ev, label, is_holdout):
     top_addr = d["address"].value_counts().head(5)
     print("  top addresses by events:", ", ".join(f"{a[:10]}:{n}" for a, n in top_addr.items()))
 
-    print(f"\nH-TWAP3  signed return over {HORIZON} min after placement")
+    hname = "H-TWAP3" if HORIZON == 60 else "H-TWAP4" if HORIZON == 15 else f"horizon {HORIZON}"
+    print(f"\n{hname}  signed return over {HORIZON} min after placement")
     n, m, se, t = mean_t(d[col])
     print(line("all events", d[col]))
     dd = d[d[col].abs().rank(method="first", ascending=False) > TOP_DROP]
@@ -147,12 +150,18 @@ def report(ev, label, is_holdout):
     no = non_overlap(d)
     n3, m3, se3, t3 = mean_t(no[col])
     print(line("non-overlapping subset", no[col]))
+    pa = d.groupby("address")[col].mean()
+    n4, m4, se4, t4 = mean_t(pa)
+    print(line("1 per address (address mean)", pa))
+    top = d["address"].value_counts().index[0]
+    print(line(f"without top address {top[:10]}", d.loc[d["address"] != top, col]))
     print(f"  share S>0: {(d[col] > 0).mean():.3f}   median: {d[col].median():+.2f} bps")
     print(f"  vs ~{ROUND_TRIP_BPS} bps taker round trip")
 
     print("\nDescriptive")
-    for h in EXTRA_H:
-        print(line(f"horizon {h} min", d[f"S{h}"]))
+    for h in ALL_H:
+        if h != HORIZON:
+            print(line(f"horizon {h} min", d[f"S{h}"]))
     print(line("BUY events", d.loc[d["sign"] > 0, col]))
     print(line("SELL events", d.loc[d["sign"] < 0, col]))
     print(line("size 7k-25k", d.loc[d["size"] < 25000, col]))
@@ -162,9 +171,13 @@ def report(ev, label, is_holdout):
         print(line("executed < 50%", d.loc[d["exec_share"] < 0.5, col]))
         print(f"  events with unknown execution: {int(d['exec_share'].isna().sum())}")
         ok = [t >= 2, t2 >= 2, m3 > 0]
+        names = ["t>=2", f"t>=2 without top {TOP_DROP}", "non-overlap mean>0"]
+        if HORIZON == 15:
+            ok.append(m4 > 0)
+            names.append("per-address mean>0")
         verdict = "PASS" if all(ok) else "FAIL"
-        print(f"\nH-TWAP3 held-out verdict: {verdict}  "
-              f"(t>=2: {ok[0]}, t>=2 without top {TOP_DROP}: {ok[1]}, non-overlap mean>0: {ok[2]})")
+        print(f"\n{hname} held-out verdict: {verdict}  (" +
+              ", ".join(f"{nm}: {o}" for nm, o in zip(names, ok)) + ")")
     return d
 
 
@@ -174,7 +187,11 @@ def main():
     ap.add_argument("--holdout", action="store_true",
                     help="compute the held-out half (Oct 1-14). Open exactly once.")
     ap.add_argument("--out", default="data/twap_events")
+    ap.add_argument("--horizon", type=int, default=60, choices=[15, 60],
+                    help="primary horizon: 60 = H-TWAP3, 15 = H-TWAP4")
     a = ap.parse_args()
+    global HORIZON
+    HORIZON = a.horizon
 
     con = sqlite3.connect(f"file:{a.db}?mode=ro", uri=True, timeout=60)
     orders, ev = load_events(con)
@@ -189,7 +206,7 @@ def main():
     print(f"large orders loaded (all periods): {len(orders)}  ->  events in {label}: {len(ev)}")
     ev = add_outcomes(ev, prices)
     report(ev, label, a.holdout)
-    out = f"{a.out}_{'holdout' if a.holdout else 'fit'}.csv"
+    out = f"{a.out}_{'holdout' if a.holdout else 'fit'}_{HORIZON}.csv"
     ev.to_csv(out, index=False)
     print(f"\nevents written to {out}")
 
