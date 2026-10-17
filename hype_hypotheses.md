@@ -87,3 +87,23 @@ $PY scripts/replay_exits.py --prefix data/replay_hype_ho --start 2026-09-14 --en
 - H2: strong CONTRA n=2 -> NOT TESTED (<5). Direction against H2: those 2 averaged
   -1.34%, other entries (n=7) -0.31%. Carry forward.
 - Context: 0 TP hits in the month; bot's own exits lost -0.54%/trade net.
+
+
+### 2026-10-15, fit half (Jun 7 - Sep 13): flow cap as intended ($5,000 USD) vs as run
+- USD cap: 47 trades, -0.182%/trade; as run: 48 trades, -0.143%/trade (before fees).
+- Jul-Sep identical, June differs by one trade: the cap changes the CONTRA/BASELINE
+  label on 21% of candles, but barely which trades are taken. Entries are driven by
+  VI + RSI + OB filter; the BTC gate (only difference between labels) almost never fires.
+- As run, CONTRA +0.23% (n=23) vs BASELINE -0.49% (n=25); USD cap erases the gap.
+  Hint that single large sellers carry the information, not headcount. Not frozen.
+- Decision: stop tuning this strategy. Bot stays off. Next strategy comes from analysis.
+
+### 2026-10-15, op_f5d81a BTC taking, fit half robustness check (before Nov data)
+- Fit half (to 09-24, n=460 h): Pearson r=+0.127 t=+2.75, Spearman r=-0.014 t=-0.29.
+- Without top 5 |net| hours: t=+0.82; top 10: t=+0.46; top 20: t=+0.24.
+- Quintiles of net taking -> next-hour bps (se): +0.5(3.8) +1.8(3.5) +3.5(3.5)
+  -7.6(3.3) +7.9(5.9): not monotonic.
+- Conclusion: the correlation rests on ~5 hours; no general relationship.
+- Added before Nov data (original test unchanged): result only counts as robust if
+  ALSO Spearman t>=2 AND t>=2 without the top 10 |net| hours.
+- Not tradeable as is: op takes every hour, best bucket +7.9 bps < ~9 bps taker round trip.
