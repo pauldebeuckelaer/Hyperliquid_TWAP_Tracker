@@ -52,7 +52,6 @@ beta frozen at the value from the first run.
 
 (append below; never edit anything above this line)
 
-
 ### Run 1 — 2026-10-18 (events Jan–Oct 2026, n=10)
 - beta = 0.935 (n=290)
 - mean CAR(-3..+3) = +0.23%, negative in 3/10
@@ -65,3 +64,19 @@ beta frozen at the value from the first run.
   rule stays as frozen.
 - H-UNLOCK2 (descriptive): pre +2.70% (positive 8/10), post -2.47% (negative 8/10).
   Run-up into the 6th, fade after. Seen post hoc — not a finding.
+
+## H-UNLOCK3 (frozen 2026-10-18, after Run 1, before any post-event exploration)
+
+Origin: the post-hoc pattern in H-UNLOCK2. Tested ONLY on future events.
+
+- Events: the 6th of each month, 2026-11-06 .. 2027-04-06 (6 events).
+- Beta frozen at 0.935 (Run 1). AR as defined above.
+- Post window: days D .. D+3 inclusive (4 daily returns). PCAR = sum of AR.
+- Test statistic: mean PCAR over the 6 events.
+- Placebo: for each of the same 6 months, one anchor uniformly from days 13..25,
+  same 4-day window; 20,000 draws, seed 20261018.
+  p = share of placebo means <= observed mean PCAR.
+- **SUPPORTED iff p <= 0.10.** (No sign condition: the placebo carries the drift.)
+- Evaluated ONCE, on or after 2027-04-29 (all 6 events and all April placebo windows complete).
+  Before that, interim numbers are reported but are descriptive only.
+- Exploration of the Jan–Oct 2026 events after this point cannot change this test.
