@@ -51,3 +51,17 @@ beta frozen at the value from the first run.
 ## Results
 
 (append below; never edit anything above this line)
+
+
+### Run 1 — 2026-10-18 (events Jan–Oct 2026, n=10)
+- beta = 0.935 (n=290)
+- mean CAR(-3..+3) = +0.23%, negative in 3/10
+- placebo mean CAR: median +2.47%, 10th pct -0.59%, 90th pct +6.37%
+- randomization p = 0.1772
+- **H-UNLOCK1: NOT SUPPORTED** (mean CAR >= 0; p > 0.10)
+- Note: HYPE drifted above beta*BTC through 2026 (placebo median +2.47%/window).
+  Relative to placebo, unlock windows were ~2.2% lower, not significant.
+  The "mean CAR < 0" condition is stricter than intended under this drift;
+  rule stays as frozen.
+- H-UNLOCK2 (descriptive): pre +2.70% (positive 8/10), post -2.47% (negative 8/10).
+  Run-up into the 6th, fade after. Seen post hoc — not a finding.
