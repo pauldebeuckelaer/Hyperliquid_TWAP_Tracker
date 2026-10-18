@@ -9,12 +9,7 @@ data/allcoins_json_logs/
 data/trader_metrics.json
 data/metrics_history/
 
-data/absorption_*.csv
-data/twap_impact.csv
-data/twap_slices.csv
-data/twap_informed.csv
-data/twap_wallets.csv
-data/absorption_operators.csv
+data/**/*.csv
 
 # Logs
 logs/
@@ -67,4 +62,4 @@ audit_*.json
 data/last_cleanup_date
 twaphist_*.json
 scripts/outcome_probe_out/
-data/markout_population_*.csv
+

@@ -65,3 +65,14 @@ Key descriptive split (held-out only): executed >= 90% vs < 50%.
 - Mechanical (own slices push price): effect only in the executed group.
 - Informational (announcement itself): effect also in the unexecuted group.
 H-TWAP3 (60 min) is reported from the same held-out run with its own frozen rule.
+
+### 2026-10-17, held-out (Oct 1-14, 110 events, 53 addresses), opened once
+- H-TWAP4 (15 min): mean +6.42 bps (se 3.24, t +1.98); without top 5 t +2.08; non-overlap
+  t +1.92 (mean>0); per-address mean +8.21 (t +2.14). VERDICT: FAIL (condition 1, t 1.98 < 2).
+  Effect size replicated (fit +7.1). Underpowered as noted before the run.
+- H-TWAP3 (60 min): mean +2.17 bps, t +0.34. VERDICT: FAIL.
+- Descriptive: executed >= 90% +5.79 (t 1.68, n=66); executed < 50% +13.56 (t 2.09, n=34).
+  Unexecuted large TWAPs moved price MORE. Not frozen, not claimed. 240 min -15.0 (t -1.26).
+- Carried to Nov re-test (Oct 15 - Nov 14, fresh): H-TWAP4 unchanged, plus a new frozen
+  H-TWAP5 written before that data exists: large TWAPs with executed < 50% are followed by
+  a 15-min move in their direction (same definitions, same four pass conditions).
