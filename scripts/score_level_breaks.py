@@ -36,7 +36,15 @@ FROZEN RULES (fixed on 2026-10-25, before scoring any data outside BTC Oct 24-25
   samples    IN  = from 2026-10-24 00:00 UTC (where the rule was refined)
              OUT = everything before that (the actual test)
 
+PLACEBO (added 2026-10-25, after the first run showed +15pp out-of-sample):
+  A tick that moves price further crosses ANY grid line more often, and bigger
+  ticks move price further. So part of the lift could be mechanical. --placebo
+  reruns the same test on the grid shifted by 0.25, 0.5 and 0.75 of a step
+  (e.g. BTC 80,025 / 80,050 / 80,075). Round numbers matter only if the real
+  grid (offset 0) beats the placebo grids clearly.
+
 Usage
+  python3 score_level_breaks.py --placebo       real grid vs shifted grids
   python3 score_level_breaks.py                 all coins
   python3 score_level_breaks.py --coin BTC      one coin
   python3 score_level_breaks.py --min-n 20      hide coins with few chains
@@ -65,15 +73,19 @@ def step_for(px):
     return 10 ** (math.floor(math.log10(px)) - 2)
 
 
+OFFSET = 0.0   # 0 = real round levels; 0.5 = placebo grid halfway between them
+
+
 def crosses(direction, prev, cur):
-    """True if cur crosses a round level relative to prev (see FROZEN RULES)."""
+    """True if cur crosses a grid level relative to prev (see FROZEN RULES).
+    The grid is (k + OFFSET) * step; OFFSET 0 gives the real round levels."""
     if direction == "up":
         step = step_for(cur["hi"])
-        k = math.ceil(prev["hi"] / step - EPS)        # lowest level >= prev high
-        return cur["hi"] / step > k + EPS             # ... and below this tick's high
+        k = math.ceil(prev["hi"] / step - OFFSET - EPS)   # lowest level >= prev high
+        return cur["hi"] / step - OFFSET > k + EPS        # ... and below this tick's high
     step = step_for(cur["lo"])
-    k = math.floor(prev["lo"] / step + EPS)           # highest level <= prev low
-    return cur["lo"] / step < k - EPS                 # ... and above this tick's low
+    k = math.floor(prev["lo"] / step - OFFSET + EPS)      # highest level <= prev low
+    return cur["lo"] / step - OFFSET < k - EPS            # ... and above this tick's low
 
 
 def wilson(k, n, z=1.96):
@@ -165,10 +177,66 @@ def print_table(title, rows_by_key, min_n):
         print(f"  {key:16} {nl:>7}  {fmt_rate(kl, nl):>19}  {ll:4.1f}   {nc:>9}  {fmt_rate(kc, nc):>19}  {lc:4.1f}   {lift_s}")
 
 
+def run(per_coin, offset):
+    global OFFSET
+    OFFSET = offset
+    all_rows, coin_rows = [], []
+    for coin, ticks in per_coin.items():
+        rows = score_coin(ticks)
+        coin_rows.append((coin, rows))
+        all_rows += rows
+    coin_rows.sort(key=lambda kv: -len(kv[1]))
+    return all_rows, coin_rows
+
+
+PLACEBO_OFFSETS = (0.0, 0.25, 0.5, 0.75)
+
+
+def lift_of(rows):
+    s = summarize(rows)
+    (kl, nl, _), (kc, nc, _) = s["LEVEL"], s["CONTROL"]
+    if not nl or not nc:
+        return None, nl
+    return 100 * kl / nl - 100 * kc / nc, nl
+
+
+def run_placebo(per_coin, min_n):
+    """Score the real grid (offset 0) and shifted placebo grids, out-of-sample only.
+    If round numbers matter, offset 0 must beat the placebo offsets clearly.
+    If the lifts are similar, the effect is mechanical (big ticks move price
+    further, so they cross ANY grid line more often), not round-number stops."""
+    results = {}
+    for off in PLACEBO_OFFSETS:
+        all_rows, coin_rows = run(per_coin, off)
+        oos = [r for r in all_rows if r[1] == "OUT"]
+        table = [("ALL COINS", oos)]
+        table += [("  len 2", [r for r in oos if r[3] == 2]),
+                  ("  len 3-5", [r for r in oos if 3 <= r[3] <= 5]),
+                  ("  len 6+", [r for r in oos if r[3] >= 6])]
+        table += [(c, [r for r in rows if r[1] == "OUT"]) for c, rows in coin_rows]
+        results[off] = {k: lift_of(v) for k, v in table}
+        order = [k for k, _ in table]
+
+    print("\nPLACEBO TEST, OUT-OF-SAMPLE: lift (LEVEL pass% minus CONTROL pass%) per grid offset")
+    print("offset 0 = real round levels; 0.25 / 0.5 / 0.75 = same grid shifted by that fraction of a step")
+    hdr = "".join(f"{('real 0' if o == 0 else f'off {o}'):>12}" for o in PLACEBO_OFFSETS)
+    print(f"  {'':14}{hdr}   {'LEVEL n (real)':>15}")
+    for key in order:
+        cells, n_real = "", results[0.0][key][1]
+        if n_real < min_n and not key.startswith(("ALL", "  len")):
+            continue
+        for o in PLACEBO_OFFSETS:
+            lift, _ = results[o][key]
+            cells += f"{(f'{lift:+.0f}pp' if lift is not None else '-'):>12}"
+        print(f"  {key:14}{cells}   {n_real:>15}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--coin", help="score only this coin (exact name, e.g. BTC or xyz:BRENTOIL)")
     ap.add_argument("--min-n", type=int, default=10, help="hide coins with fewer chains (default 10)")
+    ap.add_argument("--placebo", action="store_true",
+                    help="compare the real round-level grid with shifted placebo grids")
     ap.add_argument("--db", default=TRIG_DB)
     args = ap.parse_args()
 
@@ -187,17 +255,16 @@ def main():
     if not per_coin:
         sys.exit("No trigger ticks found. Has build_trigger_batches.py run?")
 
-    all_rows, coin_rows = [], []
-    for coin, ticks in per_coin.items():
-        rows = score_coin(ticks)
-        coin_rows.append((coin, rows))
-        all_rows += rows
-    coin_rows.sort(key=lambda kv: -len(kv[1]))
-
     first = min(t[0]["ts"] for t in per_coin.values())
     last = max(t[-1]["ts"] for t in per_coin.values())
     fmt = lambda ms: datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
     print(f"Trigger ticks {fmt(first)} -> {fmt(last)} UTC, {len(per_coin)} coins")
+
+    if args.placebo:
+        run_placebo(per_coin, args.min_n)
+        return
+
+    all_rows, coin_rows = run(per_coin, 0.0)
     print("pass = largest tick of the chain is the first (or a touch-then-break 2nd); "
           "len = mean chain length; lift = LEVEL pass% minus CONTROL pass%")
 
