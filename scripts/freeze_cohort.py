@@ -20,6 +20,10 @@ SCORE
   Wallets flat at baseline: "re-entered" = yes if |szi| >= --reentry (default 10000).
   Also prints whether any current stop on the coin sits on the safe side of liquidation
   (above liq for a long, below liq for a short).
+  Spot balance and (for HYPE) staking are frozen too, and score prints the NET delta
+  (perp + spot + staked) before and after. A perp short can be a hedge on spot holdings
+  (0xf02d16a2 on Oct 29: perp -728k vs ~720k spot+staked = flat); its A-E letter describes
+  the hedge only, the net line describes the real exposure.
 
 Also reads the first baseline written by the heredoc version
 (data/freeze_hype_cohort_2026-10-29.json: keys hype_mid / hype_orders, no coin key -> HYPE).
@@ -63,6 +67,31 @@ def coin_position(cs, coin):
                  if x["position"]["coin"] == coin), None)
 
 
+def holdings(addr, coin):
+    """Spot balance + staked amount of the coin (staking only exists for HYPE).
+    Returns (spot_total, staked, raw_spot_state, raw_staking)."""
+    sp = post({"type": "spotClearinghouseState", "user": addr})
+    spot = sum(float(b["total"]) for b in sp.get("balances", []) if b["coin"] == coin)
+    stk, staked = None, 0.0
+    if coin == "HYPE":
+        stk = post({"type": "delegatorSummary", "user": addr})
+        staked = (float(stk.get("delegated", 0)) + float(stk.get("undelegated", 0))
+                  + float(stk.get("totalPendingWithdrawal", 0)))
+    return spot, staked, sp, stk
+
+
+def stored_holdings(w, coin):
+    """Spot + staked from a frozen wallet entry; None if the file predates spot capture."""
+    if "spotClearinghouseState" not in w:
+        return None
+    spot = sum(float(b["total"]) for b in w["spotClearinghouseState"].get("balances", [])
+               if b["coin"] == coin)
+    s = w.get("delegatorSummary") or {}
+    staked = (float(s.get("delegated", 0)) + float(s.get("undelegated", 0))
+              + float(s.get("totalPendingWithdrawal", 0)))
+    return spot, staked
+
+
 def freeze(a):
     db = sqlite3.connect(a.db)
     coin = a.coin
@@ -80,7 +109,9 @@ def freeze(a):
         addr = addrs[0]
         cs = post({"type": "clearinghouseState", "user": addr})
         oo = [o for o in post({"type": "frontendOpenOrders", "user": addr}) if o["coin"] == coin]
-        out["wallets"][addr] = {"clearinghouseState": cs, f"{coin.lower()}_orders": oo}
+        spot, staked, sp_raw, stk_raw = holdings(addr, coin)
+        out["wallets"][addr] = {"clearinghouseState": cs, f"{coin.lower()}_orders": oo,
+                                "spotClearinghouseState": sp_raw, "delegatorSummary": stk_raw}
 
         ms = cs["marginSummary"]
         eq, ntl = float(ms["accountValue"]), float(ms["totalNtlPos"])
@@ -93,6 +124,10 @@ def freeze(a):
                   f"uPnL {float(pos['unrealizedPnl']):,.0f}")
         else:
             print(f"   {coin}: no position")
+        perp = float(pos["szi"]) if pos else 0.0
+        if spot or staked:
+            print(f"   spot {spot:,.0f}  staked {staked:,.0f}  ->  NET {coin} delta "
+                  f"{perp + spot + staked:,.0f}  (perp {perp:,.0f})")
         trig = [o for o in oo if o.get("isTrigger") or "Stop" in o["orderType"] or "Take" in o["orderType"]]
         print(f"   {coin} open orders: {len(oo)} ({len(trig)} trigger/TP-SL)")
         for o in trig:
@@ -137,6 +172,12 @@ def score(a):
 
         print(f"== {addr}")
         print(f"   szi {base:,.0f} -> {cur:,.0f}   {verdict}")
+        bh = stored_holdings(w, coin)
+        if bh is not None:
+            spot_now, staked_now, _, _ = holdings(addr, coin)
+            nb, nn = base + bh[0] + bh[1], cur + spot_now + staked_now
+            if bh[0] or bh[1] or spot_now or staked_now:
+                print(f"   NET delta (perp+spot+staked) {nb:,.0f} -> {nn:,.0f}")
         if np_ and abs(cur) > 0:
             liq = np_["liquidationPx"]
             oo = [o for o in post({"type": "frontendOpenOrders", "user": addr})
