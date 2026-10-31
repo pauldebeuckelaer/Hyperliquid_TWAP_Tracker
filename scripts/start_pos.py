@@ -91,7 +91,7 @@ for i, addr in rows:
     # --- perp, every dex ----------------------------------------------------
     now = 0.0
     perp_total = 0.0
-    print('perp positions:')
+    print('perp positions (dexes checked: ' + ', '.join(d or 'main' for d in DEXES) + '):')
     for dex in DEXES:
         body = {'type': 'clearinghouseState', 'user': addr}
         if dex:
@@ -141,9 +141,15 @@ for i, addr in rows:
     except Exception as e:                                # endpoint is optional
         print('staking lookup failed:', e)
 
-    print(f"TOTAL (rough): perp {perp_total:,.0f} + spot {spot_total:,.0f} "
-          f"+ staked {staked_usd:,.0f} = {perp_total + spot_total + staked_usd:,.0f}")
-    print("  (rough: on unified accounts spot USDC can also back perp margin)")
+    # Unified accounts: perp account value IS the spot USDC, so don't add it twice.
+    spot_usdc = sum(float(b['total']) for b in bals if b['coin'] == 'USDC')
+    unified = spot_usdc > 0 and abs(spot_usdc - perp_total) < 1.0
+    spot_counted = spot_total - spot_usdc if unified else spot_total
+    total = perp_total + spot_counted + staked_usd
+    print(f"TOTAL: perp {perp_total:,.0f} + spot {spot_counted:,.0f} "
+          f"+ staked {staked_usd:,.0f} = {total:,.0f}")
+    if unified:
+        print("  (unified account: spot USDC equals perp account value, counted once)")
 
     # --- tape reconstruction ------------------------------------------------
     if not on_tape:
