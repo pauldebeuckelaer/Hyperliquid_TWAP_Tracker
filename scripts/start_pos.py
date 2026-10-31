@@ -6,10 +6,11 @@ Account view: perp positions on EVERY dex (main + HIP-3 such as xyz),
 spot balances valued at USDC mids, and staked HYPE.
 
 Usage (run from repo root):
-    python3 scripts/start_pos.py <address-or-prefix> [coin]
+    python3 scripts/start_pos.py <address-or-prefix> [coin] [--w0 START] [--w1 END]
 
 coin uses the tape's naming: BTC, HYPE, xyz:BRENTOIL, ...
-Window: the Oct 29-30 2026 BTC 80k break + slide (edit W0 / W1 for other events).
+--w0 / --w1 take a UTC time (2026-10-30T18:00) or epoch ms.
+Default window: the Oct 29-30 2026 BTC 80k break + slide.
 
 Reading the reconstruction:
     before > 0, selling took it toward 0   -> closing a long
@@ -19,12 +20,12 @@ Assumes the tape caught every fill; odd numbers -> suspect a tape gap first.
 Only coins in the orderbook tracker's COINS list are on the tape; spot never is.
 """
 import sys
+import argparse
+import datetime
 import sqlite3
 import json
 import urllib.request
 
-W0 = 1793304000000   # 2026-10-29 20:00 UTC  (break)
-W1 = 1793329200000   # 2026-10-30 03:00 UTC  (end of slide)
 FAR = 10**14
 
 API = 'https://api.hyperliquid.xyz/info'
@@ -36,8 +37,30 @@ def info(body):
     return json.load(urllib.request.urlopen(req, timeout=15))
 
 
-prefix = sys.argv[1].lower()
-coin = sys.argv[2] if len(sys.argv) > 2 else 'BTC'
+def to_ms(s):
+    """Accept epoch ms (1793304000000) or UTC time (2026-10-29T20:00)."""
+    if s.isdigit():
+        return int(s)
+    t = datetime.datetime.fromisoformat(s)
+    return int(t.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+
+
+def fmt(ms):
+    return datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+
+ap = argparse.ArgumentParser(description='Account view + tape reconstruction for one wallet.')
+ap.add_argument('address', help='full address or prefix, e.g. 0x2a8a01a6')
+ap.add_argument('coin', nargs='?', default='BTC', help='tape name: BTC, HYPE, xyz:BRENTOIL ...')
+ap.add_argument('--w0', default='2026-10-29T20:00', help='window start, UTC time or epoch ms')
+ap.add_argument('--w1', default='2026-10-30T03:00', help='window end, UTC time or epoch ms')
+args = ap.parse_args()
+
+prefix = args.address.lower()
+coin = args.coin
+W0, W1 = to_ms(args.w0), to_ms(args.w1)
+if W1 <= W0:
+    sys.exit('--w1 must be after --w0')
 hi = '0x' + format(int(prefix[2:], 16) + 1, '0%dx' % (len(prefix) - 2))
 
 db = sqlite3.connect('file:data/twap.db?mode=ro', uri=True)
@@ -160,7 +183,8 @@ for i, addr in rows:
     d_after, n_after = net(i, W1, FAR)
     end = now - d_after
     start = end - d_in
-    print(f"\nprints in window: {n_in} | after window: {n_after}")
+    print(f"\nwindow: {fmt(W0)} -> {fmt(W1)}")
+    print(f"prints in window: {n_in} | after window: {n_after}")
     print(f"{coin} szi BEFORE window : {start:12.4f}")
     print(f"{coin} change in window  : {d_in:+12.4f}")
     print(f"{coin} szi AT window end : {end:12.4f}")
