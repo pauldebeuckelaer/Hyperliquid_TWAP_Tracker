@@ -39,11 +39,29 @@ def fmt_ms(ms, f="%m-%d %H:%M"):
     return datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc).strftime(f)
 
 
+MAX_TRIES = 6  # waits 2, 4, 8, 16, 32 s between tries (~1 min total)
+
+
 def post(body):
+    """POST to the info API; on 429 (rate limit) wait and retry.
+
+    The box shares its per-IP request budget with the analyzer's pollers,
+    so an occasional 429 is expected and is not an error in this script.
+    """
     req = urllib.request.Request(API, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    for attempt in range(1, MAX_TRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == MAX_TRIES:
+                raise
+            ra = e.headers.get("Retry-After") if e.headers else None
+            wait = int(ra) if ra and ra.isdigit() else 2 ** attempt
+            print(f"  rate limited (429), waiting {wait}s (try {attempt}/{MAX_TRIES})",
+                  file=sys.stderr)
+            time.sleep(wait)
 
 
 def fetch_fills(addr, w0, w1):
@@ -58,10 +76,12 @@ def fetch_fills(addr, w0, w1):
         for f in new:
             seen.add((f["tid"], f["coin"]))
         fills.extend(new)
+        print(f"  page {len(fills) // PAGE_LIMIT + 1}: {len(fills)} fills so far "
+              f"(up to {fmt_ms(max(f['time'] for f in page))} UTC)", file=sys.stderr)
         if len(page) < PAGE_LIMIT or not new:
             break
         start = max(f["time"] for f in page)  # same-ms fills dedup via tid
-        time.sleep(0.3)
+        time.sleep(1.0)  # gentler on the shared IP budget
     fills.sort(key=lambda f: f["time"])
     return fills
 
