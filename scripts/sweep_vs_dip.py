@@ -42,7 +42,18 @@ def load(db, coin, t0, t1):
     q = ("SELECT ts, px, notional, side, buyer, seller FROM tape_prints "
          "WHERE coin=? AND ts BETWEEN ? AND ? ORDER BY ts")
     agree = moved = 0
-    last = None
+    last_vw = cur_ts = None
+    pv = vol = net = 0.0
+
+    def close_ms():
+        nonlocal agree, moved, last_vw
+        vw = pv / vol if vol else None
+        if vw is not None and last_vw is not None and vw != last_vw and net != 0:
+            moved += 1
+            agree += (vw > last_vw) == (net > 0)
+        if vw is not None:
+            last_vw = vw
+
     for n, (t, p, u, s, b, a) in enumerate(db.execute(q, (coin, t0, t1)), 1):
         c = str(s).upper()[:1]
         if c == "B":
@@ -51,17 +62,20 @@ def load(db, coin, t0, t1):
             taker_buy = 0
         else:
             raise SystemExit(f"Unknown side value {s!r}: stopping before scoring anything")
-        if last is not None and p != last:
-            moved += 1
-            agree += (p > last) == bool(taker_buy)
-        last = p
+        if t != cur_ts:
+            close_ms()
+            cur_ts, pv, vol, net = t, 0.0, 0.0, 0.0
+        pv += p * u
+        vol += u
+        net += u if taker_buy else -u
         ts.append(t); px.append(p); usd.append(u); tb.append(taker_buy)
         buyer.append(-1 if b is None else b); seller.append(-1 if a is None else a)
         if n % 2_000_000 == 0:
             say(f"  {coin}: {n:,} prints loaded")
+    close_ms()
     check = 100.0 * agree / moved if moved else 0.0
-    say(f"  {coin}: {len(ts):,} prints; side check {check:.1f}% of price moves agree")
-    if check < 60:
+    say(f"  {coin}: {len(ts):,} prints; side check {check:.1f}% of millisecond price moves agree")
+    if check < 70:
         raise SystemExit("Side column does not look like the taker side: stopping")
     return ts, px, usd, tb, buyer, seller
 
