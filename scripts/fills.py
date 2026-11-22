@@ -1,5 +1,5 @@
 import json, urllib.request, collections, datetime
-U  = "0x50805e660ffc16694363e3273fe921dea3a89247"
+U  = "0xf33b8b3c2559930ed028ef2591d85be57620d163"
 T0 = 1795240800000   # Sat 2026-11-21 06:00 UTC
 T1 = 1795269600000   # Sat 2026-11-21 14:00 UTC
 r = urllib.request.Request("https://api.hyperliquid.xyz/info",
