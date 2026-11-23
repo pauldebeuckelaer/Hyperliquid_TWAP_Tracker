@@ -61,9 +61,9 @@ def coinbase(sym, T0, T1):
 
 def okx(inst, T0, T1):
     ct = float(get_json(f'https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId={inst}')['data'][0]['ctVal'])
-    out, q = [], f'type=2&after={T1}'  # first page positioned by time, then by tradeId
+    out, after, pages = [], T1, 0
     while True:
-        r = get_json(f'https://www.okx.com/api/v5/market/history-trades?instId={inst}&limit=100&{q}')
+        r = get_json(f'https://www.okx.com/api/v5/market/history-trades?instId={inst}&type=2&after={after}&limit=100')
         if r['code'] != '0': raise RuntimeError(r['msg'])
         d = r['data']  # newest first
         if not d: return out
@@ -71,7 +71,11 @@ def okx(inst, T0, T1):
             ts = int(x['ts'])
             if ts < T0: return out
             out.append((ts, float(x['px']), float(x['sz']) * ct, 'B' if x['side'] == 'buy' else 'A', None))
-        q = f'type=1&after={d[-1]["tradeId"]}'
+        new_after = int(d[-1]['ts'])
+        after = new_after if new_after < after else after - 1  # never stand still
+        pages += 1
+        if pages % 50 == 0:
+            print(f'  okx: {pages} pages, at {fmt_ms(after)}', flush=True)
 
 def deribit(inst, T0, T1):
     out, seen, start = [], set(), T0
