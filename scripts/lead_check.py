@@ -22,6 +22,21 @@ def hl():
     return con.execute("SELECT ts, px, notional/px, side, buyer FROM tape_prints "
                        "WHERE coin='BTC' AND ts>=? AND ts<? ORDER BY ts", (T0, T1)).fetchall()
 
+def kraken():
+    out, since = [], str(T0 * 1_000_000)  # Kraken 'since' is in nanoseconds
+    while True:
+        url = f'https://api.kraken.com/0/public/Trades?pair=XBTUSD&since={since}&count=1000'
+        r = json.load(urllib.request.urlopen(url, timeout=15))
+        if r['error']: raise SystemExit(r['error'])
+        res = r['result']
+        d = res[next(k for k in res if k != 'last')]
+        for p, v, t, side, *_ in d:
+            ts = int(float(t) * 1000)
+            if ts >= T1: return out
+            out.append((ts, float(p), float(v), 'B' if side == 'b' else 'A', None))
+        if len(d) < 1000: return out
+        since = res['last']
+
 def per_sec(rows):
     s = {}
     for ts, px, sz, side, buyer in rows:
@@ -36,15 +51,15 @@ def onset(rows, s):
     hit = next((k for k in sorted(s) if k * 1000 >= TREF and s[k][0] >= ref * 1.003), None)
     return ref, hit
 
-b_rows, h_rows = binance(), hl()
-B, H = per_sec(b_rows), per_sec(h_rows)
-(br, bo), (hr, ho) = onset(b_rows, B), onset(h_rows, H)
+b_rows, h_rows, k_rows = binance(), hl(), kraken()
+B, H, K = per_sec(b_rows), per_sec(h_rows), per_sec(k_rows)
+(br, bo), (hr, ho), (kr, ko) = onset(b_rows, B), onset(h_rows, H), onset(k_rows, K)
 t = lambda k: datetime.fromtimestamp(k, timezone.utc).strftime('%H:%M:%S') if k else 'never'
 print(f'Binance: {len(b_rows)} trades, ref {br}, +0.3% at {t(bo)}')
+print(f'Kraken:  {len(k_rows)} trades, ref {kr}, +0.3% at {t(ko)}')
 print(f'HL:      {len(h_rows)} prints, ref {hr}, +0.3% at {t(ho)}')
-if bo and ho: print(f'lead (HL - Binance): {ho - bo} s')
-start = min(x for x in (bo, ho) if x) - 10
-print('\ntime      bn_px     bn_buy  bn_sell | hl_px     hl_buy  hl_sell  292_tkr_buy')
-for k in range(start, start + 30):
-    b, h = B.get(k, ['', 0, 0, 0]), H.get(k, ['', 0, 0, 0])
-    print(f'{t(k)}  {b[0]!s:9} {b[1]:7.1f} {b[2]:7.1f} | {h[0]!s:9} {h[1]:7.1f} {h[2]:7.1f} {h[3]:8.1f}')
+start = min(x for x in (bo, ho, ko) if x) - 6
+print('\ntime      bn_px     kr_px     kr_buy  kr_sell | hl_px     292_tkr_buy')
+for k in range(start, start + 20):
+    b, kk, h = B.get(k, ['', 0, 0, 0]), K.get(k, ['', 0, 0, 0]), H.get(k, ['', 0, 0, 0])
+    print(f'{t(k)}  {b[0]!s:9} {kk[0]!s:9} {kk[1]:7.2f} {kk[2]:7.2f} | {h[0]!s:9} {h[3]:8.1f}')
