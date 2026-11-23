@@ -140,6 +140,14 @@ def per_sec(rows, watch):
         if watch is not None and buyer == watch and side == 'B': r[3] += sz
     return s
 
+def to_ms(s):
+    for f in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+        try:
+            return int(datetime.strptime(s, f).replace(tzinfo=timezone.utc).timestamp() * 1000)
+        except ValueError:
+            pass
+    raise SystemExit(f'bad time: {s}')
+
 ap = argparse.ArgumentParser()
 ap.add_argument('--coin', default='BTC')
 ap.add_argument('--start', default='2026-11-23 13:54')
