@@ -24,14 +24,18 @@ def get_json(url):
 
 # Every fetcher returns rows: (ts_ms, px, size_in_coin, taker_side 'B'/'A', buyer_id_or_None)
 
-def binance(sym, T0, T1):
-    out, q = [], f'startTime={T0}&endTime={T1}'
-    while True:
-        d = [x for x in get_json(f'https://fapi.binance.com/fapi/v1/aggTrades?symbol={sym}&limit=1000&{q}')
-             if x['T'] < T1]
-        out += [(x['T'], float(x['p']), float(x['q']), 'A' if x['m'] else 'B', None) for x in d]
-        if len(d) < 1000: return out
-        q = f'fromId={d[-1]["a"] + 1}'
+def binance_like(base):
+    def fetch(sym, T0, T1):
+        out, q = [], f'startTime={T0}&endTime={T1}'
+        while True:
+            d = [x for x in get_json(f'{base}/fapi/v1/aggTrades?symbol={sym}&limit=1000&{q}') if x['T'] < T1]
+            out += [(x['T'], float(x['p']), float(x['q']), 'A' if x['m'] else 'B', None) for x in d]
+            if len(d) < 1000: return out
+            q = f'fromId={d[-1]["a"] + 1}'
+    return fetch
+
+binance = binance_like('https://fapi.binance.com')
+aster = binance_like('https://fapi.asterdex.com')
 
 def coinbase(sym, T0, T1):
     base = f'https://api.exchange.coinbase.com/products/{sym}/trades'
@@ -92,6 +96,29 @@ def deribit(inst, T0, T1):
         if not d or not r.get('has_more'): return out
         start = d[-1]['timestamp']
 
+def iso_ms(s):
+    d, _, f = s.rstrip('Z').partition('.')
+    sec = datetime.strptime(d, '%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc)
+    return int(sec.timestamp() * 1000) + int((f + '000')[:3])
+
+def dydx(market, T0, T1):
+    base = f'https://indexer.dydx.trade/v4/trades/perpetualMarket/{market}?limit=100'
+    out, seen, height = [], set(), None
+    while True:
+        q = f'&createdBeforeOrAtHeight={height}' if height else \
+            '&createdBeforeOrAt=' + datetime.fromtimestamp(T1 / 1000, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+        d = get_json(base + q)['trades']  # newest first; timestamps are BLOCK times
+        new = [x for x in d if x['id'] not in seen]
+        if not d: return out
+        for x in new:
+            seen.add(x['id'])
+            ts = iso_ms(x['createdAt'])
+            if ts < T0: return out
+            if ts < T1:
+                out.append((ts, float(x['price']), float(x['size']), 'B' if x['side'] == 'BUY' else 'A', None))
+        last_h = int(d[-1]['createdAtHeight'])
+        height = last_h if new else last_h - 1  # step past a block if the page brought nothing new
+
 def kraken(sym, T0, T1):
     out, since = [], str(T0 * 1_000_000)  # Kraken 'since' is in nanoseconds
     while True:
@@ -118,6 +145,8 @@ VENUES = [
     ('okx',      okx,         {'BTC': 'BTC-USDT-SWAP', 'HYPE': 'HYPE-USDT-SWAP'}),
     ('deribit',  deribit,     {'BTC': 'BTC-PERPETUAL'}),
     ('kraken',   kraken,      {'BTC': 'XBTUSD',        'HYPE': 'HYPEUSD'}),
+    ('aster',    aster,       {'BTC': 'BTCUSDT',       'HYPE': 'HYPEUSDT'}),
+    ('dydx',     dydx,        {'BTC': 'BTC-USD',       'HYPE': 'HYPE-USD'}),
     ('hl',       hyperliquid, {'BTC': 'BTC',           'HYPE': 'HYPE'}),
 ]
 
