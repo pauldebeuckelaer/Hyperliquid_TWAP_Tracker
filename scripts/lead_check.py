@@ -152,13 +152,12 @@ VENUES = [
 
 def onset(rows, tref, thr):
     before = [px for ts, px, *_ in rows if ts < tref]
-    if not before: return None, None
-    ref = before[-1]
+    ref, approx = (before[-1], False) if before else (rows[0][1], True)
     lvl = ref * (1 + thr / 100)
     for ts, px, *_ in rows:
         if ts >= tref and (px >= lvl if thr > 0 else px <= lvl):
-            return ref, ts
-    return ref, None
+            return ref, ts, approx
+    return ref, None, approx
 
 def per_sec(rows, watch):
     s = {}
@@ -198,9 +197,9 @@ for name, fn, syms in VENUES:
         print(f'{name:9} ERROR {type(e).__name__}: {e}'); continue
     if not rows:
         print(f'{name:9} no trades in window'); continue
-    ref, hit = onset(rows, TREF, a.thr)
+    ref, hit, approx = onset(rows, TREF, a.thr)
     res[name] = (per_sec(rows, a.watch if name == 'hl' else None), hit)
-    print(f'{name:9} {len(rows):7} trades  ref {ref}  {a.thr:+}% at {fmt_ms(hit)}')
+    print(f'{name:9} {len(rows):7} trades  ref {ref}{"*" if approx else ""}  {a.thr:+}% at {fmt_ms(hit)}')
 
 hits = sorted((h, n) for n, (_, h) in res.items() if h)
 if hits:
